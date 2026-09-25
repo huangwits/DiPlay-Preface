@@ -1,0 +1,64 @@
+# Android Studio and local IDE state
+.idea/
+*.iml
+.vscode/
+
+# Gradle and local tooling
+.gradle/
+.kotlin/
+build/
+local.properties
+
+# Native build output
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Local agent working notes
+/agent_docs/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
+/.idea
+
+# Local beta credentials and release signing (never commit)
+.private/
+*.jks
+*.keystore
+release-signing.properties
+
+# Never commit credential containers or installable distribution artifacts.
+*.pk8
+*.p7b
+*.p12
+*.pfx
+*.pem
+*.key
+*.apk
+*.aab
+# Private administration and local maintenance files
+/.github/workflows/android51.yml
+/.github/workflows/sync-upstream.yml
+/AGENTS.md
+/CHANGELOG.md
+/CLAUDE.md
+/PRODUCT.md
+/license-server/
+/license-workers/
+/offline-license/
+/scripts/build-beta.py
+/scripts/build-signed-e01.ps1
+/scripts/merge-local-into-upstream.ps1
+/scripts/package_source.py
+/scripts/prepare_upstream_update.py
+/scripts/reset-integrated-tree.ps1
+/scripts/tests/test_prepare_upstream_update.py
+/validation/
+/work/
+/outputs/
+/docs/*
+!/docs/DISCLAIMER.md
+!/docs/THIRD_PARTY_NOTICES.md
+!/docs/licenses/
