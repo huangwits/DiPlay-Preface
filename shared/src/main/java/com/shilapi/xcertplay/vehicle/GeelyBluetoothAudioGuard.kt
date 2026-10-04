@@ -22,7 +22,7 @@ internal class GeelyBluetoothAudioGuard(
     private val report: (String) -> Unit,
 ) : Closeable {
     private val app = context.applicationContext
-    private val adapter = app.getSystemService(BluetoothManager::class.java)?.adapter
+    private val adapter = (app.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     private var proxy: BluetoothProfile? = null
     private var registered = false
     private var closed = false

@@ -22,6 +22,7 @@ import com.shilapi.xcertplay.airplay.MicrophoneConfig
 import com.shilapi.xcertplay.airplay.VideoCodec
 import com.shilapi.xcertplay.airplay.toHexString
 import com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay
+import com.shilapi.xcertplay.compat.getOrPutCompat
 import java.io.Closeable
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
@@ -48,6 +49,14 @@ internal class AudioFocusCoordinator(
     private val manager = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private val active = LinkedHashMap<AudioTrack, Entry>()
     private var request: AudioFocusRequest? = null
+    private var legacyListener: AudioManager.OnAudioFocusChangeListener? = null
+    private var legacyGain = AudioManager.AUDIOFOCUS_GAIN
+
+    private fun abandonCurrentFocus() {
+        if (Build.VERSION.SDK_INT >= 26) request?.let { manager?.abandonAudioFocusRequest(it) }
+        else legacyListener?.let { manager?.abandonAudioFocus(it) }
+        legacyListener = null
+    }
     private var requestedChannel: AudioChannel? = null
     private var requestGeneration = 0
     private var focusHeld = false
@@ -100,7 +109,7 @@ internal class AudioFocusCoordinator(
         requestGeneration++
         active.clear()
         mediaAttributes = null
-        request?.let { manager?.abandonAudioFocusRequest(it) }
+        abandonCurrentFocus()
         request = null
         requestedChannel = null
         focusHeld = false
@@ -113,16 +122,16 @@ internal class AudioFocusCoordinator(
             ?: active.values.firstOrNull { it.channel == AudioChannel.NAVIGATION }
         if (primary == null) {
             requestGeneration++
-            request?.let { manager?.abandonAudioFocusRequest(it) }
+            abandonCurrentFocus()
             request = null
             requestedChannel = null
             focusHeld = false
             focusVolume = FULL_VOLUME
             return
         }
-        if (request != null && requestedChannel == primary.channel) { applyVolumes(); return }
+        if ((request != null || legacyListener != null) && requestedChannel == primary.channel) { applyVolumes(); return }
         val generation = ++requestGeneration
-        request?.let { manager?.abandonAudioFocusRequest(it) }
+        abandonCurrentFocus()
         val gain = when (primary.channel) {
             AudioChannel.MEDIA -> AudioManager.AUDIOFOCUS_GAIN
             AudioChannel.PHONE -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
@@ -130,10 +139,12 @@ internal class AudioFocusCoordinator(
             AudioChannel.NAVIGATION -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
             AudioChannel.RINGTONE -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
         }
-        val next = AudioFocusRequest.Builder(gain)
+        legacyGain = gain
+        legacyListener = AudioManager.OnAudioFocusChangeListener { change -> onFocusChanged(generation, change) }
+        val next = if (Build.VERSION.SDK_INT >= 26) AudioFocusRequest.Builder(gain)
             .setAudioAttributes(primary.attributes)
             .setOnAudioFocusChangeListener({ change -> onFocusChanged(generation, change) }, Handler(Looper.getMainLooper()))
-            .build()
+            .build() else null
         request = next
         requestedChannel = primary.channel
         val result = if (factoryRouting && mediaSuppressed && primary.channel == AudioChannel.MEDIA) {
@@ -148,8 +159,13 @@ internal class AudioFocusCoordinator(
     }
 
     private fun requestCurrentFocus(): Int? {
-        val current = request ?: return null
-        val result = manager?.requestAudioFocus(current)
+        val current = request
+        val result = if (Build.VERSION.SDK_INT >= 26 && current != null) manager?.requestAudioFocus(current)
+        else {
+            val listener = legacyListener ?: return null
+            manager?.requestAudioFocus(listener,
+                AudioStreamRouting.legacyStreamType(requestedChannel ?: AudioChannel.MEDIA, null), legacyGain)
+        }
         focusHeld = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         focusVolume = if (factoryRouting && !focusHeld) 0f else FULL_VOLUME
         applyVolumes()
@@ -200,6 +216,8 @@ class AndroidMediaSink(
     private val audioFocusEnabled: Boolean = false,
     private val mediaChannel: Int = 0,
     private val navigationChannel: Int = 0,
+    geelyAudioRouting: Boolean = false,
+    private val geelyNavigationAlert: Boolean = false,
     context: Context? = null,
     private val navigationStreamType: Int = AudioChannelMapper.DEFAULT_NAVIGATION_STREAM_TYPE,
     onScreenStreamActiveChanged: ((Int, Boolean) -> Unit)? = null,
@@ -211,7 +229,8 @@ class AndroidMediaSink(
 ) : MediaSink {
     private val appContext = context?.applicationContext
     private val factoryAudio = appContext?.let(GeelyFactoryCarPlay::load)
-    private val audioManager = appContext?.getSystemService(AudioManager::class.java)
+    private val legacyGeelyAudio = if (geelyAudioRouting && factoryAudio == null) GeelyAudioCapabilities.detect() else null
+    private val audioManager = appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private val audioFocusCoordinator = AudioFocusCoordinator(
         appContext,
         audioFocusEnabled,
@@ -362,7 +381,7 @@ class AndroidMediaSink(
         // This callback runs on the downlink thread; microphone failures must not stop playback.
         try {
             if (config.audioType == "telephony") enterCommunicationMode(id)
-            val uplink = microphoneUplinks.computeIfAbsent(id) {
+            val uplink = microphoneUplinks.getOrPutCompat(id) {
                 MicrophoneUplink(config, onAudioDiagnostic,
                     factorySource = factoryAudio?.microphoneSource(config.audioType, config.sampleRate, wirelessAudio))
             }
@@ -442,7 +461,7 @@ class AndroidMediaSink(
     }
 
     private fun videoDecoder(type: Int): VideoDecoder =
-        videoDecoders.computeIfAbsent(type) { newVideoDecoder(type, surfaces[type] ?: defaultSurface) }
+        videoDecoders.getOrPutCompat(type) { newVideoDecoder(type, surfaces[type] ?: defaultSurface) }
 
     private fun newVideoDecoder(type: Int, surface: Surface?, statsLabel: String? = null) = VideoDecoder(
         type,
@@ -464,8 +483,8 @@ class AndroidMediaSink(
             format,
             advancedAudioChannelMapping,
             audioFocusEnabled,
-            mediaChannel,
-            navigationChannel,
+            legacyGeelyAudio?.carPlay ?: mediaChannel,
+            legacyGeelyAudio?.navigationStream(format.audioType, geelyNavigationAlert) ?: navigationChannel,
             audioFocusCoordinator,
             navigationStreamType,
             mediaBufferMillis,
@@ -694,7 +713,7 @@ private class VideoDecoder(
             return
         }
         val codec = decoder
-        if (codec != null) {
+        if (codec != null && Build.VERSION.SDK_INT >= 23) {
             try {
                 codec.setOutputSurface(surface)
                 Log.i(TAG, "video decoder output surface updated")
@@ -923,7 +942,11 @@ private class AudioRenderer(
             packetsReceived.incrementAndGet()
             val now = System.nanoTime()
             val previous = lastArrivalNs.getAndSet(now)
-            if (previous != 0L) maxArrivalGapMs.accumulateAndGet((now - previous) / 1_000_000L, ::maxOf)
+            if (previous != 0L) {
+                val gap = (now - previous) / 1_000_000L
+                var current = maxArrivalGapMs.get()
+                while (gap > current && !maxArrivalGapMs.compareAndSet(current, gap)) current = maxArrivalGapMs.get()
+            }
         }
         if (!started || !queue.offer(AudioPacket(rtp, sample))) {
             if (started) packetsDropped.incrementAndGet()
@@ -1058,12 +1081,8 @@ private class AudioRenderer(
         if (streamOverride == 0) {
             attributes = audioAttributesFor(selection)
             routeLabel = "usage"
-            built = AudioTrack.Builder()
-                .setAudioAttributes(attributes)
-                .setAudioFormat(pcmFormat(encoding, channelMask))
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .setBufferSizeInBytes(plan.trackBufferBytes)
-                .build()
+            built = AudioTrack(attributes, pcmFormat(encoding, channelMask), plan.trackBufferBytes,
+                AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE)
         } else {
             val streamType = streamOverride
             routeLabel = "streamType=$streamType"
@@ -1079,12 +1098,8 @@ private class AudioRenderer(
                     routeLabel = "streamType=$streamType(fallback=usage)"
                     Log.w(TAG, "streamType=$streamType rejected by this ROM; falling back to usage-based track")
                     attributes = audioAttributesFor(selection)
-                    AudioTrack.Builder()
-                        .setAudioAttributes(attributes)
-                        .setAudioFormat(pcmFormat(encoding, channelMask))
-                        .setTransferMode(AudioTrack.MODE_STREAM)
-                        .setBufferSizeInBytes(plan.trackBufferBytes)
-                        .build()
+                    AudioTrack(attributes, pcmFormat(encoding, channelMask), plan.trackBufferBytes,
+                        AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE)
                 },
             )
         }
@@ -1092,7 +1107,7 @@ private class AudioRenderer(
         diagnosticStage = "track-attributes"
         trackAttributes = audioTrackAttributesForFocus(built, attributes)
         diagnosticStage = "track-capacity"
-        val capacityBytes = built.bufferSizeInFrames * frameBytes
+        val capacityBytes = if (Build.VERSION.SDK_INT >= 23) built.bufferSizeInFrames * frameBytes else plan.trackBufferBytes
         startThresholdBytes = MediaAudioBuffer.startBytesFor(plan.startBytes, capacityBytes, PREBUFFER_WRITE_CHUNK_BYTES)
         val trackMetadata = runCatching {
             "api=${Build.VERSION.SDK_INT} trackState=${built.state} trackRate=${built.sampleRate} " +
@@ -1442,7 +1457,8 @@ private class AudioRenderer(
             }
             val writeStarted = System.nanoTime()
             diagnosticStage = "track-write"
-            val count = track.write(data, offset + written, writeLength, AudioTrack.WRITE_BLOCKING)
+            val count = if (Build.VERSION.SDK_INT >= 23) track.write(data, offset + written, writeLength, AudioTrack.WRITE_BLOCKING)
+                else track.write(data, offset + written, writeLength)
             maxWriteMs = maxOf(maxWriteMs, (System.nanoTime() - writeStarted) / 1_000_000L)
             if (count < 0) {
                 writeErrorsThisWindow++
@@ -1472,7 +1488,7 @@ private class AudioRenderer(
 
     private fun startPlayback(track: AudioTrack) {
         diagnosticStage = "track-play"
-        underrunsAtPlaybackStart = track.underrunCount
+        underrunsAtPlaybackStart = if (Build.VERSION.SDK_INT >= 24) track.underrunCount else 0
         track.play()
         playbackStarted = true
     }
@@ -1480,7 +1496,7 @@ private class AudioRenderer(
     private fun maintainPlaybackBuffer() {
         val track = track ?: return
         if (bufferProgress.shouldRebuffer(mappedChannel == AudioChannel.MEDIA, playbackStarted,
-                track.underrunCount > underrunsAtPlaybackStart, queue.isEmpty(), track.playbackHeadPosition)) {
+                Build.VERSION.SDK_INT >= 24 && track.underrunCount > underrunsAtPlaybackStart, queue.isEmpty(), track.playbackHeadPosition)) {
             // The hardware buffer has actually drained. Pause without flushing or discarding PCM,
             // then use the configured start threshold again when music resumes.
             track.pause()
@@ -1500,7 +1516,7 @@ private class AudioRenderer(
         val now = System.nanoTime()
         if (statsWindowStartNs == 0L) statsWindowStartNs = now
         if (!force && now - statsWindowStartNs < STATS_WINDOW_NS) return
-        val underruns = track?.underrunCount ?: 0
+        val underruns = if (Build.VERSION.SDK_INT >= 24) track?.underrunCount ?: 0 else 0
         val lastRx = lastArrivalNs.get()
         val currentTrack = track
         val playbackHeadFrames = currentTrack?.playbackHeadPosition
@@ -1512,10 +1528,10 @@ private class AudioRenderer(
         }
         val queuedFrames = playbackHeadFrames?.let { (totalWrittenFrames - it).coerceAtLeast(0L) }
         val line = "audio stats audioType=${format.audioType} channel=$mappedChannel " +
-            "routeType=${currentTrack?.routedDevice?.type ?: -1} codec=${format.codec} " +
+            "routeType=${if (Build.VERSION.SDK_INT >= 23) currentTrack?.routedDevice?.type ?: -1 else -1} codec=${format.codec} " +
             "trackState=${currentTrack?.state ?: -1} playState=${currentTrack?.playState ?: -1} " +
             "sampleRate=${currentTrack?.sampleRate ?: format.sampleRate} " +
-            "trackBufferFrames=${currentTrack?.bufferSizeInFrames ?: -1} " +
+            "trackBufferFrames=${if (Build.VERSION.SDK_INT >= 23) currentTrack?.bufferSizeInFrames ?: -1 else -1} " +
             "rx=${packetsReceived.getAndSet(0)} " +
             "dropped=${packetsDropped.getAndSet(0)} underruns=+${underruns - statsLastUnderruns} queue=${queue.size} " +
             "playing=$playbackStarted maxGapMs=${maxArrivalGapMs.getAndSet(0)} " +

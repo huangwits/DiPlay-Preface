@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import com.shilapi.xcertplay.airplay.CarPlayMediaButton
@@ -12,7 +13,7 @@ import com.shilapi.xcertplay.host.R
 import com.shilapi.xcertplay.hud.BydNavigationOutputs
 import com.shilapi.xcertplay.orchestration.CarPlayController
 import com.shilapi.xcertplay.orchestration.CarPlayVideoListener
-import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -46,7 +47,8 @@ internal object CarPlayVideo : CarPlayVideoListener {
     var playing = false
         private set
     var pendingSeekMillis: Int? = null
-    var activity: CarPlayVideoActivity? = null
+    // Avoid a direct Activity/Media3 type here: this state object is loaded by the API-18 host.
+    var activity: CarPlayVideoActivityBridge? = null
 
     fun attach(context: Context, next: CarPlayController) {
         appContext = context.applicationContext
@@ -164,7 +166,7 @@ internal object CarPlayVideo : CarPlayVideoListener {
     /** What the iPhone answered to [resolveOnIphone]. */
     class LoadedUrl(val status: Int?, val data: ByteArray?, val location: String?)
 
-    private val pendingUrls = ConcurrentHashMap<Long, CompletableFuture<Map<*, *>>>()
+    private val pendingUrls = ConcurrentHashMap<Long, UrlAnswer>()
     private val nextUrlRequest = AtomicLong(1)
 
     /**
@@ -175,7 +177,7 @@ internal object CarPlayVideo : CarPlayVideoListener {
     fun resolveOnIphone(url: String): LoadedUrl? {
         val stream = streamId ?: return null
         val id = nextUrlRequest.getAndIncrement()
-        val answer = CompletableFuture<Map<*, *>>()
+        val answer = UrlAnswer()
         pendingUrls[id] = answer
         reply(stream, linkedMapOf(
             "type" to "unhandledURL",
@@ -189,7 +191,7 @@ internal object CarPlayVideo : CarPlayVideoListener {
         ))
         Log.i(TAG, "asked the iPhone to load a ${android.net.Uri.parse(url).scheme} URL request=$id")
         val response = try {
-            answer.get(URL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            answer.await(URL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         } catch (_: Exception) {
             Log.w(TAG, "no iPhone answer for request=$id")
             null
@@ -230,19 +232,24 @@ internal object CarPlayVideo : CarPlayVideoListener {
     private fun show() {
         val context = appContext ?: return
         when {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.M -> {
+                Log.w(TAG, "parked video playback requires Android 6.0 or newer")
+                Toast.makeText(context, R.string.video_requires_android_6, Toast.LENGTH_LONG).show()
+            }
             url == null -> Log.w(TAG, "video player requested without a playable item")
             !VideoInCar.allowed -> Log.w(TAG, "video player requested while not parked")
             activity != null -> Unit
             else -> context.startActivity(
-                Intent(context, CarPlayVideoActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                Intent().setClassName(context, VIDEO_ACTIVITY_CLASS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }
     }
 
     private fun closePlayer(reason: String) {
-        val player = activity ?: return
+        if (activity == null) return
         Log.i(TAG, "closing the video player: $reason")
-        player.finish()
+        activity?.requestFinish()
     }
 
     private fun stop() {
@@ -250,6 +257,22 @@ internal object CarPlayVideo : CarPlayVideoListener {
         itemUuid = null
         playing = false
         pendingSeekMillis = null
-        activity?.finish()
+        activity?.requestFinish()
     }
+
+    /** API-18 replacement for java.util.concurrent.CompletableFuture (API 24). */
+    private class UrlAnswer {
+        private val ready = CountDownLatch(1)
+        @Volatile private var value: Map<*, *>? = null
+
+        fun complete(result: Map<*, *>) {
+            value = result
+            ready.countDown()
+        }
+
+        fun await(timeout: Long, unit: TimeUnit): Map<*, *>? =
+            if (ready.await(timeout, unit)) value else null
+    }
+
+    private const val VIDEO_ACTIVITY_CLASS = "com.shilapi.xcertplay.CarPlayVideoActivity"
 }

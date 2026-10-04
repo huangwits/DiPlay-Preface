@@ -10,7 +10,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.locks.LockSupport
 
 /**
  * Moves IPv6 packets between an Android VpnService tun and the iPhone NCM Ethernet link.
@@ -55,7 +54,7 @@ class Ipv6NcmBridge(
     override fun close() {
         if (!running.compareAndSet(true, false)) return
         ncm.close()
-        tun.close()
+        VpnTunnelCompat.closeQuietly(tun)
         join(ncmToTunThread)
         join(tunToNcmThread)
     }
@@ -79,7 +78,9 @@ class Ipv6NcmBridge(
                     inboundLogBudget--
                     Log.i(TAG, "ncm inbound ${frame.summary(ipv6.payloadOffset)}")
                 }
-                output.write(frame, ipv6.payloadOffset, ipv6.payloadLength)
+                if (!VpnTunnelCompat.write(output, frame, ipv6.payloadOffset, ipv6.payloadLength) { running.get() }) {
+                    return
+                }
             }
         } catch (error: IOException) {
             if (running.get()) onError(error)
@@ -93,16 +94,10 @@ class Ipv6NcmBridge(
         val buffer = ByteArray(TUN_READ_BYTES)
         try {
             while (running.get()) {
-                val length = input.read(buffer)
+                val length = VpnTunnelCompat.read(input, buffer) { running.get() }
                 if (length == -1) {
                     if (running.get()) onError(IOException("NCM IPv6 tunnel closed"))
                     return
-                }
-                // Android's TUN fd may transiently report a zero-byte read while its network is
-                // being registered. It is neither EOF (-1) nor an IPv6 packet.
-                if (length == 0) {
-                    LockSupport.parkNanos(ZERO_READ_BACKOFF_NANOS)
-                    continue
                 }
                 val tunPacket = buffer.copyOf(length)
                 val ipv6 = EthernetIpv6Codec.addNeighborAdvertisementTargetMac(tunPacket, hostMac)
@@ -175,7 +170,6 @@ class Ipv6NcmBridge(
         const val READ_TIMEOUT_MILLIS = 1_000L
         const val WRITE_TIMEOUT_MILLIS = 2_000
         const val TUN_READ_BYTES = 4_096
-        const val ZERO_READ_BACKOFF_NANOS = 1_000_000L
         const val JOIN_TIMEOUT_MILLIS = 2_000L
     }
 }

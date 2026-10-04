@@ -1,10 +1,11 @@
 <resources>
-    <style name="Theme.Xcertplay" parent="android:Theme.Material.NoActionBar">
+    <!--
+        Base theme targets Android 4.3: Theme.Holo has existed since API 14, while
+        Theme.Material and the window tint attributes only arrive in API 21. The modern values live
+        in values-v21 so both generations resolve the same style name.
+    -->
+    <style name="Theme.Xcertplay" parent="android:Theme.Holo.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#A6C8FF</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:navigationBarColor">#0C111B</item>
-        <item name="android:statusBarColor">#0C111B</item>
         <item name="android:windowBackground">#0C111B</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>

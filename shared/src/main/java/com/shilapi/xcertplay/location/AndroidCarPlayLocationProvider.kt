@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Looper
 import android.util.Log
 import com.shilapi.xcertplay.transport.CarPlayLocationFix
+import com.shilapi.xcertplay.compat.systemService
 import com.shilapi.xcertplay.transport.Iap2LocationProvider
 import com.shilapi.xcertplay.transport.NmeaLocationEncoder
 import java.util.concurrent.ConcurrentHashMap
@@ -23,8 +24,8 @@ class AndroidCarPlayLocationProvider(
     context: Context,
     private val preferredLocationAgeMillis: Long = DEFAULT_PREFERRED_LOCATION_AGE_MILLIS,
 ) : Iap2LocationProvider {
-    private val locationManager =
-        context.applicationContext.getSystemService(LocationManager::class.java)
+    private val locationManager = context.applicationContext.systemService(LocationManager::class.java, "location")
+        ?: error("Location service unavailable")
     private val stateLock = Any()
     private val preferredProviders = buildList {
         add(LocationManager.GPS_PROVIDER)

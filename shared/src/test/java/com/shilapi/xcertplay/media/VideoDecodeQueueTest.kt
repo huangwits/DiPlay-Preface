@@ -5,6 +5,43 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VideoDecodeQueueTest {
+    @Test fun pollingAndDiscardReturnByteAndFrameBudget() {
+        val queue = VideoDecodeQueue(maxFrames = 2, maxBytes = 6)
+        repeat(100) {
+            queue.offer(VideoJob.Frame(ByteArray(6)))
+            assertTrue(queue.poll(0) is VideoJob.Frame)
+            assertNull(queue.poll(0))
+        }
+        queue.offer(VideoJob.Frame(ByteArray(6)))
+        queue.discardFrames()
+        queue.offer(VideoJob.Frame(ByteArray(6)))
+        assertTrue(queue.poll(0) is VideoJob.Frame)
+        assertNull(queue.poll(0))
+    }
+
+    @Test fun producerWakesWaitingConsumerAndInterruptCancelsWait() {
+        val queue = VideoDecodeQueue()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val result = executor.submit<VideoJob?> { queue.poll(5_000) }
+            val config = VideoJob.Config(VideoCodec.H264, byteArrayOf(1))
+            queue.offer(config)
+            assertSame(config, result.get(2, java.util.concurrent.TimeUnit.SECONDS))
+            val waiting = java.util.concurrent.CountDownLatch(1)
+            val interrupted = java.util.concurrent.CountDownLatch(1)
+            val worker = Thread {
+                waiting.countDown()
+                try { queue.poll(30_000) } catch (_: InterruptedException) { interrupted.countDown() }
+            }
+            worker.start()
+            assertTrue(waiting.await(2, java.util.concurrent.TimeUnit.SECONDS))
+            worker.interrupt()
+            worker.join(2_000)
+            assertFalse(worker.isAlive)
+            assertEquals(0L, interrupted.count)
+        } finally { executor.shutdownNow() }
+    }
+
     @Test fun lostReferenceChainWaitsForSuccessfullyQueuedKeyframe() {
         val chain = VideoReferenceChain()
         val predicted = byteArrayOf(0, 0, 0, 1, 0x41, 1)
