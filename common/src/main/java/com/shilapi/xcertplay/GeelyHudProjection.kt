@@ -194,7 +194,8 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
             val params = WindowManager.LayoutParams(
                 displayWidth,
                 displayHeight,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                if (android.os.Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else WindowManager.LayoutParams.TYPE_PHONE,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
