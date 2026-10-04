@@ -1,64 +1,67 @@
-name: Sync upstream
-
+name: Review carlito updates
 on:
-  push:
-    branches: [main]
-  schedule:
-    - cron: '17 * * * *'
   workflow_dispatch:
-
 permissions:
   contents: write
+  pull-requests: write
   actions: write
-
 concurrency:
-  group: sync-upstream-main
+  group: sync-carlito-android51
   cancel-in-progress: false
-
 jobs:
-  sync:
+  propose:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: android51-e01
           fetch-depth: 0
-      - name: Configure sync commit identity
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-      - name: Fetch upstream main
-        run: |
-          git remote add upstream https://github.com/shihabal3amri/DiPlay.git
-          git fetch upstream main
-      - name: Merge upstream changes
+      - name: Prepare update branch
         id: merge
         shell: bash
         run: |
           set -euo pipefail
-          upstream_sha="$(git rev-parse upstream/main)"
-          if git merge-base --is-ancestor "$upstream_sha" HEAD; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No new upstream commits."
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add geely https://github.com/carlito12345/DiPlay.git
+          git fetch geely main
+          sha="$(git rev-parse geely/main)"
+          if git merge-base --is-ancestor "$sha" HEAD; then
+            echo 'No new carlito commits.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          if git merge-base --is-ancestor HEAD "$upstream_sha"; then
-            git merge --ff-only "$upstream_sha"
-          else
-            git merge --no-edit "$upstream_sha"
+          branch="sync/carlito-${sha:0:12}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "Update branch already exists: $branch. Review its existing changes." >> "$GITHUB_STEP_SUMMARY"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-      - name: Push updated main
-        if: steps.merge.outputs.changed == 'true'
-        run: git push origin HEAD:main
-      - name: Build after upstream update
-        if: steps.merge.outputs.changed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'android.yml',
-              ref: 'main',
-            });
+          git switch -c "$branch"
+          if ! git merge --no-ff --no-edit "$sha"; then
+            echo 'Conflicts require manual resolution; nothing was pushed and android51-e01 was not changed.' >> "$GITHUB_STEP_SUMMARY"
+            git diff --name-only --diff-filter=U >> "$GITHUB_STEP_SUMMARY"
+            git merge --abort
+            exit 1
+          fi
+          git push origin "HEAD:refs/heads/$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Open draft pull request and run compatibility checks
+        if: steps.merge.outputs.branch != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: ${{ steps.merge.outputs.branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GITHUB_TOKEN pushes do not trigger ordinary push workflows.
+          gh workflow run android51.yml --ref "$UPDATE_BRANCH"
+          cat > "$RUNNER_TEMP/update-body.md" <<'EOF'
+          Merge changes from carlito12345/DiPlay into the Android 5.1 E01 adaptation.
+
+          This is an unverified update candidate. Review API compatibility, run Android 5.1 E01 checks and test on the vehicle before merging. A clean Git merge does not establish Android 5.1 or vendor Bluetooth compatibility.
+          EOF
+          if [[ "$(gh pr list --base android51-e01 --head "$UPDATE_BRANCH" --state open --json number --jq 'length')" == 0 ]]; then
+            gh pr create --base android51-e01 --head "$UPDATE_BRANCH" --draft \
+              --title 'Review carlito updates for Android 5.1 E01' --body-file "$RUNNER_TEMP/update-body.md"
+          fi

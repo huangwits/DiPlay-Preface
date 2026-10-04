@@ -1,5 +1,7 @@
 package com.shilapi.xcertplay.transport
 
+import com.shilapi.xcertplay.compat.UsbCompat
+
 import android.hardware.usb.UsbConfiguration
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbEndpoint
@@ -26,19 +28,59 @@ object NcmFunctionDiscovery {
         val statusIn: UsbEndpoint?,
         val bulkIn: UsbEndpoint,
         val bulkOut: UsbEndpoint,
-    )
-
-    fun find(configuration: UsbConfiguration): NcmFunction? {
-        return findCdcNcm(configuration)
+        /**
+         * Alternate setting the data interface must be switched to before bulk transfers. On API
+         * 21+ this comes from the platform interface; on 4.3 it is recovered from the descriptor
+         * layout, because UsbInterface.getAlternateSetting() does not exist there.
+         */
+        val dataAlternate: Int = DATA_ALTERNATE_SETTING,
+    ) {
+        val controlAlternate: Int get() = UsbCompat.alternateSetting(control)
     }
 
-    private fun findCdcNcm(configuration: UsbConfiguration): NcmFunction? {
+    fun find(configuration: UsbConfiguration): NcmFunction? = findCdcNcm(configuration, null)
+
+    /** [layout] supplies the descriptor-derived alternate settings on API 18-20. */
+    fun find(configuration: UsbConfiguration, layout: UsbDeviceLayout?): NcmFunction? =
+        findCdcNcm(configuration, layout)
+
+    /**
+     * Discovers the CDC-NCM function from the descriptor-derived layout alone. This is the path
+     * Android 4.3 takes, where UsbConfiguration does not exist: the control and data interfaces are
+     * matched by class/subclass and the data alternate by the descriptor record.
+     */
+    fun find(layout: UsbDeviceLayout): NcmFunction? {
+        val control = layout.firstInterfaceMatching {
+            it.interfaceClass == CONTROL_CLASS && it.interfaceSubclass == CONTROL_SUBCLASS
+        } ?: return null
+        val data = layout.interfaces
+            .filter { it.interfaceClass == DATA_CLASS && bulkEndpoints(it.platform) != null }
+            .minByOrNull { if (it.alternateSetting == DATA_ALTERNATE_SETTING) 0 else 1 }
+            ?: return null
+        val endpoints = bulkEndpoints(data.platform) ?: return null
+        val statusIn = (0 until control.platform.endpointCount)
+            .map(control.platform::getEndpoint)
+            .singleOrNull {
+                it.direction == UsbConstants.USB_DIR_IN &&
+                    it.type == UsbConstants.USB_ENDPOINT_XFER_INT
+            }
+        return NcmFunction(
+            control = control.platform,
+            data = data.platform,
+            statusIn = statusIn,
+            bulkIn = endpoints.first,
+            bulkOut = endpoints.second,
+            dataAlternate = data.alternateSetting,
+        )
+    }
+
+    private fun findCdcNcm(configuration: UsbConfiguration, layout: UsbDeviceLayout?): NcmFunction? {
         val control = interfaces(configuration).firstOrNull {
             it.interfaceClass == CONTROL_CLASS && it.interfaceSubclass == CONTROL_SUBCLASS
         } ?: return null
         val data = interfaces(configuration)
             .filter { it.interfaceClass == DATA_CLASS && bulkEndpoints(it) != null }
-            .minByOrNull { if (it.alternateSetting == DATA_ALTERNATE_SETTING) 0 else 1 }
+            .minByOrNull { if (UsbCompat.alternateSetting(it) == DATA_ALTERNATE_SETTING) 0 else 1 }
             ?: return null
         val endpoints = bulkEndpoints(data) ?: return null
         val statusIn = (0 until control.endpointCount)
@@ -47,11 +89,16 @@ object NcmFunctionDiscovery {
                 it.direction == UsbConstants.USB_DIR_IN &&
                     it.type == UsbConstants.USB_ENDPOINT_XFER_INT
             }
-        return NcmFunction(control, data, statusIn, endpoints.first, endpoints.second)
+        val dataAlternate = layout?.interfaces
+            ?.firstOrNull { it.platform === data }
+            ?.alternateSetting
+            ?: UsbCompat.alternateSetting(data)
+        return NcmFunction(control, data, statusIn, endpoints.first, endpoints.second, dataAlternate)
     }
 
     private fun interfaces(configuration: UsbConfiguration): List<UsbInterface> =
-        (0 until configuration.interfaceCount).map(configuration::getInterface)
+        (0 until UsbCompat.interfaceCount(configuration))
+        .mapNotNull { UsbCompat.usbInterface(configuration, it) }
 
     private fun bulkEndpoints(usbInterface: UsbInterface): Pair<UsbEndpoint, UsbEndpoint>? {
         val endpoints = (0 until usbInterface.endpointCount).map(usbInterface::getEndpoint)

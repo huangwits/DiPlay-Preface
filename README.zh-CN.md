@@ -1,33 +1,30 @@
-# DiPlay
+# DiPlay 星瑞 E01 安卓 5.1 适配
 
-为兼容的比亚迪安卓车机提供有线及无线 CarPlay，采用 DiAuto 风格界面。
+目标车辆：2020 款吉利星瑞旗舰，GKUI，亿咖通 E01（MT6735），Android 5.1 / API 22。
 
-> 这些项目专注于比亚迪汽车。它们可能在其他品牌上运行，但其他品牌不在支持范围内，也没有增加支持或修复其品牌特定兼容性问题的计划。
+以 [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) 的 `049e080`（0.2.11）为基准，移入旧安卓兼容层并保留吉利改动。原作者为 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)，旧安卓兼容代码来自 [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43)。
 
-[下载与中文网站](https://shihabal3amri.github.io/DiPlay/zh-Hans/) · [0.2.11 版本](https://github.com/shihabal3amri/DiPlay/releases/tag/v0.2.11) · [完整说明](README.md) · [报告问题](https://github.com/shihabal3amri/DiPlay/issues/new/choose)
+- `android51-e01`：本项目维护的适配分支。
+- `main`：保留 Fork 时的上游版本，不是安卓 5.1 适配版。
+- Fork 的 `main` 已有更新到 `6b2b3b9`，这些较新改动尚未合入本次验证版本，不宣称已经同步最新上游。
 
-## 0.2.11 — 公开预览版
+## 当前状态
 
-请安装在车机上，而非 iPhone。无需越狱、转接盒、账户或认证服务器。最低支持 Android 9；Wi-Fi Direct 需要 Android 10 或更高版本，也可使用车机内置热点或 USB。有线及无线 CarPlay 核心连接不要求 ADB，可选车辆数据等功能需要已授权的网络 ADB。
+已完成 API 22 兼容修改、E01 低负载默认设置及 ARMv7/ARM64 打包。common/shared 共 833 项本地测试通过；三个模块 NewApi 检查通过。尚未通过 E01 实车连接验收。
 
-### 0.2.11 新增与修正
+**E01 厂商无线蓝牙尚未实现。** 原厂电话和音乐正常，但本车没有向 DiPlay 提供标准 Android 蓝牙适配器。原厂蓝牙可用不代表第三方应用能建立所需的 RFCOMM 数据通道。
 
-- **Wi-Fi Direct 首选信道**：默认仍为自动，可保存支持的 2.4/5 GHz 信道，在下次连接生效。车机拒绝或使用了其他信道时会报错，请改回自动或换信道。此功能不代表卡顿问题已解决。
-- 在仪表地图上显示可移动的自定义转向卡片，支持大小选择及每次 2% 的位置调整，无需重连。未知转向不会显示猜测的箭头，过期指引会清除。
-- 打开设置的下滑手势可选 2、3 或 4 指，默认仍为 3 指。新增 Android TV/遥控器操作，并保留普通车机触摸、返回及旋钮行为。
-- 在“设置 → 位置 → 高级车辆数据”中可选旧版车机只读字段探测，默认仍使用 DiLink 5.0 路径。只有已确认并接受的字段及读数才用于运行时；修正过期探测结果及电池数据发布的并发问题。
-- 可选自动开启车机已有热点，默认关闭。启用前验证仅针对 DiPlay 自身应用包的权限，保留热点名称与密码。
-- 无线位置及车辆数据由实际 Wi-Fi 链路发送；停车视频等待 SETUP 和事件通道就绪。非 P 挡或无法读取挡位时仍会关闭视频。
-- 歌曲增量更新未提供歌手时保留已有歌手；媒体会话只在歌曲信息或封面变化时重新发布，播放进度及状态继续更新。
-- 修正 Android 9 音频 API 兼容性，释放启动失败的编解码器；重连采用稳定后的屏幕尺寸和正常启动检查。自动信道模式下为精确匹配的 Android 10 P2P 错误提供一次受保护的兼容回退，有线 VPN 仅作用于 DiPlay。
-- 新增有界无线、媒体、昼夜模式及本应用退出诊断，不录制音频、视频或数据包内容，也不自动上传报告。
+仓库包含新版 `diagnostics` 工具：在车机点击“识别 E01 原厂蓝牙应用（无需电脑）”，可读取固件、相关系统应用包名和系统库线索，再拍照提供结果。该按钮不会启动原厂服务或修改蓝牙开关。
 
-旧版车辆数据、电池、轮速及停车视频需要已授权的网络 ADB 和支持的有效读数；仪表及热点等功能取决于车机固件。请参阅[完整版本说明](docs/RELEASE-NOTES-0.2.11.md)及[验证记录](docs/VALIDATION.md)。Qin Plus 连接、Wi-Fi Direct 卡顿、Siri/麦克风质量、iOS 15 连接和部分固件昼夜模式仍需真机复现，未宣称全部修复。
+## 下载与构建
 
-### 请提供新的诊断报告
+进入 **Actions → Android 5.1 E01 checks**，成功后下载 `source-only-e01-and-bluetooth-diagnostics`：
 
-更新到 **0.2.11** 后复现问题，再打开“**设置 → 诊断 → 保存诊断报告**”。Android 10 及以上保存到 **Downloads/DiPlay**；Android 9 使用文件选择器。检查 `.txt` 内容后附在原有 [GitHub 问题](https://github.com/shihabal3amri/DiPlay/issues)中，并注明车型/车机、安卓及固件、iPhone/iOS、连接模式、复现步骤和大致发生时间。报告由你决定是否分享，请勿公开热点密码。
+- E01 主程序是**无配件认证材料的源码验证包**，不能把它当成可独立连接 iPhone 的完整车测包。
+- 蓝牙诊断 APK 可独立使用，不需要配件认证材料。
 
-这是公开预览版，**未经 Apple 认证**。APK 使用从公开 Carlinkit 固件中提取的既有实验性配件身份，并非为 DiPlay 新签发的 MFi 身份；其中的私钥可被提取，未来 iOS 是否继续接受及其公开分发适用性尚未确定。Android 签名密钥和配件身份不进入 Git 或源代码压缩包；普通源代码/CI 构建默认不配置身份。部分车机仍可能卡顿或无法应用图标大小设置。
+完整车测包采用明确提供的本地认证输入运行 `:mobile:assembleStandaloneE01`。仓库不上传认证密钥、证书或本地完整车测 APK。[构建说明](docs/BUILD.md)
 
-标准导航小组件需要支持 Android 小组件的启动器；比亚迪内置主页不接受任意小组件。悬浮地图和嵌入地图需要启用“CarPlay 仪表地图”。应用及网站支持英语、简体中文、阿拉伯语、俄语、乌克兰语和西班牙语。源代码、构建说明及许可证随版本提供。
+后续从 carlito 同步更新时，使用 **Actions → Review carlito updates → Run workflow**。流程只生成草稿 PR 并运行检查，不自动合入适配分支。有冲突时停止，需要继续人工适配。详见[同步策略](docs/UPSTREAM_SYNC.md)。
+
+[E01 实现与验证边界](docs/ECARX-E01-ANDROID51.md) · [保留的原仓库中文说明](docs/CARLITO-README.zh-CN.md) · [署名与许可证](docs/THIRD_PARTY_NOTICES.md)

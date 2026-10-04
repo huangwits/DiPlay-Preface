@@ -11,6 +11,7 @@ import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
@@ -49,6 +50,9 @@ internal object CarPlayMediaKeys {
     private var controller: CarPlayController? = null
     private var session: MediaSession? = null
     private var focusRequest: AudioFocusRequest? = null
+    private val legacyFocusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        if (change == AudioManager.AUDIOFOCUS_LOSS) synchronized(this) { focusHeld = false }
+    }
     private var focusHeld = false
     private var manageAudioFocus = true
     private var appContext: Context? = null
@@ -245,7 +249,7 @@ internal object CarPlayMediaKeys {
     }
 
     fun steeringDiagnostics(): String = synchronized(this) {
-        val permitted = appContext?.checkSelfPermission(android.Manifest.permission.READ_LOGS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val permitted = appContext?.let { com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(it, android.Manifest.permission.READ_LOGS) } == android.content.pm.PackageManager.PERMISSION_GRANTED
         "systemLogAccess=$permitted\n" + (geelyInput?.diagnostics() ?: "oneOs INACTIVE") + "\n" +
             (keyLogMonitor?.diagnostics() ?: "logMonitor INACTIVE") + "\n" + observedKeys.joinToString("\n")
     }
@@ -311,10 +315,12 @@ internal object CarPlayMediaKeys {
     // keys. When CarPlay starts playing again it becomes the car's media source again, as any player
     // would; only the start counts, so a car source picked while the iPhone plays on is not undone.
     private fun regainFocusLocked() {
-        val request = focusRequest ?: return
-        if (focusHeld) return
-        val audio = appContext?.getSystemService(AudioManager::class.java) ?: return
-        focusHeld = audio.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        if (focusHeld || !manageAudioFocus) return
+        val audio = appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val request = focusRequest
+        val result = if (Build.VERSION.SDK_INT >= 26 && request != null) audio.requestAudioFocus(request)
+        else audio.requestAudioFocus(legacyFocusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+        focusHeld = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         Log.i(TAG, "audio focus regained=$focusHeld")
     }
 
@@ -327,8 +333,8 @@ internal object CarPlayMediaKeys {
     }
 
     private fun start(context: Context) {
-        val audio = context.getSystemService(AudioManager::class.java)
-        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val request = if (Build.VERSION.SDK_INT >= 26) AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -340,8 +346,10 @@ internal object CarPlayMediaKeys {
                 // Only a permanent loss moves the car's media keys elsewhere; transient losses come back.
                 if (change == AudioManager.AUDIOFOCUS_LOSS) synchronized(this) { focusHeld = false }
             }, mainHandler)
-            .build()
-        val granted = manageAudioFocus && audio?.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            .build() else null
+        val granted = manageAudioFocus && (if (Build.VERSION.SDK_INT >= 26 && request != null)
+            audio?.requestAudioFocus(request)
+        else audio?.requestAudioFocus(legacyFocusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         focusRequest = request.takeIf { manageAudioFocus }
         focusHeld = granted
         session = MediaSession(context, "DiPlay CarPlay").apply {
@@ -370,7 +378,9 @@ internal object CarPlayMediaKeys {
         nowPlaying = CarPlayNowPlaying()
         artwork = null
         artworkCache.clear()
-        focusRequest?.let { request -> appContext?.getSystemService(AudioManager::class.java)?.abandonAudioFocusRequest(request) }
+        val audio = appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (Build.VERSION.SDK_INT >= 26) focusRequest?.let { audio?.abandonAudioFocusRequest(it) }
+        else if (manageAudioFocus) audio?.abandonAudioFocus(legacyFocusListener)
         focusRequest = null
         focusHeld = false
         if (learning != null) syncGeelyInputLocked()

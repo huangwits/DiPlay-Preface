@@ -71,7 +71,7 @@ internal object NavigationWidgetUpdater {
             R.id.widget_root,
             PendingIntent.getActivity(
                 context, 0, Intent(context, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                com.shilapi.xcertplay.compat.PendingIntentCompat.updateCurrentImmutableFlags(),
             ),
         )
         val type = glance.maneuverType

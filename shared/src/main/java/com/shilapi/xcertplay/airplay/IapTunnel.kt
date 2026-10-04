@@ -44,30 +44,8 @@ class IapTunnel(
         val bound = bindAny()
         servers += bound
         listener.onDebug("AirPlay iAP tunnel listener bound=${bound.localSocketAddress}")
-        val secondaryAddress = if (bindAddress is java.net.Inet6Address) {
-            InetAddress.getByName("0.0.0.0")
-        } else {
-            InetAddress.getByName("::")
-        }
-        val secondary = ServerSocket()
-        runCatching {
-            secondary.apply {
-                reuseAddress = true
-                bind(InetSocketAddress(secondaryAddress, bound.localPort))
-            }
-        }.onSuccess { secondary ->
-            servers += secondary
-            listener.onDebug(
-                "AirPlay iAP tunnel secondary listener bound=" +
-                    "${secondary.localSocketAddress}",
-            )
-        }.onFailure { error ->
-            safeClose(secondary)
-            listener.onDebug(
-                "AirPlay iAP tunnel secondary listener failed address=" +
-                    "$secondaryAddress port=${bound.localPort}: ${error.message}",
-            )
-        }
+        // Android 4.3 cannot bind the IPv6 wildcard. Its default AF_INET6 socket is dual-stack,
+        // so the IPv4 wildcard accepts both IPv4 and IPv6 peers without a second listener.
         servers.forEach { server ->
             threads += Thread({ accept(server) }, "airplay-iap-tunnel").apply {
                 isDaemon = true
@@ -78,10 +56,7 @@ class IapTunnel(
     }
 
     private fun bindAny(): ServerSocket =
-        ServerSocket().apply {
-            reuseAddress = true
-            bind(InetSocketAddress(bindAddress, 0))
-        }
+        com.shilapi.xcertplay.compat.WildcardBind.bind(ServerSocket())
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return

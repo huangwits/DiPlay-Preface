@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
 }
 
 // Optional local-only input. CI and ordinary source builds contain no accessory identity.
@@ -15,7 +14,9 @@ android {
 
     defaultConfig {
         applicationId = "com.shihab.diplay"
-        minSdk = 28
+        minSdk = 22
+        // API 18 predates native multidex; keep the launcher installable on 4.3.
+        multiDexEnabled = true
         targetSdk = 37
         versionCode = 30
         versionName = "0.2.11"
@@ -48,29 +49,31 @@ android {
             }
             signingConfig = signingConfigs.getByName("release")
         }
+        create("e01") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".e01legacy"
+            versionNameSuffix = "-e01-android51-test"
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
+            resValue("bool", "config_e01_default", "true")
+            resValue("string", "app_name", "DiPlay E01 Legacy")
+            ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    buildFeatures {
-        compose = true
-    }
+    buildFeatures { resValues = true }
 }
 
 dependencies {
-    implementation(platform(libs.androidx.compose.bom))
     implementation(project(":common"))
     implementation(project(":shared"))
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.app.projected)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    debugImplementation(libs.androidx.compose.ui.tooling)
+    implementation(libs.androidx.multidex)
 }
 
 // No implicit import. Only the two explicitly selected local runtime assets are allowed.
@@ -117,4 +120,10 @@ tasks.register("assembleStandaloneDebug") {
     group = "build"
     description = "Build a standalone car-test APK with explicitly provisioned authentication."
     dependsOn(verifyStandaloneAuthentication, "assembleDebug")
+}
+
+tasks.register("assembleStandaloneE01") {
+    group = "build"
+    description = "Build the legacy E01 test APK with explicitly provisioned authentication."
+    dependsOn(verifyStandaloneAuthentication, "assembleE01")
 }

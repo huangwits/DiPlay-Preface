@@ -39,7 +39,7 @@ class NtpClock : Closeable {
         check(!running.getAndSet(true)) { "NtpClock is already running" }
         val bound = DatagramSocket(null)
         bound.reuseAddress = true
-        bound.bind(InetSocketAddress(InetAddress.getByName("::"), 0))
+        com.shilapi.xcertplay.compat.WildcardBind.bind(bound)
         synchronized(socketLock) { socket = bound }
         receiver = Thread(::runReceiver, "airplay-ntp-rx").apply { isDaemon = true; start() }
         return bound.localPort
@@ -217,8 +217,15 @@ private fun ntp64Now(): BigInteger {
 }
 
 private fun ntpFromNanos(ns: Long): BigInteger {
-    val seconds = BigInteger.valueOf(Math.floorDiv(ns, 1_000_000_000L))
-    val nanos = BigInteger.valueOf(Math.floorMod(ns, 1_000_000_000L))
+    // Math.floorDiv/floorMod arrived in API 24. Normalize Java's truncating division for negatives.
+    var wholeSeconds = ns / 1_000_000_000L
+    var nanoRemainder = ns % 1_000_000_000L
+    if (nanoRemainder < 0) {
+        wholeSeconds -= 1
+        nanoRemainder += 1_000_000_000L
+    }
+    val seconds = BigInteger.valueOf(wholeSeconds)
+    val nanos = BigInteger.valueOf(nanoRemainder)
     return seconds.shiftLeft(32).or(nanos.shiftLeft(32).divide(NANOS_PER_SECOND))
 }
 

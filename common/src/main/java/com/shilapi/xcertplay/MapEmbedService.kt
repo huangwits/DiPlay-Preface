@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.compat.systemService
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -56,7 +57,7 @@ class MapEmbedService : Service() {
         destroyed = true
         stopObservingSharing?.invoke()
         stopObservingSharing = null
-        embeds.values.toList().forEach { it.release() }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) embeds.values.toList().forEach { it.release() }
         embeds.clear()
         super.onDestroy()
     }
@@ -65,11 +66,15 @@ class MapEmbedService : Service() {
         if (destroyed) return
         val attached = embeds.values.toList()
         embeds.clear()
-        attached.forEach { it.sharingDisabled() }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) attached.forEach { it.sharingDisabled() }
     }
 
     private fun handle(message: Message) {
         val client = message.replyTo ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            if (message.what == MSG_ATTACH) refuse(client, "uid ${safeSendingUid(message)}", ERROR_UNSUPPORTED)
+            return
+        }
         val caller = packageManager.getNameForUid(message.sendingUid) ?: "uid ${message.sendingUid}"
         when (message.what) {
             MSG_ATTACH -> attach(client, caller, message.data)
@@ -77,6 +82,11 @@ class MapEmbedService : Service() {
             MSG_DETACH -> embeds.remove(client.binder)?.release()
         }
     }
+
+    /** Message.sendingUid is API 21; below that only include its value when the field exists. */
+    private fun safeSendingUid(message: Message): String = runCatching {
+        Message::class.java.getField("sendingUid").getInt(message).toString()
+    }.getOrDefault("unknown")
 
     private fun attach(client: Messenger, caller: String, data: Bundle) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -93,7 +103,7 @@ class MapEmbedService : Service() {
             return
         }
         embeds.remove(client.binder)?.release()
-        val display = getSystemService(DisplayManager::class.java)?.getDisplay(data.getInt(KEY_DISPLAY_ID))
+        val display = systemService(DisplayManager::class.java, "display")?.getDisplay(data.getInt(KEY_DISPLAY_ID))
         if (display == null) {
             send(client, MSG_ERROR, Bundle().apply { putString(KEY_ERROR, ERROR_BAD_REQUEST) })
             return
@@ -120,8 +130,12 @@ class MapEmbedService : Service() {
         try {
             client.send(Message.obtain(null, what).apply { this.data = data })
         } catch (_: RemoteException) {
-            embeds.remove(client.binder)?.release()
+            releaseEmbed(embeds.remove(client.binder))
         }
+    }
+
+    private fun releaseEmbed(embed: Embed?) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) embed?.release()
     }
 
     /** One map in one launcher view. Main thread. */

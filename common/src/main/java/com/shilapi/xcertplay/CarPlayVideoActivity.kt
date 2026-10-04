@@ -53,7 +53,7 @@ import androidx.media3.ui.R as Media3R
  * protected item that cannot play here is easy to tell apart.
  */
 @OptIn(UnstableApi::class)
-class CarPlayVideoActivity : Activity() {
+class CarPlayVideoActivity : Activity(), CarPlayVideoActivityBridge {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var player: ExoPlayer
     private lateinit var controls: View
@@ -158,15 +158,19 @@ class CarPlayVideoActivity : Activity() {
         fun timeText() = TextView(this).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-            fontFeatureSettings = "tnum"
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                fontFeatureSettings = "tnum"
+            }
         }
         position = timeText()
         length = timeText()
         timeBar = SeekBar(this).apply {
-            progressTintList = ColorStateList.valueOf(Color.WHITE)
-            thumbTintList = ColorStateList.valueOf(Color.WHITE)
-            secondaryProgressTintList = ColorStateList.valueOf(0x80FFFFFF.toInt())
-            progressBackgroundTintList = ColorStateList.valueOf(0x4DFFFFFF)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                progressTintList = ColorStateList.valueOf(Color.WHITE)
+                thumbTintList = ColorStateList.valueOf(Color.WHITE)
+                secondaryProgressTintList = ColorStateList.valueOf(0x80FFFFFF.toInt())
+                progressBackgroundTintList = ColorStateList.valueOf(0x4DFFFFFF)
+            }
             minimumHeight = dp(48)
             setPadding(dp(20), dp(16), dp(20), dp(16))
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -250,7 +254,7 @@ class CarPlayVideoActivity : Activity() {
         else String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60)
     }
 
-    fun state(): VideoInCar.PlayerState {
+    override fun state(): VideoInCar.PlayerState {
         val duration = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0) ?: 0
         return VideoInCar.PlayerState(
             prepared = prepared,
@@ -261,7 +265,7 @@ class CarPlayVideoActivity : Activity() {
         )
     }
 
-    fun load() {
+    override fun load() {
         val url = CarPlayVideo.url ?: return
         if (url == loadedUrl) return
         loadedUrl = url
@@ -277,23 +281,25 @@ class CarPlayVideoActivity : Activity() {
         applyRate()
     }
 
-    fun applyRate() {
+    override fun applyRate() {
         player.playWhenReady = CarPlayVideo.playing
         if (controls.visibility == View.VISIBLE) updatePlayPause()
     }
 
     /** Moves the playback position by [deltaMillis], within the video. */
-    fun skip(deltaMillis: Int) {
+    override fun skip(deltaMillis: Int) {
         if (!prepared) return
         val end = player.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
         player.seekTo((player.currentPosition + deltaMillis).coerceIn(0, end))
     }
 
-    fun applySeek() {
+    override fun applySeek() {
         val target = CarPlayVideo.pendingSeekMillis ?: return
         player.seekTo(target.toLong()) // ExoPlayer seeks to the exact position
         CarPlayVideo.pendingSeekMillis = null
     }
+
+    override fun requestFinish() = finish()
 
     // Which encryption the HLS stream uses, without URLs (they carry tokens).
     private fun logEncryption() {
@@ -315,7 +321,11 @@ class CarPlayVideoActivity : Activity() {
         .joinToString(" <- ") { "${it.javaClass.simpleName}(${it.message?.replace(Regex("\\w+://\\S+"), "<url>")})" }
 
     private fun playbackNetworkSummary(): String {
-        val manager = getSystemService(ConnectivityManager::class.java)
+        val manager = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (android.os.Build.VERSION.SDK_INT < 23) {
+            val info = manager?.activeNetworkInfo
+            return "network=${info?.typeName ?: "none"} connected=${info?.isConnected == true}"
+        }
         val network = manager?.activeNetwork
         val capabilities = network?.let(manager::getNetworkCapabilities)
         if (network == null || capabilities == null) return "network=none"
