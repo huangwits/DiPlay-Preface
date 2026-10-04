@@ -49,6 +49,8 @@ class CarPlayHostDisplaySizeTest {
         AirPlayPersistence.saveAdaptPipResolution(activity, false)
         // Source-only tests have no provisioned local authentication identity.
         AirPlayPersistence.saveMfiTarget(activity, MfiTarget.USB_CH341)
+        AirPlayPersistence.saveWirelessEnabled(activity, false)
+        invoke("loadPersistedSettings")
         // Exercise host startup without launching vendor-service workers or real transports.
         controllerConstruction = mockConstruction(CarPlayController::class.java)
         (getField("teardownExecutor") as ExecutorService).shutdownNow()

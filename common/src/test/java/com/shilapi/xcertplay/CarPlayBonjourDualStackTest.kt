@@ -1,6 +1,7 @@
 package com.shilapi.xcertplay
 
 import android.content.Context
+import android.os.Build
 import android.net.nsd.NsdManager
 import android.net.wifi.WifiManager
 import com.shilapi.xcertplay.airplay.AirPlayConfig
@@ -44,12 +45,16 @@ class CarPlayBonjourDualStackTest {
     private fun setup() {
         `when`(context.applicationContext).thenReturn(context)
         `when`(context.getSystemService(Context.NSD_SERVICE)).thenReturn(mock(NsdManager::class.java))
-        `when`(context.getSystemService(WifiManager::class.java)).thenReturn(wifi)
+        if (Build.VERSION.SDK_INT >= 23) {
+            `when`(context.getSystemService(WifiManager::class.java)).thenReturn(wifi)
+        } else {
+            `when`(context.getSystemService(Context.WIFI_SERVICE)).thenReturn(wifi)
+        }
         `when`(wifi.createMulticastLock("carplay-bonjour")).thenReturn(lock)
         `when`(lock.isHeld).thenReturn(true)
     }
 
-    @Test fun publishesAndBrowsesBothFamiliesAndClosesBothRegistries() {
+    @Test @Config(sdk = [23, 29]) fun publishesAndBrowsesBothFamiliesAndClosesBothRegistries() {
         setup()
         val v4 = mock(JmDNS::class.java)
         val v6 = mock(JmDNS::class.java)
@@ -74,6 +79,17 @@ class CarPlayBonjourDualStackTest {
         }
     }
 
+    // Robolectric 4.17 has no API 22 runtime. Exercise the API 22 branch in its API 23 sandbox.
+    @Test @Config(sdk = [23]) fun legacyApi22BranchPublishesAndClosesBothFamilies() {
+        val sdk = Build.VERSION.SDK_INT
+        try {
+            ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", 22)
+            publishesAndBrowsesBothFamiliesAndClosesBothRegistries()
+        } finally {
+            ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", sdk)
+        }
+    }
+
     @Test fun registryAddressControlsFamilyEvenWhenDeprecatedInterfaceReturnsTheOtherFamily() {
         setup()
         val dns = mock(JmDNS::class.java)
@@ -93,6 +109,43 @@ class CarPlayBonjourDualStackTest {
             val queue = ReflectionHelpers.getField<java.util.concurrent.LinkedBlockingQueue<*>>(bonjour, "interfaceServices")
             assertEquals(1, queue.size)
             verify(dns, never()).getInterface()
+        }
+    }
+
+    @Test @Config(sdk = [23, 29]) fun dualFamilyDiscoveryKeepsRefinementsAndAllowsRediscoveryAfterRemoval() {
+        setup()
+        val v4 = mock(JmDNS::class.java)
+        val v6 = mock(JmDNS::class.java)
+        `when`(v4.inetAddress).thenReturn(ipv4)
+        `when`(v6.inetAddress).thenReturn(ipv6)
+        val info = mock(ServiceInfo::class.java)
+        `when`(info.inetAddresses).thenReturn(arrayOf(
+            InetAddress.getByName("192.0.2.20"), InetAddress.getByName("fe80::20")))
+        `when`(info.port).thenReturn(7000)
+        val event = mock(javax.jmdns.ServiceEvent::class.java)
+        `when`(event.info).thenReturn(info)
+        `when`(event.name).thenReturn("test-phone")
+        `when`(event.dns).thenReturn(v4)
+        CarPlayBonjour(context, config, identity, ipv6.hostAddress, true,
+            additionalAddresses = listOf(ipv4)).use { bonjour ->
+            val listener = ReflectionHelpers.getField<ServiceListener>(bonjour, "interfaceListener")
+            val queue = ReflectionHelpers.getField<java.util.concurrent.LinkedBlockingQueue<*>>(bonjour, "interfaceServices")
+            listener.serviceResolved(event)
+            listener.serviceResolved(event)
+            assertEquals(1, queue.size)
+            `when`(event.dns).thenReturn(v6)
+            listener.serviceResolved(event)
+            assertEquals(2, queue.size)
+            // Later TXT and SRV records must still reach the controller for either family.
+            `when`(info.getPropertyString("id")).thenReturn("refined-id")
+            `when`(info.port).thenReturn(7001)
+            listener.serviceResolved(event)
+            `when`(event.dns).thenReturn(v4)
+            listener.serviceResolved(event)
+            assertEquals(4, queue.size)
+            listener.serviceRemoved(event)
+            listener.serviceResolved(event)
+            assertEquals(5, queue.size)
         }
     }
 
