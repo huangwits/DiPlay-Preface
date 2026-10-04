@@ -2,6 +2,8 @@
 
 [中文说明](README.zh-CN.md)
 
+**[Bluetooth diagnostics v03](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.3-e01-bluetooth-diagnostics)** adds an E01 firmware-interface ZIP export without computer ADB. This is a diagnostic prerelease; E01 vendor wireless Bluetooth remains unimplemented. See the [public-source investigation](docs/E01-BLUETOOTH-PUBLIC-RESEARCH.md). The main-app download below remains the earlier release.
+
 [Download APKs — v0.2.11-preface-e01.1](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.11-preface-e01.1)
 
 Open **Assets** on the release page. Download the E01 main APK or the standalone Bluetooth diagnostics APK, not the source-code archives. The release notes specify the main APK's authentication configuration. SHA-256 checksums are included. This is an experimental prerelease, not verified vehicle support.
