@@ -6,6 +6,8 @@
 
 Open **Assets** on the release page. Download the E01 main APK or the standalone Bluetooth diagnostics APK, not the source-code archives. The release notes specify the main APK's authentication configuration. SHA-256 checksums are included. This is an experimental prerelease, not verified vehicle support.
 
+The published main APK is explicitly **source-only**: it contains no accessory authentication materials and is not a standalone iPhone-connection build. The diagnostic APK works independently. [Download both APKs and installation instructions as a ZIP](https://github.com/huangwits/DiPlay-Preface/releases/download/v0.2.11-preface-e01.1/DiPlay-Preface-v0.2.11-preface-e01.1-installers.zip).
+
 Experimental adaptation for the owner's 2020 Geely Preface flagship, GKUI ECARX E01 / MT6735, Android 5.1 (API 22).
 
 - Geely base: [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay), commit `049e080bc3a3a6952e2a99732bfb8353fbc401ac` (0.2.11).
