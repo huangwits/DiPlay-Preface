@@ -9,8 +9,8 @@ android {
         applicationId = "com.shihab.diplay.diagnostics"
         minSdk = 22
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.2-e01"
+        versionCode = 3
+        versionName = "0.3-e01-interface"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -28,5 +28,6 @@ android {
 }
 
 dependencies {
+    implementation("androidx.core:core:1.6.0")
     testImplementation(libs.junit)
 }
