@@ -18,8 +18,12 @@ The `0.3-e01-interface` diagnostic APK prepares the inputs needed to implement t
 - `files.tsv`: included file sizes/SHA-256 plus missing, unreadable, empty or size-limited files. Reports with no accessible firmware remain incomplete evidence.
 - Files are bounded to 96 MiB each and 192 MiB total, with at most 256 source entries. A cancelled or failed write removes the partial archive.
 
-The tool does not request Internet or broad storage permission, upload anything, read contacts/logcat/paired-device identities, invoke vendor Binder transactions, start factory services or change Bluetooth state during capture. Files are shared only through the owner's chosen destination, using a non-exported FileProvider restricted to bundle directories. Android 11+ package visibility can limit metadata; the target is API 22.
+The tool does not request Internet or broad storage permission, upload anything, read contacts/logcat/paired-device identities, invoke vendor Binder transactions, start factory services or change Bluetooth state during capture. Files are shared only through the owner's chosen destination, using a non-exported FileProvider restricted to bundle directories. Android 11+ package visibility can limit metadata; the intended vehicle runs API 22 (APK minSdk 22, targetSdk 37).
 
 ## Local validation
 
 Twelve diagnostic-module unit tests pass, including archive content/checksums, size/missing-file handling, duplicate paths, invalid ZIP paths and cancellation cleanup. Full diagnostic lint passes with warnings; API 22 manifest and the v02-compatible APK signing certificate were checked. These checks do not establish collection success or Bluetooth connectivity on the E01 itself.
+
+## Public research and release
+
+The 2026-10-05 [public-case investigation](E01-BLUETOOTH-PUBLIC-RESEARCH.md) found ECARX vendor Bluetooth/iAP2 API examples and an E02 Android 9 stack-switching experiment. Neither establishes this E01's interface or a working data transport. The [v03 release notes](releases/E01-BLUETOOTH-DIAGNOSTICS-v03.md) document the diagnostic APK and its limits.

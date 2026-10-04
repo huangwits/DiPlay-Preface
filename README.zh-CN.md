@@ -2,6 +2,8 @@
 
 面向 **2020 款吉利星瑞 / GKUI / 亿咖通 E01（MT6735）/ Android 5.1** 的实验性 CarPlay 接收端。
 
+**蓝牙诊断更新：[下载 v03 独立诊断 APK](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.3-e01-bluetooth-diagnostics)**。新增无需电脑的接口资料 ZIP 导出，详见[公开案例调查](docs/E01-BLUETOOTH-PUBLIC-RESEARCH.md)。这是诊断预览版，E01 蓝牙连接仍未修复；下方主程序 Release 保持原版本。
+
 [下载安装包](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.11-preface-e01.1) · [全部版本](https://github.com/huangwits/DiPlay-Preface/releases) · [构建检查](https://github.com/huangwits/DiPlay-Preface/actions/workflows/android51.yml) · [English](README.en.md)
 
 ## 下载与安装
