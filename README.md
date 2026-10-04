@@ -10,9 +10,12 @@
 
 | 安装包 | 用途 |
 | --- | --- |
-| `DiPlay-Preface-0.2.11-E01-Android51.apk` | E01 主程序测试版，最低 Android 5.1；支持 ARMv7、ARM64。认证材料配置见该 Release 的附件说明。 |
+| `DiPlay-Preface-0.2.11-E01-Android51-source-only.apk` | E01 主程序源码验证安装包，最低 Android 5.1；支持 ARMv7、ARM64。**不含配件认证材料，不能作为独立连接 iPhone 的完整车测包。** |
 | `DiPlay-E01-Bluetooth-Diagnostics-v02.apk` | 独立蓝牙诊断工具，可识别原厂应用与系统库，无需先连接电脑。 |
+| `DiPlay-Preface-v0.2.11-preface-e01.1-installers.zip` | 两个 APK 和中文安装说明的合集；需要先解压。 |
 | `SHA256SUMS.txt` | 下载文件的 SHA-256 校验值。 |
+
+**[直接下载 APK 合集 ZIP](https://github.com/huangwits/DiPlay-Preface/releases/download/v0.2.11-preface-e01.1/DiPlay-Preface-v0.2.11-preface-e01.1-installers.zip)**。当前公开附件不含内嵌认证材料的完整车测 APK。
 
 停车后，将 APK 通过你已能使用的 U 盘或文件传输方式放到车机，使用车机文件管理器安装。主程序显示为 **DiPlay E01 Legacy**，包名 `com.shihab.diplay.e01legacy`，不会覆盖普通包名的 DiPlay；它会更新相同签名、相同包名的旧 E01 测试版。
 
