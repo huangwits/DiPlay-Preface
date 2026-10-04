@@ -12,7 +12,8 @@ import java.security.MessageDigest
 internal object DiPlayBootstrap {
     @Volatile private var ready = false
 
-    @Synchronized fun ensure(context: Context) {
+    @Synchronized fun ensure(context: Context, mfiTarget: MfiTarget) {
+        if (mfiTarget != MfiTarget.LOCAL) return
         if (ready) return
         val privateData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             context.noBackupFilesDir
@@ -44,7 +45,6 @@ internal object DiPlayBootstrap {
             }
         }
         LocalMfiAuthenticationClient.load(target)
-        AirPlayPersistence.saveMfiTarget(context, MfiTarget.LOCAL)
         AirPlayPersistence.saveDebugLogsEnabled(context, false)
         ready = true
     }
