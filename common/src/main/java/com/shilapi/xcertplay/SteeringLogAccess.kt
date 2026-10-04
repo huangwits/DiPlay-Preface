@@ -10,7 +10,7 @@ import com.shilapi.xcertplay.adb.LocalAdb
 internal object SteeringLogAccess {
     enum class Result { READY, APPROVAL_REQUIRED, UNAVAILABLE, DENIED }
 
-    fun granted(context: Context) = context.checkSelfPermission(Manifest.permission.READ_LOGS) == PackageManager.PERMISSION_GRANTED
+    fun granted(context: Context) = com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(context, Manifest.permission.READ_LOGS) == PackageManager.PERMISSION_GRANTED
 
     /** Blocking; called only after the user chooses to allow button access. */
     fun request(context: Context): Result {

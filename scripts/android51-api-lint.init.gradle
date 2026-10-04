@@ -1,0 +1,8 @@
+allprojects {
+    plugins.withId('com.android.application') {
+        android.lint.checkOnly.add('NewApi')
+    }
+    plugins.withId('com.android.library') {
+        android.lint.checkOnly.add('NewApi')
+    }
+}

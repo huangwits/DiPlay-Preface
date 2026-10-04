@@ -32,6 +32,8 @@ import com.shilapi.xcertplay.airplay.AirPlaySessionListener
 import com.shilapi.xcertplay.airplay.PairingStore
 import com.shilapi.xcertplay.airplay.VideoInCar
 import com.shilapi.xcertplay.airplay.VideoPlaybackDelivery
+import com.shilapi.xcertplay.compat.systemService
+import com.shilapi.xcertplay.compat.appPrivateDir
 import com.shilapi.xcertplay.hud.BydNavigationOutputs
 import com.shilapi.xcertplay.hud.BydHudRouteChange
 import com.shilapi.xcertplay.hud.BydHudRouteState
@@ -175,9 +177,10 @@ class CarPlayController(
     @Volatile private var wirelessPeerBluetoothAddress: String? = null
     private val diagnosticAttempt = diagnosticAttempts.incrementAndGet()
     private val diagnosticRun = AtomicInteger()
-    private val usbManager = context.getSystemService(UsbManager::class.java)
+    private val usbManager = context.systemService(UsbManager::class.java, "usb")
+        ?: error("USB service unavailable")
     private val bluetoothAdapter =
-        appContext.getSystemService(BluetoothManager::class.java)?.adapter
+        appContext.systemService(BluetoothManager::class.java, "bluetooth")?.adapter
     private val iphoneHost = IphoneUsbHost(
         appContext,
         usbManager,
@@ -642,7 +645,7 @@ class CarPlayController(
         availabilityPollGeneration.incrementAndGet()
         phase = Phase.MFI
         onStatus(CarPlayStatus.DiscoveringMfi)
-        val offlineDirectory = java.io.File(appContext.noBackupFilesDir, LocalMfiAuthenticationClient.DIRECTORY)
+        val offlineDirectory = java.io.File(appContext.appPrivateDir(), LocalMfiAuthenticationClient.DIRECTORY)
         if (offlineDirectory.exists()) {
             openLocalMfi(offlineDirectory)
             return
@@ -1010,6 +1013,15 @@ class CarPlayController(
                 return
             }
 
+            // Fail before starting a hotspot when the standard Android transport is unavailable.
+            val adapter = bluetoothAdapter
+            BluetoothPreflight.requireReady(
+                Build.VERSION.SDK_INT < 31 ||
+                    com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(
+                        appContext, Manifest.permission.BLUETOOTH_CONNECT,
+                    ) == PackageManager.PERMISSION_GRANTED,
+            ) { adapter?.state }
+            checkNotNull(adapter)
             val mfi = mfiSession?.client
                 ?: throw IOException("MFi coprocessor client is unavailable")
             val hotspotInfo = startWirelessHotspot(generation)
@@ -1070,9 +1082,7 @@ class CarPlayController(
             )
             onStatus(CarPlayStatus.WaitingForPairedIphone)
 
-            val adapter = bluetoothAdapter
-                ?: throw IOException("Bluetooth adapter is unavailable")
-            if (!adapter.isEnabled) throw IOException("Bluetooth is not enabled")
+            BluetoothPreflight.requireReady(true) { adapter.state }
             val device = selectWirelessBluetoothDevice(adapter)
             val hostBluetoothMac = accessoryBluetoothMac(adapter)
             debugLog(
@@ -1148,6 +1158,15 @@ class CarPlayController(
             logBluetoothConnectionSnapshot(device, "before-connect")
             val bluetoothStarted = System.nanoTime()
             try {
+                // Discovery competes with RFCOMM on older head units. SCAN is optional on 12+.
+                if (Build.VERSION.SDK_INT < 31 ||
+                    com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(
+                        appContext, Manifest.permission.BLUETOOTH_SCAN,
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    val cancelled = runCatching { adapter.cancelDiscovery() }
+                    connectionDiagnostic("Bluetooth discovery cancellation result=${cancelled.getOrNull()} failure=${cancelled.exceptionOrNull()?.javaClass?.simpleName ?: "none"}")
+                }
                 connectBluetoothSocket(socket, device.address)
                 wirelessPeerBluetoothAddress = device.address
                 connectionDiagnostic("Bluetooth connect completed elapsedMs=${elapsedMillis(bluetoothStarted)}")
@@ -1157,6 +1176,7 @@ class CarPlayController(
                         "failureClass=${diagnosticFailureClass(error)}",
                 )
                 logBluetoothConnectionSnapshot(device, "after-failure")
+                if (error is IOException) throw IOException("Bluetooth RFCOMM connection failed", error)
                 throw error
             }
             debugLog("wireless RFCOMM connected address=${device.address}")
@@ -1546,27 +1566,39 @@ class CarPlayController(
                 permissionPollGeneration++
                 when (phase) {
                     Phase.REENUMERATION, Phase.IPHONE -> {
-                        val configuration = IphoneCarPlayConfiguration.find(result.device)
-                        connectionDiagnostic(
-                            "USB configuration ready=${configuration != null} " +
-                                "configurationId=${configuration?.id ?: "none"} " +
-                                "reenumerationAttempts=$reenumerationAttempts " +
-                                "action=${when {
-                                    configuration != null -> "reuse-descriptors"
-                                    reenumerationAttempts < MAXIMUM_REENUMERATION_ATTEMPTS -> "request-transition"
-                                    else -> "reject-missing-configuration"
-                                }}",
-                        )
-                        if (configuration != null) {
-                            openDataPaths(result.device)
-                        } else if (reenumerationAttempts < MAXIMUM_REENUMERATION_ATTEMPTS) {
-                            beginReenumeration(result.device)
-                        } else {
-                            fail(
-                                IphoneUsbException.Protocol(
-                                    "iPhone did not expose a complete CarPlay USB configuration",
-                                ),
-                            )
+                        // API 18 exposes the active USB layout only after opening a connection;
+                        // inspect it off the main thread and keep the same re-enumeration policy.
+                        executor.execute {
+                            val configurationReady = try {
+                                iphoneHost.hasCarPlayConfiguration(result.device)
+                            } catch (error: Exception) {
+                                debugLog("USB configuration inspection failed: ${error.message}")
+                                false
+                            }
+                            mainHandler.post {
+                                if (closed) return@post
+                                connectionDiagnostic(
+                                    "USB configuration ready=$configurationReady " +
+                                        "api=${android.os.Build.VERSION.SDK_INT} " +
+                                        "reenumerationAttempts=$reenumerationAttempts " +
+                                        "action=${when {
+                                            configurationReady -> "reuse-descriptors"
+                                            reenumerationAttempts < MAXIMUM_REENUMERATION_ATTEMPTS -> "request-transition"
+                                            else -> "reject-missing-configuration"
+                                        }}",
+                                )
+                                if (configurationReady) {
+                                    openDataPaths(result.device)
+                                } else if (reenumerationAttempts < MAXIMUM_REENUMERATION_ATTEMPTS) {
+                                    beginReenumeration(result.device)
+                                } else {
+                                    fail(
+                                        IphoneUsbException.Protocol(
+                                            "iPhone did not expose a complete CarPlay USB configuration",
+                                        ),
+                                    )
+                                }
+                            }
                         }
                     }
                     else -> Unit
@@ -1668,21 +1700,41 @@ class CarPlayController(
     }
 
     private fun openNcm(device: UsbDevice): NcmUsbBridge {
-        val configuration = IphoneCarPlayConfiguration.find(device)
-            ?: throw IphoneUsbException.Protocol(
-                "iPhone exposes no CarPlay configuration for NCM",
-            )
-        val function = NcmFunctionDiscovery.find(configuration)
-            ?: throw IphoneUsbException.Protocol("iPhone configuration does not expose an NCM function")
-        debugLog(
-            "ncm config=${configuration.id} control=${function.control.id}/${function.control.alternateSetting}" +
-                " data=${function.data.id}/${function.data.alternateSetting}" +
-                " status=${function.statusIn?.address?.let { "0x${it.toString(16)}" } ?: "none"}" +
-                " in=0x${function.bulkIn.address.toString(16)} out=0x${function.bulkOut.address.toString(16)}",
-        )
         val connection = usbManager.openDevice(device)
             ?: throw IphoneUsbException.DeviceUnavailable("Could not open the iPhone NCM connection")
-        return NcmUsbBridge.open(connection, function)
+        var bridgeOwnsConnection = false
+        try {
+            val layout = IphoneCarPlayConfiguration.readLayout(device, connection)
+            val configuration = IphoneCarPlayConfiguration.find(device)
+            val configurationId = configuration?.let(com.shilapi.xcertplay.compat.UsbCompat::configurationId)
+                ?: layout.configurationId.takeIf { it > 0 }
+                ?: throw IphoneUsbException.Protocol(
+                    "iPhone exposes no active CarPlay USB configuration (layout=${layout.describe()})",
+                )
+            val selected = if (configuration != null) {
+                com.shilapi.xcertplay.compat.UsbCompat.setConfiguration(connection, configuration)
+            } else {
+                com.shilapi.xcertplay.compat.UsbCompat.setConfigurationById(connection, configurationId)
+            }
+            if (!selected) {
+                connectionDiagnostic("NCM SET_CONFIGURATION $configurationId reported failure; continuing")
+            }
+            val selectedLayout = IphoneCarPlayConfiguration.readLayout(device, connection)
+            val function = if (configuration != null) {
+                NcmFunctionDiscovery.find(configuration, selectedLayout)
+            } else {
+                NcmFunctionDiscovery.find(selectedLayout)
+            } ?: throw IphoneUsbException.Protocol("iPhone configuration does not expose an NCM function")
+            debugLog(
+                "ncm config=$configurationId control=${function.control.id}/${function.controlAlternate}" +
+                    " data=${function.data.id}/${function.dataAlternate}" +
+                    " status=${function.statusIn?.address?.let { "0x${it.toString(16)}" } ?: "none"}" +
+                    " in=0x${function.bulkIn.address.toString(16)} out=0x${function.bulkOut.address.toString(16)}",
+            )
+            return NcmUsbBridge.open(connection, function).also { bridgeOwnsConnection = true }
+        } finally {
+            if (!bridgeOwnsConnection) connection.close()
+        }
     }
 
     private fun runStack(usbSession: Iap2UsbSession, ncm: NcmUsbBridge) {
@@ -2037,7 +2089,7 @@ class CarPlayController(
     private fun logBluetoothConnectionSnapshot(device: BluetoothDevice, point: String) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+                com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(appContext, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
             ) {
                 connectionDiagnostic("Bluetooth snapshot point=$point unavailable reason=connect-permission")
                 return
@@ -2086,7 +2138,7 @@ class CarPlayController(
     private fun isBluetoothDeviceConnected(device: BluetoothDevice): Boolean = try {
         val method = BluetoothDevice::class.java.getMethod("isConnected")
         method.invoke(device) as? Boolean == true
-    } catch (error: ReflectiveOperationException) {
+    } catch (error: Exception) {
         false
     } catch (error: RuntimeException) {
         Log.w(IphoneCarPlayConfiguration.TAG, "Could not read Bluetooth connection state", error)

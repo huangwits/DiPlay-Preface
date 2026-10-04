@@ -85,10 +85,14 @@ class StandaloneHudDemoActivity : Activity() {
         check(Build.FINGERPRINT == "BYD-AUTO/IVI/IVI:13/TP1A.220624.014/eng.build20260722.221155:user/release-keys") {
             "This test is restricted to the inspected firmware"
         }
-        val info = packageManager.getPackageInfo(target.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        check(info.longVersionCode == 10601004L) { "Different stock receiver version" }
+        // Keep this debug-only preflight callable on the API 18 migration target too.
+        @Suppress("DEPRECATION")
+        val info = packageManager.getPackageInfo(target.packageName, PackageManager.GET_SIGNATURES)
+        @Suppress("DEPRECATION")
+        check(info.versionCode.toLong() == 10601004L) { "Different stock receiver version" }
         check(info.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM != 0)
-        val certs = info.signingInfo!!.apkContentsSigners
+        @Suppress("DEPRECATION")
+        val certs = info.signatures ?: emptyArray()
         check(certs.size == 1 && MessageDigest.getInstance("SHA-256").digest(certs[0].toByteArray())
             .joinToString("") { "%02x".format(it.toInt() and 255) } ==
             "efe3ca8ada0d10c655c3df9910ad2ebc121a47d9a6358434eb24074309933efc")

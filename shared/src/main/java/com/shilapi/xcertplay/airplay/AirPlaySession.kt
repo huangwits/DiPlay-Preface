@@ -629,7 +629,7 @@ class AirPlaySession(
     private fun openKeepAlive(): Int {
         val socket = DatagramSocket(null)
         socket.reuseAddress = true
-        socket.bind(InetSocketAddress(InetAddress.getByName("::"), 0))
+        com.shilapi.xcertplay.compat.WildcardBind.bind(socket)
         keepAliveSocket = socket
         keepAliveThread = Thread({ runKeepAlive(socket) }, "airplay-keepalive").apply {
             isDaemon = true
@@ -650,7 +650,7 @@ class AirPlaySession(
     }
 
     private fun openEvent(): Int {
-        val server = ServerSocket(0, 50, InetAddress.getByName("::"))
+        val server = ServerSocket(0, 50, com.shilapi.xcertplay.compat.WildcardBind.anyAddress())
         eventServer = server
         spawnEvent("airplay-event-accept") { acceptEvent(server) }
         return server.localPort
@@ -815,11 +815,16 @@ internal fun teardownStreamTypes(body: Any?): List<Int>? {
     return entries.filterNot { (type, streamId) -> type == 130 && streamId != null && streamId != 1L }.map { it.first }
 }
 
-internal fun safeClose(closeable: Closeable?) {
+internal fun safeClose(closeable: Any?) {
+    if (closeable == null) return
     try {
-        closeable?.close()
+        if (closeable is Closeable) {
+            closeable.close()
+        } else {
+            closeable.javaClass.getMethod("close").invoke(closeable)
+        }
     } catch (_: Exception) {
-        // Best-effort close.
+        // Socket and ServerSocket only implement Closeable starting in API 19.
     }
 }
 

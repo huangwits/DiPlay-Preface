@@ -6,6 +6,8 @@ import android.net.ConnectivityManager
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
+import com.shilapi.xcertplay.compat.systemService
+import com.shilapi.xcertplay.compat.indexCompat
 import android.os.Build
 import android.os.Looper
 import android.util.Log
@@ -39,9 +41,10 @@ class ManualHotspotManager(
     private val onDiagnostic: (String) -> Unit = {},
 ) : WirelessHotspotManager {
     private val appContext = context.applicationContext
-    private val connectivityManager =
-        appContext.getSystemService(ConnectivityManager::class.java)
-    private val wifiManager = appContext.getSystemService(WifiManager::class.java)
+    private val connectivityManager = appContext.systemService(ConnectivityManager::class.java, "connectivity")
+        ?: error("Connectivity service unavailable")
+    private val wifiManager = appContext.systemService(WifiManager::class.java, "wifi")
+        ?: error("Wi-Fi service unavailable")
         ?: throw IllegalStateException("WifiManager is unavailable")
     private val expectedSsid = ssid
     private val passphrase = passphrase
@@ -205,8 +208,13 @@ class ManualHotspotManager(
         } catch (_: SocketException) {
             null
         } ?: return null
-        val primaryInterface = connectivityManager?.activeNetwork
-            ?.let { connectivityManager.getLinkProperties(it)?.interfaceName }
+        // activeNetwork/getLinkProperties are API 23/21; older units have no equivalent.
+        val primaryInterface = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            connectivityManager?.activeNetwork
+                ?.let { connectivityManager.getLinkProperties(it)?.interfaceName }
+        } else {
+            null
+        }
         val tetheredInterfaces = tetheredInterfaceNames()
         return Collections.list(interfaces)
             .asSequence()
@@ -285,6 +293,8 @@ class ManualHotspotManager(
             null
         } ?: return null
         if (unquote(connectionInfo.ssid) != expectedSsid) return null
+        // WifiInfo.getFrequency is API 21. Older units report automatic channel selection.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return 0
         return connectionInfo.frequency.takeIf { it > 0 }
     }
 
@@ -354,12 +364,12 @@ class ManualHotspotManager(
             val ssid = unquote(configuration.SSID) ?: return null
             val channel = try {
                 WifiConfiguration::class.java.getField("apChannel").getInt(configuration)
-            } catch (_: ReflectiveOperationException) {
+            } catch (_: Exception) {
                 0
             }
             val band = try {
                 legacyHotspotBandToSoftApBand(WifiConfiguration::class.java.getField("apBand").getInt(configuration))
-            } catch (_: ReflectiveOperationException) {
+            } catch (_: Exception) {
                 null
             }
             ManualApConfiguration(
