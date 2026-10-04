@@ -294,7 +294,7 @@ class CarPlayHostSettingsTest {
         assertNull(shadowOf(activity).nextStartedActivity)
     }
 
-    @Test fun onlyIphoneAttachmentSelectsWiredTransport() {
+    @Test @Config(sdk = [23, 29, 33]) fun onlyIphoneAttachmentSelectsWiredTransport() {
         val method = activity.javaClass.getDeclaredMethod("isIphoneUsbAttachment", Intent::class.java)
             .apply { isAccessible = true }
         val device = mock(UsbDevice::class.java)

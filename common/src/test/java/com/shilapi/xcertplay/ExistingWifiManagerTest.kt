@@ -40,13 +40,19 @@ class ExistingWifiManagerTest {
     private val iface = NetworkInterface.getNetworkInterfaces().toList().first { !it.isLoopback }
     private lateinit var properties: LinkProperties
     private lateinit var callback: ConnectivityManager.NetworkCallback
+    private lateinit var callbackRequest: NetworkRequest
     private var changes = 0
     private val diagnostics = mutableListOf<String>()
 
     @Before fun setup() {
         `when`(context.applicationContext).thenReturn(context)
-        `when`(context.getSystemService(ConnectivityManager::class.java)).thenReturn(connectivity)
-        `when`(context.getSystemService(WifiManager::class.java)).thenReturn(wifi)
+        if (Build.VERSION.SDK_INT >= 23) {
+            `when`(context.getSystemService(ConnectivityManager::class.java)).thenReturn(connectivity)
+            `when`(context.getSystemService(WifiManager::class.java)).thenReturn(wifi)
+        } else {
+            `when`(context.getSystemService(Context.CONNECTIVITY_SERVICE)).thenReturn(connectivity)
+            `when`(context.getSystemService(Context.WIFI_SERVICE)).thenReturn(wifi)
+        }
         `when`(connectivity.allNetworks).thenReturn(arrayOf(network))
         // No INTERNET or VALIDATED capability: neither is a requirement for local CarPlay.
         doReturn(capabilities(NetworkCapabilities.TRANSPORT_WIFI)).`when`(connectivity).getNetworkCapabilities(network)
@@ -57,14 +63,21 @@ class ExistingWifiManagerTest {
         `when`(info.frequency).thenReturn(5180)
         `when`(info.bssid).thenReturn("aa:bb:cc:dd:ee:ff")
         if (Build.VERSION.SDK_INT >= 31) `when`(info.currentSecurityType).thenReturn(WifiInfo.SECURITY_TYPE_PSK)
-        doAnswer { callback = it.getArgument(1); null }.`when`(connectivity)
+        doAnswer { callbackRequest = it.getArgument(0); callback = it.getArgument(1); null }.`when`(connectivity)
             .registerNetworkCallback(any(NetworkRequest::class.java), any(ConnectivityManager.NetworkCallback::class.java))
     }
 
-    @Test fun usesStationAddressAndManualCredentialsWithoutChangingWifiOrDefaultRoute() {
+    @Test @Config(sdk = [23, 29]) fun usesStationAddressAndManualCredentialsWithoutChangingWifiOrDefaultRoute() {
         manager().use { manager ->
             val result = start(manager)
             assertEquals(WirelessHotspotBackend.EXISTING_WIFI, result.backend)
+            val requestedCapabilities = org.robolectric.util.ReflectionHelpers.getField<NetworkCapabilities>(
+                callbackRequest, "networkCapabilities")
+            assertTrue(requestedCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI))
+            assertTrue(requestedCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))
+            assertFalse(requestedCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
+            assertFalse(requestedCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED))
+            assertFalse(requestedCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED))
             assertEquals("192.0.2.10", result.hostAddress!!.hostAddress)
             assertEquals(iface.name, result.interfaceName)
             assertEquals(36, result.channel)
@@ -76,10 +89,22 @@ class ExistingWifiManagerTest {
             assertTrue(diagnostics.any { DiagnosticRedactor.redact(it)?.contains("Existing Wi-Fi attached") == true })
             verify(wifi).connectionInfo
             verifyNoMoreInteractions(wifi)
-            verify(connectivity, never()).bindProcessToNetwork(any())
+            if (Build.VERSION.SDK_INT >= 23) verify(connectivity, never()).bindProcessToNetwork(any())
             verify(connectivity, never()).requestNetwork(any(NetworkRequest::class.java), any(ConnectivityManager.NetworkCallback::class.java))
         }
         verify(connectivity).unregisterNetworkCallback(callback)
+    }
+
+    // This is API 22 branch coverage in an API 23 sandbox, not an Android 5.1 runtime test.
+    @Test @Config(sdk = [23]) fun legacyApi22BranchUsesStringServicesAndRegistersTheLanCallback() {
+        val sdk = Build.VERSION.SDK_INT
+        try {
+            org.robolectric.util.ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", 22)
+            setup()
+            usesStationAddressAndManualCredentialsWithoutChangingWifiOrDefaultRoute()
+        } finally {
+            org.robolectric.util.ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", sdk)
+        }
     }
 
     @Test fun ignoresCellularAndVpnNetworks() {

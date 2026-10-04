@@ -116,7 +116,16 @@ class ExistingWifiManager(
                     hosts = addresses
                     interfaceIndex = iface.index
                     interfaceName = name
-                    connectivity.registerNetworkCallback(NetworkRequest.Builder().clearCapabilities()
+                    connectivity.registerNetworkCallback(NetworkRequest.Builder().apply {
+                        if (Build.VERSION.SDK_INT >= 30) clearCapabilities()
+                        else {
+                            // API 21-29 builders default to these three capabilities.
+                            // Observe restricted/trusted LANs as well; NOT_VPN is re-added below.
+                            removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                            removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+                            removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                        }
+                    }
                         .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), callback)
                     callbackRegistered = true

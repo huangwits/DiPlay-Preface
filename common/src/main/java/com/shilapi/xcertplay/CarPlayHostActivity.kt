@@ -724,7 +724,12 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private fun isIphoneUsbAttachment(intent: Intent): Boolean {
         if (intent.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return false
-        val device = androidx.core.content.IntentCompat.getParcelableExtra(intent, UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        @Suppress("DEPRECATION")
+        val device = if (Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        } else {
+            intent.getParcelableExtra<android.os.Parcelable>(UsbManager.EXTRA_DEVICE) as? UsbDevice
+        }
         return device?.vendorId == IphoneUsbMatcher.APPLE_VENDOR_ID
     }
 
@@ -741,7 +746,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (syncTransport()) return
+        if (!menuOpen && syncTransport()) return
         val savedNightMode = AirPlayPersistence.loadCarPlayNightMode(this)
         val savedThreshold = AirPlayPersistence.loadAmbientLightThreshold(this)
         val savedDelay = AirPlayPersistence.loadAmbientDelaySeconds(this)
@@ -870,9 +875,12 @@ class CarPlayHostActivity : ComponentActivity() {
         val band = AirPlayPersistence.loadManualHotspotBand(this)
         val channel = AirPlayPersistence.loadManualHotspotChannel(this)
         val security = AirPlayPersistence.loadManualHotspotSecurity(this)
+        val savedExistingSsid = AirPlayPersistence.loadExistingWifiSsid(this)
+        val savedExistingPassphrase = AirPlayPersistence.loadExistingWifiPassphrase(this)
         if (mode == wirelessHotspotMode && ssid == manualHotspotSsid &&
             passphrase == manualHotspotPassphrase && band == manualHotspotBand &&
-            channel == manualHotspotChannel && security == manualHotspotSecurity
+            channel == manualHotspotChannel && security == manualHotspotSecurity &&
+            savedExistingSsid == existingWifiSsid && savedExistingPassphrase == existingWifiPassphrase
         ) return false
         wirelessHotspotMode = mode
         manualHotspotSsid = ssid
@@ -880,6 +888,8 @@ class CarPlayHostActivity : ComponentActivity() {
         manualHotspotBand = band
         manualHotspotChannel = channel
         manualHotspotSecurity = security
+        existingWifiSsid = savedExistingSsid
+        existingWifiPassphrase = savedExistingPassphrase
         return true
     }
 

@@ -48,6 +48,23 @@ class HostConnectionSettingsRefreshTest {
         assertEquals(149, config.wifiP2pPreferredChannel)
     }
 
+    @Test fun existingWifiCredentialEditsReachTheNextHandshake() {
+        AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.EXISTING_WIFI)
+        AirPlayPersistence.saveExistingWifiCredentials(app, "Old router", "old-password")
+        val host = Robolectric.buildActivity(CarPlayHostActivity::class.java).setup()
+        try {
+            assertEquals("Old router", runtimeConfig(host.get()).existingWifiSsid)
+            AirPlayPersistence.saveExistingWifiCredentials(app, "New router", "new-password")
+            host.pause().resume()
+            val config = runtimeConfig(host.get())
+            assertEquals(WirelessHotspotMode.EXISTING_WIFI, config.wirelessHotspotMode)
+            assertEquals("New router", config.existingWifiSsid)
+            assertEquals("new-password", config.existingWifiPassphrase)
+        } finally {
+            host.pause().stop().destroy()
+        }
+    }
+
     private fun runtimeConfig(host: CarPlayHostActivity): CarPlayRuntimeConfig {
         CarPlayHostActivity::class.java.getDeclaredField("airPlayIdentity").apply { isAccessible = true }
             .set(host, AirPlayPersistence.loadIdentity(host))
@@ -58,7 +75,7 @@ class HostConnectionSettingsRefreshTest {
     /** The projection screen must start without the private MFi identity used by real cars. */
     @Implements(DiPlayBootstrap::class, isInAndroidSdk = false)
     internal class Bootstrap {
-        @Implementation fun ensure(context: Context) = Unit
+        @Implementation fun ensure(context: Context, target: com.shilapi.xcertplay.orchestration.MfiTarget) = Unit
 
         @Implementation fun deviceId(identity: AirPlayIdentity): String = "02:00:00:00:00:01"
     }

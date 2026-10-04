@@ -15,7 +15,7 @@
 
 ## 验证边界
 
-common/shared 回归报告 833 项通过，无失败、错误或跳过。另执行 NewApi 专项 lint；这是 Android API 静态扫描，不是全项目所有 lint 检查。构建和静态测试不能证明 E01 的 ARM 音视频、USB 或无线实车可用。
+2026-10-05 同步候选的 common/shared 回归报告 1,075 项通过，另有诊断工具 6 项通过，无失败、错误或跳过。另执行 NewApi 专项 lint；这是 Android API 静态扫描，不是全项目所有 lint 检查。Robolectric 4.17 不提供 API 22 运行环境；新增 API 22 分支测试在 API 23 沙箱内模拟执行。构建和静态测试不能证明 E01 的 ARM 音视频、USB 或无线实车可用。
 
 ## 蓝牙尚未解决的部分
 

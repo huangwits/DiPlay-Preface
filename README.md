@@ -23,7 +23,7 @@
 
 以 [carlito12345/DiPlay 的吉利适配版](https://github.com/carlito12345/DiPlay) 为基准，保留其吉利功能，移入 [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43) 的旧系统兼容代码，并补充 E01 适配。原作者为 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)。
 
-当前已验证的基准是 carlito 的 `049e080`（0.2.11）。Fork 时 `main` 中更新到 `6b2b3b9` 的较新改动尚未合入本适配版，不能将本版本理解为已同步全部最新上游。
+本次同步候选包含 carlito 的 `14abe4f` 和原作者的 `a1f8e45`（2026-10-05 核对），保留 Android 5.1／E01 适配。页面顶部的 Release 链接仍是上一版安装包；本次候选包和验证结果见[同步记录](docs/UPSTREAM_SYNC.md)。
 
 ## 已完成的适配
 
@@ -32,6 +32,13 @@
 - 保留吉利音频、方向盘等代码；这些功能仍受具体固件接口与权限限制。
 - 蓝牙提示区分标准适配器缺失、关闭、权限问题和 RFCOMM 连接失败。
 - 附带无需电脑的原厂蓝牙应用识别工具。
+
+## 本次上游更新
+
+- 新增[现有 Wi-Fi／同一局域网](docs/EXISTING_WIFI.md)连接模式及 IPv4／IPv6 服务发现；**仍需要标准蓝牙／iAP2 启动通路，不绕过 E01 蓝牙限制**。
+- 诊断文件导出支持外部应用目录及内部存储回退，可查看、分享；以弹窗显示的实际路径为准。
+- 合入方向盘地图缩放、切歌时限时显示仪表歌曲信息、显示比例与夜间模式等上游更新；依赖对应车型接口的功能仍需实车验证。
+- 合入 carlito 最新的通话结束后音频恢复、HUD 边界与缩放修正，并保留旧安卓 API 路径。
 
 ## 蓝牙现状与下一步
 
@@ -43,9 +50,10 @@
 
 ## 验证范围
 
-- 本地 **839 项测试通过**（主程序 833 项、诊断工具 6 项）。
+- 本次候选本地 **1,081 项测试通过**（common 478、shared 597、诊断工具 6 项），无失败、错误或跳过。
 - common/shared/mobile 的 Android NewApi 专项扫描通过；不是所有 lint 项目零告警。
-- [首次 GitHub Actions 构建通过](https://github.com/huangwits/DiPlay-Preface/actions/runs/37213429657)。
+- Robolectric 不提供 API 22 运行环境；API 22 分支在 API 23 沙箱中模拟验证，不能替代安卓 5.1 实机验收。
+- [上一版首次 GitHub Actions 构建通过](https://github.com/huangwits/DiPlay-Preface/actions/runs/37213429657)。
 - 尚未完成 E01 实车安装、音视频、USB、无线连接和重连验收；构建通过不等于实车兼容已经完成。
 
 ## 后续更新
