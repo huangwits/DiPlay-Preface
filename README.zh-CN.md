@@ -1,30 +1,56 @@
-# DiPlay 星瑞 E01 安卓 5.1 适配
+# DiPlay Preface · 星瑞 E01 安卓 5.1 适配
 
-目标车辆：2020 款吉利星瑞旗舰，GKUI，亿咖通 E01（MT6735），Android 5.1 / API 22。
+面向 **2020 款吉利星瑞旗舰 / GKUI / 亿咖通 E01（MT6735）/ Android 5.1** 的实验性 CarPlay 接收端。
 
-以 [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) 的 `049e080`（0.2.11）为基准，移入旧安卓兼容层并保留吉利改动。原作者为 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)，旧安卓兼容代码来自 [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43)。
+[下载安装包](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.11-preface-e01.1) · [全部版本](https://github.com/huangwits/DiPlay-Preface/releases) · [构建检查](https://github.com/huangwits/DiPlay-Preface/actions/workflows/android51.yml) · [English](README.en.md)
 
-- `android51-e01`：本项目维护的适配分支。
-- `main`：保留 Fork 时的上游版本，不是安卓 5.1 适配版。
-- Fork 的 `main` 已有更新到 `6b2b3b9`，这些较新改动尚未合入本次验证版本，不宣称已经同步最新上游。
+## 下载与安装
 
-## 当前状态
+打开上面的 Release 页面，在 **Assets（附件）** 中下载 `.apk`。`Source code (zip)` / `Source code (tar.gz)` 是源码，不能安装到车机。
 
-已完成 API 22 兼容修改、E01 低负载默认设置及 ARMv7/ARM64 打包。common/shared 共 833 项本地测试通过；三个模块 NewApi 检查通过。尚未通过 E01 实车连接验收。
+| 安装包 | 用途 |
+| --- | --- |
+| `DiPlay-Preface-0.2.11-E01-Android51.apk` | E01 主程序测试版，最低 Android 5.1；支持 ARMv7、ARM64。认证材料配置见该 Release 的附件说明。 |
+| `DiPlay-E01-Bluetooth-Diagnostics-v02.apk` | 独立蓝牙诊断工具，可识别原厂应用与系统库，无需先连接电脑。 |
+| `SHA256SUMS.txt` | 下载文件的 SHA-256 校验值。 |
 
-**E01 厂商无线蓝牙尚未实现。** 原厂电话和音乐正常，但本车没有向 DiPlay 提供标准 Android 蓝牙适配器。原厂蓝牙可用不代表第三方应用能建立所需的 RFCOMM 数据通道。
+停车后，将 APK 通过你已能使用的 U 盘或文件传输方式放到车机，使用车机文件管理器安装。主程序显示为 **DiPlay E01 Legacy**，包名 `com.shihab.diplay.e01legacy`，不会覆盖普通包名的 DiPlay；它会更新相同签名、相同包名的旧 E01 测试版。
 
-仓库包含新版 `diagnostics` 工具：在车机点击“识别 E01 原厂蓝牙应用（无需电脑）”，可读取固件、相关系统应用包名和系统库线索，再拍照提供结果。该按钮不会启动原厂服务或修改蓝牙开关。
+## 基于哪个项目
 
-## 下载与构建
+以 [carlito12345/DiPlay 的吉利适配版](https://github.com/carlito12345/DiPlay) 为基准，保留其吉利功能，移入 [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43) 的旧系统兼容代码，并补充 E01 适配。原作者为 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)。
 
-进入 **Actions → Android 5.1 E01 checks**，成功后下载 `source-only-e01-and-bluetooth-diagnostics`：
+当前已验证的基准是 carlito 的 `049e080`（0.2.11）。Fork 时 `main` 中更新到 `6b2b3b9` 的较新改动尚未合入本适配版，不能将本版本理解为已同步全部最新上游。
 
-- E01 主程序是**无配件认证材料的源码验证包**，不能把它当成可独立连接 iPhone 的完整车测包。
-- 蓝牙诊断 APK 可独立使用，不需要配件认证材料。
+## 已完成的适配
 
-完整车测包采用明确提供的本地认证输入运行 `:mobile:assembleStandaloneE01`。仓库不上传认证密钥、证书或本地完整车测 APK。[构建说明](docs/BUILD.md)
+- 最低系统降至 **Android 5.1 / API 22**，补齐音频焦点、播放、麦克风、视频 Surface、系统服务和权限等旧版本调用路径。
+- E01 低负载模式默认开启：H.264、30 fps、画布长边不超过 960／短边不超过 540，保持比例。
+- 保留吉利音频、方向盘等代码；这些功能仍受具体固件接口与权限限制。
+- 蓝牙提示区分标准适配器缺失、关闭、权限问题和 RFCOMM 连接失败。
+- 附带无需电脑的原厂蓝牙应用识别工具。
 
-后续从 carlito 同步更新时，使用 **Actions → Review carlito updates → Run workflow**。流程只生成草稿 PR 并运行检查，不自动合入适配分支。有冲突时停止，需要继续人工适配。详见[同步策略](docs/UPSTREAM_SYNC.md)。
+## 蓝牙现状与下一步
 
-[E01 实现与验证边界](docs/ECARX-E01-ANDROID51.md) · [保留的原仓库中文说明](docs/CARLITO-README.zh-CN.md) · [署名与许可证](docs/THIRD_PARTY_NOTICES.md)
+**E01 厂商无线蓝牙尚未实现，当前版本不承诺无线 CarPlay 可连接。**
+
+已知实车情况：原厂蓝牙电话和音乐正常，但 Android 没有向 DiPlay 提供标准蓝牙适配器，系统蓝牙开关开启后立即关闭。这不能直接解释为硬件损坏，也不能仅靠修改应用开关解决。
+
+下一步请安装诊断工具，点击 **“识别 E01 原厂蓝牙应用（无需电脑）”**，拍下结果。工具读取固件标识、候选原厂应用包名／版本／APK 路径及相关系统库名称；该按钮不启动原厂服务、不改变蓝牙开关。需要依据实车接口继续核实连接、读写与权限。
+
+## 验证范围
+
+- 本地 **839 项测试通过**（主程序 833 项、诊断工具 6 项）。
+- common/shared/mobile 的 Android NewApi 专项扫描通过；不是所有 lint 项目零告警。
+- [首次 GitHub Actions 构建通过](https://github.com/huangwits/DiPlay-Preface/actions/runs/37213429657)。
+- 尚未完成 E01 实车安装、音视频、USB、无线连接和重连验收；构建通过不等于实车兼容已经完成。
+
+## 后续更新
+
+`android51-e01` 是默认适配分支；`main` 保留 Fork 时的上游快照。
+
+在 **Actions → Review carlito updates → Run workflow** 手动准备更新。流程先从 carlito 创建候选分支，发生冲突就停止；可合并时生成草稿 PR 并运行检查，**不会自动合入适配分支**。详见[同步说明](docs/UPSTREAM_SYNC.md)。
+
+Actions 中的日常主程序产物是无配件认证材料的源码验证包，不能与 Release 附件的具体配置混为一谈。源码 Git 历史不提交认证私钥、证书或 APK；安装包通过 Release 附件分发。
+
+[构建说明](docs/BUILD.md) · [E01 实现与边界](docs/ECARX-E01-ANDROID51.md) · [上游中文说明](docs/CARLITO-README.zh-CN.md) · [署名与许可证](docs/THIRD_PARTY_NOTICES.md) · [LICENSE](LICENSE)

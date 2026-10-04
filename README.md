@@ -1,35 +1,56 @@
-# DiPlay Preface — Android 5.1 / E01
+# DiPlay Preface · 星瑞 E01 安卓 5.1 适配
 
-[中文说明](README.zh-CN.md)
+面向 **2020 款吉利星瑞旗舰 / GKUI / 亿咖通 E01（MT6735）/ Android 5.1** 的实验性 CarPlay 接收端。
 
-Experimental adaptation for the owner's 2020 Geely Preface flagship, GKUI ECARX E01 / MT6735, Android 5.1 (API 22).
+[下载安装包](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.11-preface-e01.1) · [全部版本](https://github.com/huangwits/DiPlay-Preface/releases) · [构建检查](https://github.com/huangwits/DiPlay-Preface/actions/workflows/android51.yml) · [English](README.en.md)
 
-- Geely base: [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay), commit `049e080bc3a3a6952e2a99732bfb8353fbc401ac` (0.2.11).
-- Original project: [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay).
-- Legacy compatibility source: [xikai6282/DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43).
-- Maintained adaptation branch: `android51-e01`. `main` retains the fork's upstream snapshot; it is not the Android 5.1 build.
+## 下载与安装
 
-The fork's initial main (`6b2b3b9`) contains newer upstream changes that are **not yet integrated into this validated adaptation**. See [update workflow](docs/UPSTREAM_SYNC.md).
+打开上面的 Release 页面，在 **Assets（附件）** 中下载 `.apk`。`Source code (zip)` / `Source code (tar.gz)` 是源码，不能安装到车机。
 
-## Status
+| 安装包 | 用途 |
+| --- | --- |
+| `DiPlay-Preface-0.2.11-E01-Android51.apk` | E01 主程序测试版，最低 Android 5.1；支持 ARMv7、ARM64。认证材料配置见该 Release 的附件说明。 |
+| `DiPlay-E01-Bluetooth-Diagnostics-v02.apk` | 独立蓝牙诊断工具，可识别原厂应用与系统库，无需先连接电脑。 |
+| `SHA256SUMS.txt` | 下载文件的 SHA-256 校验值。 |
 
-Minimum API 22; ARMv7 and ARM64 E01 APK; H.264/30 fps low-load defaults. Local common/shared regression: 833 tests passed. Android NewApi checks passed for common/shared/mobile. These checks do not establish vehicle runtime compatibility.
+停车后，将 APK 通过你已能使用的 U 盘或文件传输方式放到车机，使用车机文件管理器安装。主程序显示为 **DiPlay E01 Legacy**，包名 `com.shihab.diplay.e01legacy`，不会覆盖普通包名的 DiPlay；它会更新相同签名、相同包名的旧 E01 测试版。
 
-**E01 vendor wireless Bluetooth is not implemented.** The factory telephone/music works, but the owner's standard Android adapter is unavailable. Standard RFCOMM cannot be replaced by a vendor power-state query. The included `diagnostics` app reads firmware and candidate factory Bluetooth application metadata without a computer; it does not fix or initialize the vendor stack.
+## 基于哪个项目
 
-## Build and downloads
+以 [carlito12345/DiPlay 的吉利适配版](https://github.com/carlito12345/DiPlay) 为基准，保留其吉利功能，移入 [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43) 的旧系统兼容代码，并补充 E01 适配。原作者为 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)。
 
-Use **Actions → Android 5.1 E01 checks**. Its artifact contains:
+当前已验证的基准是 carlito 的 `049e080`（0.2.11）。Fork 时 `main` 中更新到 `6b2b3b9` 的较新改动尚未合入本适配版，不能将本版本理解为已同步全部最新上游。
 
-- An E01 **source-only** APK, without accessory authentication. It must not be presented as a standalone iPhone connection package.
-- A standalone Bluetooth diagnostic APK (no accessory identity needed).
+## 已完成的适配
 
-Local equivalent:
+- 最低系统降至 **Android 5.1 / API 22**，补齐音频焦点、播放、麦克风、视频 Surface、系统服务和权限等旧版本调用路径。
+- E01 低负载模式默认开启：H.264、30 fps、画布长边不超过 960／短边不超过 540，保持比例。
+- 保留吉利音频、方向盘等代码；这些功能仍受具体固件接口与权限限制。
+- 蓝牙提示区分标准适配器缺失、关闭、权限问题和 RFCOMM 连接失败。
+- 附带无需电脑的原厂蓝牙应用识别工具。
 
-```sh
-./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :diagnostics:testDebugUnitTest :shared:lintDebug :common:lintDebug :mobile:lintE01 :mobile:assembleE01 :diagnostics:assembleRelease -I scripts/android51-api-lint.init.gradle
-```
+## 蓝牙现状与下一步
 
-Standalone vehicle builds use explicitly provisioned local authentication inputs and `:mobile:assembleStandaloneE01`; see [build instructions](docs/BUILD.md). No keys, certificates, local authentication assets or signed vehicle APKs are committed to this repository.
+**E01 厂商无线蓝牙尚未实现，当前版本不承诺无线 CarPlay 可连接。**
 
-[E01 implementation and limits](docs/ECARX-E01-ANDROID51.md) · [upstream README](docs/CARLITO-README.en.md) · [licenses and credits](docs/THIRD_PARTY_NOTICES.md) · [LICENSE](LICENSE)
+已知实车情况：原厂蓝牙电话和音乐正常，但 Android 没有向 DiPlay 提供标准蓝牙适配器，系统蓝牙开关开启后立即关闭。这不能直接解释为硬件损坏，也不能仅靠修改应用开关解决。
+
+下一步请安装诊断工具，点击 **“识别 E01 原厂蓝牙应用（无需电脑）”**，拍下结果。工具读取固件标识、候选原厂应用包名／版本／APK 路径及相关系统库名称；该按钮不启动原厂服务、不改变蓝牙开关。需要依据实车接口继续核实连接、读写与权限。
+
+## 验证范围
+
+- 本地 **839 项测试通过**（主程序 833 项、诊断工具 6 项）。
+- common/shared/mobile 的 Android NewApi 专项扫描通过；不是所有 lint 项目零告警。
+- [首次 GitHub Actions 构建通过](https://github.com/huangwits/DiPlay-Preface/actions/runs/37213429657)。
+- 尚未完成 E01 实车安装、音视频、USB、无线连接和重连验收；构建通过不等于实车兼容已经完成。
+
+## 后续更新
+
+`android51-e01` 是默认适配分支；`main` 保留 Fork 时的上游快照。
+
+在 **Actions → Review carlito updates → Run workflow** 手动准备更新。流程先从 carlito 创建候选分支，发生冲突就停止；可合并时生成草稿 PR 并运行检查，**不会自动合入适配分支**。详见[同步说明](docs/UPSTREAM_SYNC.md)。
+
+Actions 中的日常主程序产物是无配件认证材料的源码验证包，不能与 Release 附件的具体配置混为一谈。源码 Git 历史不提交认证私钥、证书或 APK；安装包通过 Release 附件分发。
+
+[构建说明](docs/BUILD.md) · [E01 实现与边界](docs/ECARX-E01-ANDROID51.md) · [上游中文说明](docs/CARLITO-README.zh-CN.md) · [署名与许可证](docs/THIRD_PARTY_NOTICES.md) · [LICENSE](LICENSE)
