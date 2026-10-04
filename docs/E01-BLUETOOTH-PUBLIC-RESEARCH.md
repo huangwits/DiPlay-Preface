@@ -17,6 +17,21 @@
 
 接下来的有效输入是本车的系统蓝牙 APK、framework/JAR、固件版本和服务声明。收到这些资料后，可逐一核对厂商栈、iAP2 服务、连接/读/写/关闭接口及调用权限；如果固件没有向第三方暴露数据通道，需要另行评估系统层适配。
 
+## 补充核对：E01 仓库与 Goodocom SPP
+
+进一步检索找到 [GEELY-GL2021-E01](https://github.com/zqlovezone/GEELY-GL2021-E01/tree/309fee666ee6cf46bdd208126e70854eb7e1f4b2)。该仓库提供的是 GPS 时间问题处理资料和定位库，不包含 E01 蓝牙 APK、framework 或数据通道实现，不能用于验证本车蓝牙协议。
+
+Goodocom 的 [IGocsdkService](https://github.com/githubRonda/Gocsdk/blob/e7f595fae8d83ec2d3efb44c95ae676d2595bb4d/app/src/main/aidl/com/goodocom/gocsdk/IGocsdkService.aidl) 声明了 SPP 连接、断开和发送方法，[IGocsdkCallback](https://github.com/githubRonda/Gocsdk/blob/e7f595fae8d83ec2d3efb44c95ae676d2595bb4d/app/src/main/aidl/com/goodocom/gocsdk/IGocsdkCallback.aidl) 声明了 SPP 接收回调。它比单纯的蓝牙开关更接近所需能力，但本轮核对的示例仍不能直接作为 DiPlay 的数据传输实现：
+
+- 发送和接收参数为字符串。其 [GocsdkService](https://github.com/githubRonda/Gocsdk/blob/e7f595fae8d83ec2d3efb44c95ae676d2595bb4d/app/src/main/java/com/goodocom/gocsdk/service/GocsdkService.java) 将命令加前缀及回车换行，再通过默认字符集编码；[CommandParser](https://github.com/githubRonda/Gocsdk/blob/e7f595fae8d83ec2d3efb44c95ae676d2595bb4d/app/src/main/java/com/goodocom/gocsdk/service/CommandParser.java) 又把接收字节转换为字符串。这没有证明任意 iAP2 二进制数据可无损往返。
+- [GocsdkServiceImp](https://github.com/githubRonda/Gocsdk/blob/e7f595fae8d83ec2d3efb44c95ae676d2595bb4d/app/src/main/java/com/goodocom/gocsdk/service/GocsdkServiceImp.java) 的 SPP 连接方法没有把传入设备地址拼入命令；本轮检查的解析器中也未找到 SPP 接收回调的调用。接口声明本身不足以证明完整实现。
+- 已检查的 SPP 接口没有提供 UUID/SDP 选择参数；iAP2 服务发现、通道选择和会话行为仍待确认。
+- 该示例 [Manifest](https://github.com/githubRonda/Gocsdk/blob/e7f595fae8d83ec2d3efb44c95ae676d2595bb4d/app/src/main/AndroidManifest.xml) 的核心服务没有声明导出，也没有 intent-filter，不能据此假定另一个应用可以绑定。其他公开变体的接口顺序和服务声明不同，Binder 事务号不能互相套用。
+
+**这些是对公开示例的核对结果，不是对 E01 固件的判断。** 收到本车报告后，优先比对 `com.goodocom.gocsdk`、`gocsdk`、`ecarx.bluetooth`、`ecarx.iap2` 及原厂手机互联组件，确认实际存在的实现、导出状态与协议。v03 的报告会列出所有可枚举的系统应用名称；如果名称过滤未包含相应代码文件，可按报告定位后补取。
+
+截至本轮复核，电脑的 `adb devices -l` 仍为空，本车导出的 ZIP 尚未收到。源码线索无法替代 E01 固件对应关系、调用权限和实车数据收发验证，蓝牙修复保持未完成。
+
 ## 本次可用版本
 
 [v03 蓝牙诊断预览版](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.3-e01-bluetooth-diagnostics) 新增 **“导出 E01 蓝牙适配资料 ZIP”**，用于收集上述接口资料。该操作不要求蓝牙先开启、iPhone 先配对、root 或电脑 ADB。导出失败或系统文件不可读会保留限制信息；没有固件内容的报告仍不足以实现数据通道。
