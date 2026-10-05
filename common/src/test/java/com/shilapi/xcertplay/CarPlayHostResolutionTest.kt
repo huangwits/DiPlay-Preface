@@ -105,11 +105,22 @@ class CarPlayHostResolutionTest {
 
     @Test fun e01PixelBudgetStillAppliesToEnlargedResolutionAndSmallerControls() {
         E01Settings.setEnabled(activity, true)
+        decoder(maxWidth = 3840, maxHeight = 3840)
+        CarPlayRotation.setEnabled(activity, true)
+        CarPlayDock.save(activity, CarPlayDock.BOTTOM)
+        AirPlayPersistence.saveClusterMapEnabled(activity, true)
         try {
-            val display = config(160, uiPercent = 75, width = 1920, height = 1080).main
+            val configuration = config(160, uiPercent = 75, width = 1920, height = 1080)
+            val display = configuration.main
             assertTrue(display.widthPixels <= 960)
             assertTrue(display.heightPixels <= 540)
+            assertTrue(display.widthPixels > display.heightPixels)
             assertEquals(30, display.fps)
+            assertFalse(configuration.hevc)
+            assertNull(configuration.cluster)
+            assertNotNull(display.viewAreas)
+            assertEquals(com.shilapi.xcertplay.airplay.AirPlayInfoPlist.DOCK_EDGE_BOTTOM,
+                display.viewAreas!![display.initialViewArea].dockEdge)
             assertTrue(DisplayDiagnosticSnapshot.report(activity).contains("e01_pixel_budget"))
         } finally {
             E01Settings.setEnabled(activity, false)
