@@ -54,7 +54,7 @@ class CarPlayMediaCallbackTest {
     @Test
     fun nowPlayingFieldsBecomeAndroidMediaMetadata() {
         val artwork = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
-        val metadata = ModernSession.androidMetadata(
+        val metadata = CarPlayMediaKeys.androidMetadata(
             CarPlayNowPlaying(
                 title = "Dreams",
                 album = "Rumours",

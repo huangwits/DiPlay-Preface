@@ -6,8 +6,7 @@ compatibility work is reviewable as source rather than as an opaque artifact. Th
 Apache License 2.0 and is retained verbatim at
 `src/main/resources/META-INF/LICENSE`; `docs/THIRD_PARTY_NOTICES.md` already lists JmDNS.
 
-Only the classes under `javax/jmdns/**` are changed, and each change exists because Android 4.3
-(API 18) lacks the API involved. No mDNS behaviour is altered.
+Only the classes under `javax/jmdns/**` are changed. The retained changes address API 22 Java compatibility and multicast socket binding on Android.
 
 ## Functional change
 
@@ -18,12 +17,10 @@ Only the classes under `javax/jmdns/**` are changed, and each change exists beca
 ## API-level compatibility
 
 These are mechanical substitutions with identical semantics; they exist because the corresponding
-API postdates Android 4.3.
+API postdates Android 5.1 / API 22.
 
 | File | Upstream API | API level | Replacement |
 |---|---|---|---|
-| `impl/DNSEntry`, `impl/DNSRecord`, `impl/util/ByteWrangler` | `java.nio.charset.StandardCharsets.UTF_8` | 19 | `Charset.forName("UTF-8")` |
-| `impl/DNSRecord` | `java.util.Objects.equals` | 19 | private `nullSafeEquals` with the same null-safe behaviour |
 | `impl/DNSCache` | `Collection.removeIf` | 24 | `Iterator.remove` filtering loop |
 | `impl/DNSIncoming` | `Map.forEach` | 24 | `entrySet` loop |
 | `impl/ServiceInfoImpl` | `Map.getOrDefault` | 24 | `containsKey ? get : default`, so a present key holding `null` still yields `null` as upstream does |

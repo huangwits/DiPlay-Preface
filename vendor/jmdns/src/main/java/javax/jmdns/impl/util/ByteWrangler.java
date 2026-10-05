@@ -57,7 +57,7 @@ public class ByteWrangler {
     /**
      * Charset used to convert Strings to/from wire bytes: UTF-8
      */
-    private final static Charset CHARSET_UTF_8 = java.nio.charset.Charset.forName("UTF-8");
+    private final static Charset CHARSET_UTF_8 = java.nio.charset.StandardCharsets.UTF_8;
 
     /**
      * Write a String as UTF-8 encoded bytes to a stream.

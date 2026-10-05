@@ -162,7 +162,7 @@ class LocalOnlyHotspotManager(context: Context, private val onDiagnostic: (Strin
     private fun disconnectTwoPointFourStation() {
         if (Build.VERSION.SDK_INT !in 30..32) return
         val connection = runCatching { wifiManager.connectionInfo }.getOrNull() ?: return
-        val frequency = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) connection.frequency else 0
+        val frequency = connection.frequency
         // The BSSID is masked for ordinary apps on BYD builds, so associate on
         // supplicant state + frequency alone; a completed 2.4 GHz association is what
         // pins the hotspot onto 2.4 GHz.
@@ -208,9 +208,9 @@ class LocalOnlyHotspotManager(context: Context, private val onDiagnostic: (Strin
                 // BYD may override even a fixed channel (observed 40 -> 149), so credentials
                 // below always use the settled live callback rather than this preference.
                 @Suppress("DEPRECATION")
-                val stationFrequency = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                val stationFrequency = run {
                     runCatching { wifiManager.connectionInfo?.frequency }.getOrNull()
-                } else null
+                }
                 val preferredChannel = stationFrequency?.takeIf { it in 5160..5895 }
                     ?.let(::wifiFrequencyMhzToChannel) ?: 36
                 try {
@@ -626,7 +626,6 @@ class LocalOnlyHotspotManager(context: Context, private val onDiagnostic: (Strin
 
     @Suppress("DEPRECATION")
     private fun upstreamInterfaceNames(): Set<String> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return emptySet()
         return connectivityManager.allNetworks
             .mapNotNull { connectivityManager.getLinkProperties(it)?.interfaceName }
             .toSet()
