@@ -103,6 +103,19 @@ class CarPlayHostResolutionTest {
         assertEquals(100, get("displayScalePercent"))
     }
 
+    @Test fun e01PixelBudgetStillAppliesToEnlargedResolutionAndSmallerControls() {
+        E01Settings.setEnabled(activity, true)
+        try {
+            val display = config(160, uiPercent = 75, width = 1920, height = 1080).main
+            assertTrue(display.widthPixels <= 960)
+            assertTrue(display.heightPixels <= 540)
+            assertEquals(30, display.fps)
+            assertTrue(DisplayDiagnosticSnapshot.report(activity).contains("e01_pixel_budget"))
+        } finally {
+            E01Settings.setEnabled(activity, false)
+        }
+    }
+
     @Test fun supersamplingDoesNotSilentlyFallBackToASoftwareDecoder() {
         decoder(maxWidth = 3840, maxHeight = 2160, hardware = false)
         val display = config(160).main

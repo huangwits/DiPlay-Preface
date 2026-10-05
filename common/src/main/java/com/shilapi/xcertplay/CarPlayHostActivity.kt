@@ -1,5 +1,7 @@
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.compat.systemService
+
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -59,6 +61,7 @@ import com.shilapi.xcertplay.airplay.AirPlayConfig
 import com.shilapi.xcertplay.airplay.AirPlayDisplaySettings
 import com.shilapi.xcertplay.airplay.AirPlayPhysicalSizeBasis
 import com.shilapi.xcertplay.airplay.AirPlayPhysicalSizeMm
+import com.shilapi.xcertplay.airplay.E01Performance
 import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
 import com.shilapi.xcertplay.airplay.CarPlayUiScale
 import com.shilapi.xcertplay.airplay.AirPlayDisplayConfig
@@ -102,6 +105,8 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+
+internal const val EXTRA_TRANSPORT_WIRELESS = "com.shilapi.xcertplay.TRANSPORT_WIRELESS"
 
 /**
  * Full-screen CarPlay host. It renders decoded video through a [TextureView], forwards touch to
@@ -344,6 +349,8 @@ class CarPlayHostActivity : ComponentActivity() {
     private var hevcSoftwareDecoderEnabled = false
     private var advancedAudioChannelMappingSupported = false
     private var advancedAudioChannelMapping = false
+    private var geelyAudioRouting = false
+    private var geelyNavigationAlert = false
     private var navigationStreamType = 14
     private var debugLogsEnabled = false
     private var autoStartOnBoot = false
@@ -364,6 +371,8 @@ class CarPlayHostActivity : ComponentActivity() {
     private var microphoneAvailable = false
     private var microphonePermissionResolved = false
     private var wirelessEnabled = false
+    /** Prevents a second startup while an ordered transport change is shutting down. */
+    @Volatile private var switchingTransport = false
     private var mfiTarget = MfiTarget.LOCAL
     private var mfiI2cPath = AirPlayPersistence.DEFAULT_MFI_I2C_PATH
     private var remoteMfiServer = ""
@@ -497,13 +506,14 @@ class CarPlayHostActivity : ComponentActivity() {
         languagePreferenceAtCreate = AppLocale.preference(this)
         if (isIphoneUsbAttachment(intent)) {
             AirPlayPersistence.saveWirelessEnabled(this, false)
+            intent.removeExtra(EXTRA_TRANSPORT_WIRELESS)
         }
         if (runCatching { DiPlayBootstrap.ensure(this, AirPlayPersistence.loadMfiTarget(this)) }.isFailure) {
             startActivity(Intent(this, DiPlayActivity::class.java))
             finish(); return
         }
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        getSystemService(android.hardware.display.DisplayManager::class.java)
+        systemService(android.hardware.display.DisplayManager::class.java, Context.DISPLAY_SERVICE)
             ?.registerDisplayListener(clusterDisplayListener, mainHandler)
         initializeSessionLog()
         lastConfiguration = Configuration(resources.configuration)
@@ -538,7 +548,7 @@ class CarPlayHostActivity : ComponentActivity() {
         )
         val reusedBackgroundSession = adoptBackgroundSession()
         microphoneAvailable =
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         microphonePermissionResolved = microphoneAvailable
         if (reusedBackgroundSession) {
             updateDebugOverlays()
@@ -571,6 +581,8 @@ class CarPlayHostActivity : ComponentActivity() {
         advancedAudioChannelMapping =
             advancedAudioChannelMappingSupported &&
                 AirPlayPersistence.loadAdvancedAudioChannelMapping(this)
+        geelyAudioRouting = AirPlayPersistence.loadGeelyAudioRouting(this)
+        geelyNavigationAlert = AirPlayPersistence.loadGeelyNavigationAlert(this)
         navigationStreamType = AirPlayPersistence.loadNavigationStreamType(this)
         debugLogsEnabled = AirPlayPersistence.loadDebugLogsEnabled(this)
         autoStartOnBoot = AirPlayPersistence.loadAutoStartOnBoot(this)
@@ -640,7 +652,7 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun hasFineLocationPermission(): Boolean =
-        checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+        com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
     private fun requestVpnConsent() {
@@ -656,7 +668,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private fun requestWirelessPermissions() {
         val permissions = requiredWirelessPermissions()
-        if (permissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
+        if (permissions.all { com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
             wirelessPermissionsReady = true
             updateHotspotStatusBlock()
             maybeStartCarPlay()
@@ -670,8 +682,17 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private fun hasRequiredWirelessPermissions(): Boolean =
         requiredWirelessPermissions().all {
-            checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+            com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
+
+    /** Context.startForegroundService is API 26; Android 4.3 starts the service directly. */
+    private fun startForegroundServiceCompat(intent: Intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
 
     private fun requiredWirelessPermissions(): List<String> = when {
         wirelessHotspotMode == WirelessHotspotMode.EXISTING_WIFI ->
@@ -695,17 +716,29 @@ class CarPlayHostActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (isIphoneUsbAttachment(intent) && wirelessEnabled) {
+            switchingTransport = true
+            intent.removeExtra(EXTRA_TRANSPORT_WIRELESS)
             shutdown(false, "switching to USB") {
                 AirPlayPersistence.saveWirelessEnabled(this, false)
-                startActivity(Intent(this, CarPlayHostActivity::class.java))
+                startActivity(
+                    Intent(this, CarPlayHostActivity::class.java)
+                        .putExtra(EXTRA_TRANSPORT_WIRELESS, false),
+                )
             }
             finish()
+            return
         }
+        syncTransport()
     }
 
     private fun isIphoneUsbAttachment(intent: Intent): Boolean {
         if (intent.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return false
-        val device = androidx.core.content.IntentCompat.getParcelableExtra(intent, UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        @Suppress("DEPRECATION")
+        val device = if (Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        } else {
+            intent.getParcelableExtra<android.os.Parcelable>(UsbManager.EXTRA_DEVICE) as? UsbDevice
+        }
         return device?.vendorId == IphoneUsbMatcher.APPLE_VENDOR_ID
     }
 
@@ -722,6 +755,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!menuOpen && syncTransport()) return
         val savedNightMode = AirPlayPersistence.loadCarPlayNightMode(this)
         val savedThreshold = AirPlayPersistence.loadAmbientLightThreshold(this)
         val savedDelay = AirPlayPersistence.loadAmbientDelaySeconds(this)
@@ -793,6 +827,80 @@ class CarPlayHostActivity : ComponentActivity() {
         }
     }
 
+    /** Adopt settings changed by the home screen before this reused host can start another session. */
+    private fun syncTransport(): Boolean {
+        if (switchingTransport) return true
+        val requested = intent?.takeIf { it.hasExtra(EXTRA_TRANSPORT_WIRELESS) }
+            ?.getBooleanExtra(EXTRA_TRANSPORT_WIRELESS, wirelessEnabled)
+            ?.also { intent.removeExtra(EXTRA_TRANSPORT_WIRELESS) }
+            ?: AirPlayPersistence.loadWirelessEnabled(this)
+        if (requested != wirelessEnabled) {
+            switchingTransport = true
+            AirPlayPersistence.saveWirelessEnabled(this, requested)
+            val restart = { recreate() }
+            if (CarPlayBackgroundSession.hasSession() || controller != null) {
+                shutdown(terminateProcess = false, reason = "transport changed", completion = restart)
+            } else {
+                restart()
+            }
+            return true
+        }
+        if (reloadHotspotSettingsIfChanged()) {
+            switchingTransport = true
+            val restart = { recreate() }
+            if (CarPlayBackgroundSession.hasSession() || controller != null) {
+                shutdown(terminateProcess = false, reason = "wireless settings changed", completion = restart)
+            } else {
+                restart()
+            }
+            return true
+        }
+        if (reloadGeelyAudioSettingsIfChanged()) {
+            switchingTransport = true
+            val restart = { recreate() }
+            if (CarPlayBackgroundSession.hasSession() || controller != null) {
+                shutdown(terminateProcess = false, reason = "H52 audio routing changed", completion = restart)
+            } else {
+                restart()
+            }
+            return true
+        }
+        return false
+    }
+
+    private fun reloadGeelyAudioSettingsIfChanged(): Boolean {
+        val routing = AirPlayPersistence.loadGeelyAudioRouting(this)
+        val alert = AirPlayPersistence.loadGeelyNavigationAlert(this)
+        if (routing == geelyAudioRouting && alert == geelyNavigationAlert) return false
+        geelyAudioRouting = routing
+        geelyNavigationAlert = alert
+        return true
+    }
+
+    private fun reloadHotspotSettingsIfChanged(): Boolean {
+        val mode = AirPlayPersistence.loadWirelessHotspotMode(this)
+        val ssid = AirPlayPersistence.loadManualHotspotSsid(this)
+        val passphrase = AirPlayPersistence.loadManualHotspotPassphrase(this)
+        val band = AirPlayPersistence.loadManualHotspotBand(this)
+        val channel = AirPlayPersistence.loadManualHotspotChannel(this)
+        val security = AirPlayPersistence.loadManualHotspotSecurity(this)
+        val savedExistingSsid = AirPlayPersistence.loadExistingWifiSsid(this)
+        val savedExistingPassphrase = AirPlayPersistence.loadExistingWifiPassphrase(this)
+        if (mode == wirelessHotspotMode && ssid == manualHotspotSsid &&
+            passphrase == manualHotspotPassphrase && band == manualHotspotBand &&
+            channel == manualHotspotChannel && security == manualHotspotSecurity &&
+            savedExistingSsid == existingWifiSsid && savedExistingPassphrase == existingWifiPassphrase
+        ) return false
+        wirelessHotspotMode = mode
+        manualHotspotSsid = ssid
+        manualHotspotPassphrase = passphrase
+        manualHotspotBand = band
+        manualHotspotChannel = channel
+        manualHotspotSecurity = security
+        existingWifiSsid = savedExistingSsid
+        existingWifiPassphrase = savedExistingPassphrase
+        return true
+    }
 
     // Experimental: the CarPlay instrument-cluster stream on the BYD cluster projection display.
     private fun effectiveClusterTheme(): DiLink51ClusterLayout.Theme =
@@ -1167,7 +1275,7 @@ class CarPlayHostActivity : ComponentActivity() {
         AirPlayPersistence.overlaySettingsListener = null
         com.shilapi.xcertplay.hud.BydNavigationOutputs.setTurnOverlayListener(null)
         clusterMonitor?.stop()
-        getSystemService(android.hardware.display.DisplayManager::class.java)
+        systemService(android.hardware.display.DisplayManager::class.java, Context.DISPLAY_SERVICE)
             ?.unregisterDisplayListener(clusterDisplayListener)
         mainHandler.removeCallbacks(hideIdleCenterMap)
         homeMonitor?.stop()
@@ -1409,15 +1517,7 @@ class CarPlayHostActivity : ComponentActivity() {
         val wirelessSwitch = Switch(this).apply {
             isChecked = wirelessEnabled
             contentDescription = getString(R.string.wireless_carplay_transport)
-            showText = false
-            thumbTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(MENU_ACCENT, MENU_SECONDARY),
-            )
-            trackTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(MENU_ACCENT_TRACK, MENU_TRACK_OFF),
-            )
+            applyMenuSwitchTints()
             setOnCheckedChangeListener { _, checked ->
                 if (wirelessEnabled == checked) return@setOnCheckedChangeListener
                 wirelessEnabled = checked
@@ -1506,7 +1606,8 @@ class CarPlayHostActivity : ComponentActivity() {
             ).apply { topMargin = dp(12) },
         )
 
-        if (advancedAudioChannelMappingSupported) {
+        val geelyAudioCapabilities = com.shilapi.xcertplay.media.GeelyAudioCapabilities.detect()
+        if (advancedAudioChannelMappingSupported || geelyAudioCapabilities != null) {
             content.addView(
                 settingsCategoryHeader(getString(R.string.audio)),
                 LinearLayout.LayoutParams(
@@ -1514,24 +1615,66 @@ class CarPlayHostActivity : ComponentActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply { topMargin = dp(36) },
             )
-            content.addView(
-                settingsSwitchRow(
-                    label = getString(R.string.advanced_audio_channel_mapping),
-                    checked = advancedAudioChannelMapping,
-                    description = getString(R.string.use_usage_content_type_routing_instead_of_stream_type),
-                ) { checked ->
-                    advancedAudioChannelMapping = checked
-                    appendLog(
-                        "Advanced audio channel mapping ${if (checked) "enabled" else "disabled"}; " +
-                            "applies when settings close",
-                    )
-                    updateResolutionMenu()
-                },
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { topMargin = dp(12) },
-            )
+            if (advancedAudioChannelMappingSupported) {
+                content.addView(
+                    settingsSwitchRow(
+                        label = getString(R.string.advanced_audio_channel_mapping),
+                        checked = advancedAudioChannelMapping,
+                        description = getString(R.string.use_usage_content_type_routing_instead_of_stream_type),
+                    ) { checked ->
+                        advancedAudioChannelMapping = checked
+                        appendLog(
+                            "Advanced audio channel mapping ${if (checked) "enabled" else "disabled"}; " +
+                                "applies when settings close",
+                        )
+                        updateResolutionMenu()
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = dp(12) },
+                )
+            }
+            if (geelyAudioCapabilities != null) {
+                val options = buildList {
+                    add(false to getString(R.string.geely_audio_generic))
+                    add(true to getString(R.string.geely_audio_speech))
+                }
+                val profileOptions = if (geelyAudioCapabilities.navigationAlert != null) {
+                    options + (true to getString(R.string.geely_audio_alert))
+                } else {
+                    options
+                }
+                val selectedProfile = when {
+                    !geelyAudioRouting -> 0
+                    geelyNavigationAlert && geelyAudioCapabilities.navigationAlert != null -> 2
+                    else -> 1
+                }
+                content.addView(
+                    settingsChoiceRow(
+                        label = getString(R.string.geely_audio_profile),
+                        options = profileOptions.mapIndexed { index, (_, label) -> index to label },
+                        selected = selectedProfile,
+                    ) { selected ->
+                        geelyAudioRouting = selected != 0
+                        geelyNavigationAlert = selected == 2
+                        appendLog(
+                            "H52 audio profile changed to ${if (selected == 0) "generic" else if (selected == 2) "speech + alert" else "media + navigation speech"}; applies when settings close",
+                        )
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = dp(12) },
+                )
+                content.addView(
+                    menuText(getString(R.string.geely_audio_hint), 14f, MENU_SECONDARY),
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = dp(6) },
+                )
+            }
         }
 
         content.addView(
@@ -1719,15 +1862,7 @@ class CarPlayHostActivity : ComponentActivity() {
         val hevcSwitch = Switch(this).apply {
             isChecked = hevcEnabled
             contentDescription = getString(R.string.hevc_h_265_video_transport)
-            showText = false
-            thumbTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(MENU_ACCENT, MENU_SECONDARY),
-            )
-            trackTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(MENU_ACCENT_TRACK, MENU_TRACK_OFF),
-            )
+            applyMenuSwitchTints()
             setOnCheckedChangeListener { _, checked ->
                 if (hevcEnabled == checked) return@setOnCheckedChangeListener
                 hevcEnabled = checked
@@ -1764,15 +1899,7 @@ class CarPlayHostActivity : ComponentActivity() {
         val softwareHevcSwitch = Switch(this).apply {
             isChecked = hevcSoftwareDecoderEnabled
             contentDescription = getString(R.string.use_software_hevc_decoder)
-            showText = false
-            thumbTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(MENU_ACCENT, MENU_SECONDARY),
-            )
-            trackTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(MENU_ACCENT_TRACK, MENU_TRACK_OFF),
-            )
+            applyMenuSwitchTints()
             setOnCheckedChangeListener { _, checked ->
                 if (hevcSoftwareDecoderEnabled == checked) return@setOnCheckedChangeListener
                 hevcSoftwareDecoderEnabled = checked
@@ -1873,7 +2000,7 @@ class CarPlayHostActivity : ComponentActivity() {
             isAllCaps = false
             textSize = 17f
             setTextColor(MENU_BUTTON_TEXT)
-            backgroundTintList = ColorStateList.valueOf(MENU_ACCENT)
+            tintBackgroundCompat(MENU_ACCENT)
             minHeight = dp(52)
             setOnClickListener { saveSettingsAndReconnect() }
         }
@@ -1890,7 +2017,7 @@ class CarPlayHostActivity : ComponentActivity() {
             isAllCaps = false
             textSize = 17f
             setTextColor(Color.WHITE)
-            backgroundTintList = ColorStateList.valueOf(MENU_DANGER)
+            tintBackgroundCompat(MENU_DANGER)
             minHeight = dp(52)
             setOnClickListener { exitApplication() }
         }
@@ -1941,7 +2068,7 @@ class CarPlayHostActivity : ComponentActivity() {
                 isAllCaps = false
                 textSize = 22f
                 setTextColor(Color.WHITE)
-                backgroundTintList = ColorStateList.valueOf(MENU_TRACK_OFF)
+                tintBackgroundCompat(MENU_TRACK_OFF)
                 contentDescription = getString(R.string.discard_changes_and_exit_settings)
                 minWidth = 0
                 minHeight = 0
@@ -1995,13 +2122,17 @@ class CarPlayHostActivity : ComponentActivity() {
         AirPlayPersistence.saveLocationReportingEnabled(this, locationReportingEnabled)
         AirPlayPersistence.saveAutoStartOnBoot(this, autoStartOnBoot)
         AirPlayPersistence.saveAdvancedAudioChannelMapping(this, advancedAudioChannelMapping)
+        AirPlayPersistence.saveGeelyAudioRouting(this, geelyAudioRouting)
+        AirPlayPersistence.saveGeelyNavigationAlert(this, geelyNavigationAlert)
         AirPlayPersistence.saveDisplayScaleTenths(this, displayScaleTenths)
         AirPlayPersistence.saveDisplayScalePercent(this, displayScalePercent)
-        AirPlayPersistence.saveFps(this, fps)
+        if (!E01Settings.enabled(this)) AirPlayPersistence.saveFps(this, fps)
         AirPlayPersistence.saveWidthPhysicalMm(this, widthPhysicalMm)
         AirPlayPersistence.savePhysicalSizeBasis(this, physicalSizeBasis)
-        AirPlayPersistence.saveHevcEnabled(this, hevcEnabled)
-        AirPlayPersistence.saveHevcSoftwareDecoderEnabled(this, hevcSoftwareDecoderEnabled)
+        if (!E01Settings.enabled(this)) {
+            AirPlayPersistence.saveHevcEnabled(this, hevcEnabled)
+            AirPlayPersistence.saveHevcSoftwareDecoderEnabled(this, hevcSoftwareDecoderEnabled)
+        }
         AirPlayPersistence.saveManufacturer(this, manufacturer)
         AirPlayPersistence.saveModel(this, model)
         AirPlayPersistence.saveOemLabel(this, oemLabel)
@@ -2278,15 +2409,7 @@ class CarPlayHostActivity : ComponentActivity() {
             val switch = Switch(this@CarPlayHostActivity).apply {
                 isChecked = locationReportingEnabled
                 contentDescription = getString(R.string.report_android_location_to_the_iphone)
-                showText = false
-                thumbTintList = ColorStateList(
-                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                    intArrayOf(MENU_ACCENT, MENU_SECONDARY),
-                )
-                trackTintList = ColorStateList(
-                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                    intArrayOf(MENU_ACCENT_TRACK, MENU_TRACK_OFF),
-                )
+                applyMenuSwitchTints()
                 setOnCheckedChangeListener { _, checked ->
                     onLocationReportingChanged(checked)
                 }
@@ -2382,9 +2505,7 @@ class CarPlayHostActivity : ComponentActivity() {
         val seekBar = SeekBar(this).apply {
             max = (values.size - 1).coerceAtLeast(0)
             progress = selectedIndex
-            splitTrack = false
-            progressTintList = ColorStateList.valueOf(MENU_ACCENT)
-            thumbTintList = ColorStateList.valueOf(MENU_ACCENT)
+            applyMenuSeekBarTints()
             setOnSeekBarChangeListener(
                 object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -2722,7 +2843,7 @@ class CarPlayHostActivity : ComponentActivity() {
                 textSize = 18f
                 setTextColor(Color.WHITE)
                 setHintTextColor(MENU_SECONDARY)
-                backgroundTintList = ColorStateList.valueOf(MENU_ACCENT)
+                tintBackgroundCompat(MENU_ACCENT)
                 minHeight = dp(48)
                 isSingleLine = true
                 inputType = when {
@@ -2759,15 +2880,7 @@ class CarPlayHostActivity : ComponentActivity() {
             Switch(this@CarPlayHostActivity).apply {
                 isChecked = checked
                 contentDescription = description
-                showText = false
-                thumbTintList = ColorStateList(
-                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                    intArrayOf(MENU_ACCENT, MENU_SECONDARY),
-                )
-                trackTintList = ColorStateList(
-                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                    intArrayOf(MENU_ACCENT_TRACK, MENU_TRACK_OFF),
-                )
+                applyMenuSwitchTints()
                 setOnCheckedChangeListener { _, value -> onChanged(value) }
             },
             LinearLayout.LayoutParams(
@@ -2829,10 +2942,7 @@ class CarPlayHostActivity : ComponentActivity() {
                 text = label
                 textSize = 18f
                 setTextColor(MENU_SECONDARY)
-                buttonTintList = ColorStateList(
-                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                    intArrayOf(MENU_ACCENT, MENU_SECONDARY),
-                )
+                tintRadioCompat()
                 tag = mode
                 isChecked = wirelessHotspotMode == mode
             }
@@ -3135,10 +3245,7 @@ class CarPlayHostActivity : ComponentActivity() {
                 this.text = text
                 textSize = 17f
                 setTextColor(MENU_SECONDARY)
-                buttonTintList = ColorStateList(
-                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                    intArrayOf(MENU_ACCENT, MENU_SECONDARY),
-                )
+                tintRadioCompat()
                 tag = value
                 isChecked = value == selected
             }
@@ -3171,7 +3278,7 @@ class CarPlayHostActivity : ComponentActivity() {
         val resolution = if (native == null) {
             getString(R.string.handshake_resolution_waiting_for_display)
         } else {
-            val negotiated = CarPlayDisplayScale.applyPercent(
+            val requested = CarPlayDisplayScale.applyPercent(
                 AirPlayDisplayConfig(
                     widthPixels = native.width,
                     heightPixels = native.height,
@@ -3180,6 +3287,7 @@ class CarPlayHostActivity : ComponentActivity() {
                 ),
                 displayScalePercent,
             )
+            val negotiated = if (E01Settings.enabled(this)) E01Performance.display(requested) else requested
             "${getString(R.string.resolution_handshake_prefix)}${native.width} x ${native.height} -> " +
                 "${negotiated.widthPixels} x ${negotiated.heightPixels}"
         }
@@ -3242,32 +3350,38 @@ class CarPlayHostActivity : ComponentActivity() {
         val mime = if (hevcEnabled) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
         // Match MediaCodec.createDecoderByType's first suitable decoder; do not silently force
         // an enlarged stream through a software decoder on a slower head unit.
-        val decoder = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull {
-            !it.isEncoder && it.supportedTypes.any { type -> type.equals(mime, ignoreCase = true) }
-        }
+        val decoder = com.shilapi.xcertplay.media.CodecCompat.videoDecoderFor(mime)
         if (decoder == null) {
             CanvasSupport(false, "no_decoder", "Decoder capability mime=$mime result=no_decoder")
         } else {
             val hardware = if (Build.VERSION.SDK_INT >= 29) decoder.isHardwareAccelerated
                 else !decoder.name.startsWith("OMX.google.") && !decoder.name.startsWith("c2.android.")
-            val video = decoder.getCapabilitiesForType(mime).videoCapabilities
-            val sizeSupported = video?.isSizeSupported(display.widthPixels, display.heightPixels) == true
-            val rateSupported = sizeSupported && video?.areSizeAndRateSupported(
-                display.widthPixels, display.heightPixels, display.fps.toDouble()) == true
-            val reason = when {
-                !hardware -> "software_decoder"
-                hevcEnabled && hevcSoftwareDecoderEnabled -> "software_hevc_selected"
-                video == null -> "no_video_capabilities"
-                !sizeSupported -> "canvas_dimensions_unsupported"
-                !rateSupported -> "frame_rate_unsupported"
-                else -> "supported"
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+                CanvasSupport(
+                    !hardware,
+                    if (hardware) "capabilities_unavailable" else "software_decoder",
+                    "Decoder capability query skipped mime=$mime hardware=$hardware reason=video_capabilities_need_api21",
+                )
+            } else {
+                val video = decoder.getCapabilitiesForType(mime).videoCapabilities
+                val sizeSupported = video?.isSizeSupported(display.widthPixels, display.heightPixels) == true
+                val rateSupported = sizeSupported && video?.areSizeAndRateSupported(
+                    display.widthPixels, display.heightPixels, display.fps.toDouble()) == true
+                val reason = when {
+                    !hardware -> "software_decoder"
+                    hevcEnabled && hevcSoftwareDecoderEnabled -> "software_hevc_selected"
+                    video == null -> "no_video_capabilities"
+                    !sizeSupported -> "canvas_dimensions_unsupported"
+                    !rateSupported -> "frame_rate_unsupported"
+                    else -> "supported"
+                }
+                CanvasSupport(reason == "supported", reason,
+                    "Decoder capability codec=${decoder.name} mime=$mime hardware=$hardware " +
+                        "sizeSupported=$sizeSupported rateSupported=$rateSupported " +
+                        "widths=${video?.supportedWidths} heights=${video?.supportedHeights} " +
+                        "alignment=${video?.widthAlignment}x${video?.heightAlignment} " +
+                        "fpsRange=${video?.supportedFrameRates} result=$reason")
             }
-            CanvasSupport(reason == "supported", reason,
-                "Decoder capability codec=${decoder.name} mime=$mime hardware=$hardware " +
-                    "sizeSupported=$sizeSupported rateSupported=$rateSupported " +
-                    "widths=${video?.supportedWidths} heights=${video?.supportedHeights} " +
-                    "alignment=${video?.widthAlignment}x${video?.heightAlignment} " +
-                    "fpsRange=${video?.supportedFrameRates} result=$reason")
         }
     } catch (error: Exception) {
         CanvasSupport(false, "capability_query_${error.javaClass.simpleName}",
@@ -3275,6 +3389,12 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun createAirPlayConfig(size: DisplaySize): AirPlayConfig {
+        val e01 = E01Settings.enabled(this)
+        if (e01) {
+            fps = E01Performance.FPS
+            hevcEnabled = false
+            hevcSoftwareDecoderEnabled = false
+        }
         val safeWidth = (size.width / 2 * 2).coerceAtLeast(2)
         val safeHeight = (size.height / 2 * 2).coerceAtLeast(2)
         val alignedSize = DisplaySize(safeWidth, safeHeight)
@@ -3297,11 +3417,12 @@ class CarPlayHostActivity : ComponentActivity() {
         )
         val requestedResolutionPercent = displayScalePercent
         val requestedResolutionDisplay = CarPlayDisplayScale.applyPercent(baseDisplay, requestedResolutionPercent)
-        var resolutionDisplay = requestedResolutionDisplay
+        var resolutionDisplay = if (e01) E01Performance.display(requestedResolutionDisplay) else requestedResolutionDisplay
         val requestedPercent = uiScalePercent
-        var scaledDisplay = CarPlayUiScale.apply(resolutionDisplay, uiScalePercent)
+        var scaledDisplay = if (e01) resolutionDisplay else CarPlayUiScale.apply(resolutionDisplay, uiScalePercent)
         val candidate = scaledDisplay
         var support = when {
+            e01 -> CanvasSupport(true, "e01_pixel_budget", "E01: H.264 <=960x540 at 30 fps, single screen")
             uiScalePercent < CarPlayUiScale.DEFAULT && scaledDisplay === resolutionDisplay ->
                 CanvasSupport(false, "canvas_4k_limit", "Decoder capability check skipped: canvas exceeds enlargement limit")
             uiScalePercent < CarPlayUiScale.DEFAULT || scaledDisplay.widthPixels > baseDisplay.widthPixels ||
@@ -3358,7 +3479,7 @@ class CarPlayHostActivity : ComponentActivity() {
         val requestSummary = "Display request selected=${CarPlayUiScale.label(requestedPercent)} percent=$requestedPercent " +
             "surface=${size.width}x${size.height} resolution=${requestedResolutionPercent}% " +
             "base=${requestedResolutionDisplay.widthPixels}x${requestedResolutionDisplay.heightPixels} " +
-            "candidate=${candidate.widthPixels}x${candidate.heightPixels} fps=$fps " +
+            "candidate=${candidate.widthPixels}x${candidate.heightPixels} fps=$fps e01=$e01 " +
             "codec=${if (hevcEnabled) "HEVC" else "H.264"} softwareHevc=$hevcSoftwareDecoderEnabled"
         val effectiveSummary = "Display effective percent=$uiScalePercent resolution=${displayScalePercent}% " +
             "canvas=${display.widthPixels}x${display.heightPixels} decision=${support.reason} " +
@@ -3374,7 +3495,7 @@ class CarPlayHostActivity : ComponentActivity() {
             btMac = DiPlayBluetooth.localAddress(this) ?: DiPlayBootstrap.deviceId(airPlayIdentity),
             sourceVersion = "950.7.1",
             main = display,
-            cluster = clusterDisplayConfig(),
+            cluster = if (e01) null else clusterDisplayConfig(),
             rightHandDrive = rightHandDrive,
             hevc = hevcEnabled,
             opusOutputSupported = supportsOpusOutput(),
@@ -3573,6 +3694,8 @@ class CarPlayHostActivity : ComponentActivity() {
             audioFocusEnabled = AirPlayPersistence.loadAudioFocusEnabled(this),
             mediaChannel = AirPlayPersistence.loadMediaAudioChannel(this),
             navigationChannel = AirPlayPersistence.loadNavigationAudioChannel(this),
+            geelyAudioRouting = geelyAudioRouting,
+            geelyNavigationAlert = geelyNavigationAlert,
             context = this,
             navigationStreamType = navigationStreamType,
             onScreenStreamActiveChanged = { type, active ->
@@ -3704,6 +3827,9 @@ class CarPlayHostActivity : ComponentActivity() {
         updateHotspotStatus(status)
         val description = status.describe()
         setConnectionStage(description)
+        if (status is CarPlayStatus.Failed) {
+            AndroidBluetoothFailureCopy.forControllerMessage(this, status.message)?.let { stageStatusView?.text = it }
+        }
         when (status) {
             is CarPlayStatus.Failed -> if (status.wifiResetRequired) {
                 wifiRecoveryButton?.visibility = View.VISIBLE
@@ -3863,7 +3989,7 @@ class CarPlayHostActivity : ComponentActivity() {
         CarPlayMediaKeys.attach(this, next,
             manageAudioFocus = geelyFactory == null && !AirPlayPersistence.loadAudioFocusEnabled(this),
             onMediaPlaying = renderer::onMediaPlaying)
-        if (airPlayConfig.videoInCar) CarPlayVideo.attach(this, next)
+        if (Build.VERSION.SDK_INT >= 23 && airPlayConfig.videoInCar) CarPlayVideo.attach(this, next)
         val display = CarPlaySessionDisplay(
             airPlayConfig.main.widthPixels, airPlayConfig.main.heightPixels,
             displayRotation(), hideTopBar, hideBottomBar, effectiveSize.width, effectiveSize.height,
@@ -3877,7 +4003,7 @@ class CarPlayHostActivity : ComponentActivity() {
             }
         }
         try {
-            startForegroundService(Intent(this, DiPlaySessionService::class.java))
+            startForegroundServiceCompat(Intent(this, DiPlaySessionService::class.java))
             next.start()
         } catch (error: RuntimeException) {
             appendLog("Connection could not start: ${error.javaClass.simpleName}")
@@ -4221,9 +4347,12 @@ class CarPlayHostActivity : ComponentActivity() {
         if (!menuOpen) return
         if (!validateMfiSettings()) return
         if (!validateManualHotspotSettings()) return
+        val h52AudioChanged =
+            AirPlayPersistence.loadGeelyAudioRouting(this) != geelyAudioRouting ||
+                AirPlayPersistence.loadGeelyNavigationAlert(this) != geelyNavigationAlert
         persistMenuSettings()
         settingsBaseline = null
-        finishSettingsMenu("Settings saved", reconnect = true)
+        finishSettingsMenu("Settings saved", reconnect = true, restartForAudioChange = h52AudioChanged)
     }
 
     private fun cancelSettingsEdits() {
@@ -4232,7 +4361,7 @@ class CarPlayHostActivity : ComponentActivity() {
         finishSettingsMenu("Settings changes discarded", reconnect = false)
     }
 
-    private fun finishSettingsMenu(prefix: String, reconnect: Boolean) {
+    private fun finishSettingsMenu(prefix: String, reconnect: Boolean, restartForAudioChange: Boolean = false) {
         if (!menuOpen) return
         menuOpen = false
         settingsMenu?.visibility = View.GONE
@@ -4247,6 +4376,11 @@ class CarPlayHostActivity : ComponentActivity() {
                 ", MFI ${mfiTargetLabel(mfiTarget)}" +
                 ", Wi-Fi session ${hotspotModeLabel(wirelessHotspotMode)}",
         )
+        if (restartForAudioChange && (CarPlayBackgroundSession.hasSession() || controller != null)) {
+            switchingTransport = true
+            shutdown(terminateProcess = false, reason = "H52 audio routing changed") { recreate() }
+            return
+        }
         val failure = failurePendingAfterMenu
         failurePendingAfterMenu = null
         val recoveryPending = recoveryPendingAfterMenu || failure != null
@@ -4271,7 +4405,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private fun exitApplication() {
         if (shuttingDown.get()) return
         restoreSettingsBaseline()
-        finishAndRemoveTask()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) finishAndRemoveTask() else finish()
         shutdown(terminateProcess = true, reason = "settings exit application")
     }
 
@@ -4385,7 +4519,7 @@ class CarPlayHostActivity : ComponentActivity() {
             MotionEvent.ACTION_POINTER_UP,
             MotionEvent.ACTION_CANCEL -> Log.i(
                 TAG,
-                "touch action=${MotionEvent.actionToString(event.actionMasked)} " +
+                "touch action=${motionEventName(event.actionMasked)} " +
                     "pointers=${event.pointerCount} queued=$queued",
             )
         }
@@ -4431,6 +4565,11 @@ class CarPlayHostActivity : ComponentActivity() {
             appendLog(message)
         }
     }
+
+    /** MotionEvent.actionToString is API 19; older units keep the raw action code. */
+    private fun motionEventName(action: Int): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) MotionEvent.actionToString(action)
+        else "action=$action"
 
     private fun setConnectionStage(message: String) {
         latestStage = message
@@ -4530,6 +4669,44 @@ class CarPlayHostActivity : ComponentActivity() {
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
 
+    /** Switch labels are API 21; tint setters are API 23. */
+    private fun Switch.applyMenuSwitchTints() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) showText = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            thumbTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(MENU_ACCENT, MENU_SECONDARY),
+            )
+            trackTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(MENU_ACCENT_TRACK, MENU_TRACK_OFF),
+            )
+        }
+    }
+
+    /** SeekBar tint and split-track setters are API 21. */
+    private fun SeekBar.applyMenuSeekBarTints() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
+        splitTrack = false
+        progressTintList = ColorStateList.valueOf(MENU_ACCENT)
+        thumbTintList = ColorStateList.valueOf(MENU_ACCENT)
+    }
+
+    private fun View.tintBackgroundCompat(color: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            backgroundTintList = ColorStateList.valueOf(color)
+        }
+    }
+
+    private fun RadioButton.tintRadioCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            buttonTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(MENU_ACCENT, MENU_SECONDARY),
+            )
+        }
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun CarPlayStatus.describe(): String = when (this) {
@@ -4559,7 +4736,8 @@ class CarPlayHostActivity : ComponentActivity() {
         is CarPlayStatus.Failed -> when (startupFailure) {
             WirelessStartupFailure.HOTSPOT_NOT_READY -> getString(R.string.hotspot_network_not_ready)
             WirelessStartupFailure.FIRST_TCP_TIMEOUT -> getString(R.string.first_tcp_timeout)
-            else -> getString(R.string.status_failed, message)
+            else -> getString(R.string.status_failed,
+                AndroidBluetoothFailureCopy.forControllerMessage(this@CarPlayHostActivity, message) ?: message)
         }
     }
 

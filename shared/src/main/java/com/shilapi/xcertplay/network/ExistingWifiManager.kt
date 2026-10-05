@@ -10,6 +10,7 @@ import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Looper
+import com.shilapi.xcertplay.compat.systemService
 import com.shilapi.xcertplay.orchestration.ManualHotspotValidation
 import com.shilapi.xcertplay.transport.Iap2WirelessSecurity
 import java.io.IOException
@@ -25,9 +26,9 @@ class ExistingWifiManager(
     private val onDiagnostic: (String) -> Unit = {},
     private val onNetworkChanged: () -> Unit = {},
 ) : WirelessHotspotManager {
-    private val connectivity = context.applicationContext.getSystemService(ConnectivityManager::class.java)
+    private val connectivity = (context.applicationContext ?: context).systemService(ConnectivityManager::class.java, Context.CONNECTIVITY_SERVICE)
         ?: throw IllegalStateException("ConnectivityManager is unavailable")
-    private val wifi = context.applicationContext.getSystemService(WifiManager::class.java)
+    private val wifi = (context.applicationContext ?: context).systemService(WifiManager::class.java, Context.WIFI_SERVICE)
         ?: throw IllegalStateException("WifiManager is unavailable")
     private val lock = Any()
     private val invalidated = AtomicBoolean()
@@ -115,7 +116,16 @@ class ExistingWifiManager(
                     hosts = addresses
                     interfaceIndex = iface.index
                     interfaceName = name
-                    connectivity.registerNetworkCallback(NetworkRequest.Builder().clearCapabilities()
+                    connectivity.registerNetworkCallback(NetworkRequest.Builder().apply {
+                        if (Build.VERSION.SDK_INT >= 30) clearCapabilities()
+                        else {
+                            // API 21-29 builders default to these three capabilities.
+                            // Observe restricted/trusted LANs as well; NOT_VPN is re-added below.
+                            removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                            removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+                            removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                        }
+                    }
                         .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), callback)
                     callbackRegistered = true

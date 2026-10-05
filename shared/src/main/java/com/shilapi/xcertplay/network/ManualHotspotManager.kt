@@ -5,6 +5,8 @@ import android.content.Context
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
+import com.shilapi.xcertplay.compat.systemService
+import com.shilapi.xcertplay.compat.indexCompat
 import android.os.Build
 import android.os.Looper
 import android.util.Log
@@ -39,7 +41,7 @@ class ManualHotspotManager(
     private val waitLock = Object()
     private var confirmed: HotspotSelection? = null
     private var lastSampleLog = emptyList<String>()
-    private val wifiManager = appContext.getSystemService(WifiManager::class.java)
+    private val wifiManager = appContext.systemService(WifiManager::class.java, "wifi")
         ?: throw IllegalStateException("WifiManager is unavailable")
     private val expectedSsid = ssid?.takeIf { it.isNotBlank() }
     private val passphrase = passphrase.orEmpty()
@@ -311,12 +313,12 @@ class ManualHotspotManager(
             val ssid = unquote(configuration.SSID) ?: return null
             val channel = try {
                 WifiConfiguration::class.java.getField("apChannel").getInt(configuration)
-            } catch (_: ReflectiveOperationException) {
+            } catch (_: Exception) {
                 0
             }
             val band = try {
                 legacyHotspotBandToSoftApBand(WifiConfiguration::class.java.getField("apBand").getInt(configuration))
-            } catch (_: ReflectiveOperationException) {
+            } catch (_: Exception) {
                 null
             }
             ManualApConfiguration(
