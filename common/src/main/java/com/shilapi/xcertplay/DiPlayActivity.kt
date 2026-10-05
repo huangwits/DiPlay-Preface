@@ -83,6 +83,7 @@ class DiPlayActivity : ComponentActivity() {
     private var pendingWireless = false
     private var bluetoothProbeRequest: GeelyBluetoothDiagnostics.Request? = null
     private var bluetoothProbeDialog: AlertDialog? = null
+    private var factoryPhonePicker: FactoryBluetoothPicker? = null
     private var initialLaunch = true
     private var notificationTransport = true
     private var exportInProgress = false
@@ -307,6 +308,7 @@ class DiPlayActivity : ComponentActivity() {
         vehicleProbeInProgress = false
         automaticVehicleValidationInProgress = false
         cancelBluetoothStatusProbe()
+        factoryPhonePicker?.cancel()
         super.onDestroy()
     }
 
@@ -1274,6 +1276,17 @@ class DiPlayActivity : ComponentActivity() {
         content.addView(label(getString(R.string.connection_setup), 34, TEXT, true))
         content.addView(label(getString(R.string.set_up_once_your_details_stay_saved_for_the_next_drive_cha), 17, MUTED).apply { setPadding(0, dp(8), 0, dp(24)) })
         section(content, getString(R.string.s_1_choose_your_connection)) { card -> wirelessLinkControls(card) }
+        if (E01Settings.enabled(this)) {
+            section(content, getString(R.string.factory_bt_title)) { card ->
+                card.addView(label(getString(R.string.factory_bt_description), 16, MUTED))
+                card.addView(button("${if (FactoryBluetoothSettings.enabled(this)) "✓  " else ""}${getString(R.string.factory_bt_enabled)}",
+                    FactoryBluetoothSettings.enabled(this)) {
+                    FactoryBluetoothSettings.setEnabled(this, !FactoryBluetoothSettings.enabled(this))
+                    factoryPhonePicker?.cancel()
+                    render()
+                }, matchButton(12, 60))
+            }
+        }
         section(content, getString(R.string.s_2_pair_your_iphone)) { card ->
             card.addView(label(getString(R.string.keep_bluetooth_and_wi_fi_on_your_iphone_pair_with_the_car), 16, MUTED))
             card.addView(button("${getString(R.string.choose_iphone_prefix)}${DiPlayPreferences.phoneName(this)}", false) { choosePhone() }, matchButton(12, 60))
@@ -2978,6 +2991,20 @@ class DiPlayActivity : ComponentActivity() {
         )
     }
     private fun choosePhone() {
+        if (FactoryBluetoothSettings.enabled(this)) {
+            val startAfterPick = pendingWireless
+            factoryPhonePicker?.cancel()
+            pendingWireless = startAfterPick
+            factoryPhonePicker = FactoryBluetoothPicker(this, onPick = { phone ->
+                DiPlayPreferences.savePhone(this, phone.address, phone.name)
+                val start = pendingWireless
+                pendingWireless = false
+                factoryPhonePicker = null
+                render()
+                if (start) connect(true)
+            }, onCancel = { pendingWireless = false }).also { it.show() }
+            return
+        }
         if (Build.VERSION.SDK_INT >= 31 && com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT); return
         }
@@ -3274,6 +3301,7 @@ class DiPlayActivity : ComponentActivity() {
         appendLine("Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}")
         appendLine("Head unit: ${Build.MANUFACTURER} ${Build.MODEL}")
         appendLine("Connection: ${if (AirPlayPersistence.loadWirelessEnabled(appContext)) "wireless" else "USB"}")
+        appendLine(FactoryBluetoothSettings.diagnostics(appContext))
         appendLine("Authentication: local experimental beta identity; no remote fallback")
         appendLine("CarPlay setup: ${if (setupError == null) "ready" else "authentication unavailable"}")
         appendLine("Saved video preference (may differ from active session): ${if (AirPlayPersistence.loadHevcEnabled(appContext)) "HEVC" else "H.264"}; ${AirPlayPersistence.loadFps(appContext)} fps")

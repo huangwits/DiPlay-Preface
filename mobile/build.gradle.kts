@@ -25,7 +25,7 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 34
+        versionCode = 35
         versionName = "0.2.12"
 
     }
@@ -59,11 +59,12 @@ android {
         create("e01") {
             initWith(getByName("release"))
             applicationIdSuffix = ".e01legacy"
-            versionNameSuffix = "-e01.5-android51"
+            versionNameSuffix = "-e01.6-factorybt-android51"
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             matchingFallbacks += listOf("release")
             resValue("bool", "config_e01_default", "true")
+            resValue("bool", "config_factory_bluetooth_default", "true")
             resValue("string", "app_name", "DiPlay E01 Legacy")
             ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
         }
