@@ -190,8 +190,9 @@ class CarPlayController(
     private val diagnosticRun = AtomicInteger()
     private val usbManager = context.systemService(UsbManager::class.java, "usb")
         ?: error("USB service unavailable")
-    private val bluetoothAdapter =
+    private val bluetoothAdapter by lazy {
         appContext.systemService(BluetoothManager::class.java, "bluetooth")?.adapter
+    }
     private val iphoneHost = IphoneUsbHost(
         appContext,
         usbManager,
@@ -265,7 +266,7 @@ class CarPlayController(
     }.apply { removeOnCancelPolicy = true }
     @Volatile private var wirelessDiagnostics: WirelessStartupDiagnostics? = null
     @Volatile private var bluetoothSocket: BluetoothSocket? = null
-    @Volatile private var bluetoothStream: BluetoothRfcommDuplexStream? = null
+    @Volatile private var bluetoothStream: BlockingDuplexByteStream? = null
     @Volatile private var wirelessTunnelChannel: Iap2Session? = null
     @Volatile private var wirelessRuntimeIdentification: Iap2IdentificationConfig? = null
     @Volatile private var wirelessAirPlayEndpoint: Iap2WirelessCarPlayEndpoint? = null
@@ -1167,6 +1168,7 @@ class CarPlayController(
     }
 
     private fun runWireless(generation: Int) {
+        var factoryIap2Started = false
         try {
             debugLog("wireless bring-up generation=$generation starting")
             closeWirelessStack(generation = generation)
@@ -1178,15 +1180,21 @@ class CarPlayController(
                 return
             }
 
-            // Fail before starting a hotspot when the standard Android transport is unavailable.
-            val adapter = bluetoothAdapter
-            BluetoothPreflight.requireReady(
-                Build.VERSION.SDK_INT < 31 ||
-                    com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(
-                        appContext, Manifest.permission.BLUETOOTH_CONNECT,
-                    ) == PackageManager.PERMISSION_GRANTED,
-            ) { adapter?.state }
-            checkNotNull(adapter)
+            val factory = if (config.factoryBluetoothEnabled) {
+                com.shilapi.xcertplay.transport.EcarxSppTransport.prepare(
+                    appContext, config.wirelessBluetoothDeviceAddress, ::debugLog,
+                )
+            } else null
+            val adapter = if (factory == null) bluetoothAdapter else null
+            if (factory == null) {
+                BluetoothPreflight.requireReady(
+                    Build.VERSION.SDK_INT < 31 ||
+                        com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(
+                            appContext, Manifest.permission.BLUETOOTH_CONNECT,
+                        ) == PackageManager.PERMISSION_GRANTED,
+                ) { adapter?.state }
+                checkNotNull(adapter)
+            }
             val listenerIdentity = AirPlayListenerIdentity(generation)
             val watchdog = FirstTcpWatchdog(
                 listener = listenerIdentity,
@@ -1266,13 +1274,14 @@ class CarPlayController(
             )
             onStatus(CarPlayStatus.WaitingForPairedIphone)
 
-            BluetoothPreflight.requireReady(true) { adapter.state }
-            val device = selectWirelessBluetoothDevice(adapter)
-            val hostBluetoothMac = accessoryBluetoothMac(adapter)
-            debugLog(
-                "wireless selected Bluetooth target name=${device.name ?: "unknown"} " +
-                    "address=${device.address} localBt=$hostBluetoothMac",
-            )
+            val device = if (factory == null) {
+                val androidAdapter = checkNotNull(adapter)
+                BluetoothPreflight.requireReady(true) { androidAdapter.state }
+                selectWirelessBluetoothDevice(androidAdapter)
+            } else null
+            val hostBluetoothMac = factory?.localAddress ?: accessoryBluetoothMac(checkNotNull(adapter))
+            debugLog(if (factory != null) "wireless selected factory Bluetooth target=${factory.phone.name}"
+                else "wireless selected Android Bluetooth target=${device?.name ?: "unknown"}")
             val wirelessAirPlayConfig = airPlayConfig.copy(
                 deviceId = deviceIdentifier,
                 btMac = hostBluetoothMac,
@@ -1341,53 +1350,67 @@ class CarPlayController(
             }
 
             onStatus(CarPlayStatus.ConnectingBluetooth)
-            debugLog(
-                "wireless RFCOMM connecting address=${device.address} " +
-                    "uuid=$IAP2_IPHONE_UUID",
-            )
-            val socket = synchronized(wirelessResourceLock) {
-                if (isStaleWirelessRun(generation)) return
-                device.createRfcommSocketToServiceRecord(UUID.fromString(IAP2_IPHONE_UUID))
-                    .also { bluetoothSocket = it }
-            }
-            logBluetoothConnectionSnapshot(device, "before-connect")
-            val bluetoothStarted = System.nanoTime()
-            try {
-                // Discovery competes with RFCOMM on older head units. SCAN is optional on 12+.
-                if (Build.VERSION.SDK_INT < 31 ||
-                    com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(
-                        appContext, Manifest.permission.BLUETOOTH_SCAN,
-                    ) == PackageManager.PERMISSION_GRANTED
-                ) {
-                    val cancelled = runCatching { adapter.cancelDiscovery() }
-                    connectionDiagnostic("Bluetooth discovery cancellation result=${cancelled.getOrNull()} failure=${cancelled.exceptionOrNull()?.javaClass?.simpleName ?: "none"}")
+            val stream: BlockingDuplexByteStream = if (factory != null) {
+                val candidate = synchronized(wirelessResourceLock) {
+                    if (isStaleWirelessRun(generation)) return
+                    factory.stream().also { bluetoothStream = it }
                 }
-                connectBluetoothSocket(socket, device.address)
+                candidate.connect()
+                if (isStaleWirelessRun(generation)) return
+                wirelessPeerBluetoothAddress = factory.phone.address
+                candidate
+            } else {
+                val androidDevice = checkNotNull(device)
+                val androidAdapter = checkNotNull(adapter)
+                debugLog(
+                    "wireless RFCOMM connecting address=${androidDevice.address} " +
+                        "uuid=$IAP2_IPHONE_UUID",
+                )
+                val socket = synchronized(wirelessResourceLock) {
+                    if (isStaleWirelessRun(generation)) return
+                    androidDevice.createRfcommSocketToServiceRecord(UUID.fromString(IAP2_IPHONE_UUID))
+                        .also { bluetoothSocket = it }
+                }
+                logBluetoothConnectionSnapshot(androidDevice, "before-connect")
+                val bluetoothStarted = System.nanoTime()
+                try {
+                    // Discovery competes with RFCOMM on older head units. SCAN is optional on 12+.
+                    if (Build.VERSION.SDK_INT < 31 ||
+                        com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(
+                            appContext, Manifest.permission.BLUETOOTH_SCAN,
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        val cancelled = runCatching { androidAdapter.cancelDiscovery() }
+                        connectionDiagnostic("Bluetooth discovery cancellation result=${cancelled.getOrNull()} failure=${cancelled.exceptionOrNull()?.javaClass?.simpleName ?: "none"}")
+                    }
+                    connectBluetoothSocket(socket, androidDevice.address)
+                    synchronized(wirelessResourceLock) {
+                        if (isStaleWirelessRun(generation)) return
+                        wirelessPeerBluetoothAddress = androidDevice.address
+                    }
+                    connectionDiagnostic("Bluetooth connect completed elapsedMs=${elapsedMillis(bluetoothStarted)}")
+                } catch (error: Throwable) {
+                    connectionDiagnostic(
+                        "Bluetooth connect failed elapsedMs=${elapsedMillis(bluetoothStarted)} " +
+                            "failureClass=${diagnosticFailureClass(error)}",
+                    )
+                    logBluetoothConnectionSnapshot(androidDevice, "after-failure")
+                    if (error is IOException) throw IOException("Bluetooth RFCOMM connection failed", error)
+                    throw error
+                }
+                debugLog("wireless RFCOMM connected address=${androidDevice.address}")
+                if (isStaleWirelessRun(generation)) {
+                    return
+                }
                 synchronized(wirelessResourceLock) {
                     if (isStaleWirelessRun(generation)) return
-                    wirelessPeerBluetoothAddress = device.address
+                    BluetoothRfcommDuplexStream(socket).also { bluetoothStream = it }
                 }
-                connectionDiagnostic("Bluetooth connect completed elapsedMs=${elapsedMillis(bluetoothStarted)}")
-            } catch (error: Throwable) {
-                connectionDiagnostic(
-                    "Bluetooth connect failed elapsedMs=${elapsedMillis(bluetoothStarted)} " +
-                        "failureClass=${diagnosticFailureClass(error)}",
-                )
-                logBluetoothConnectionSnapshot(device, "after-failure")
-                if (error is IOException) throw IOException("Bluetooth RFCOMM connection failed", error)
-                throw error
             }
-            debugLog("wireless RFCOMM connected address=${device.address}")
-            if (isStaleWirelessRun(generation)) {
-                return
-            }
-            val stream = synchronized(wirelessResourceLock) {
-                if (isStaleWirelessRun(generation)) return
-                BluetoothRfcommDuplexStream(socket).also { bluetoothStream = it }
-            }
+            factoryIap2Started = factory != null
             val channel = Iap2Session.openWireless(
                 stream,
-                traceContext = "wireless-rfcomm",
+                traceContext = if (factory != null) "wireless-factory-spp" else "wireless-rfcomm",
                 onTrace = ::debugLog,
                 onArtwork = ::onArtworkTransfer,
             )
@@ -1398,7 +1421,7 @@ class CarPlayController(
                 }
                 csm = channel
             }
-            debugLog("wireless iAP2 CSM channel opened over RFCOMM")
+            debugLog("wireless iAP2 CSM channel opened over ${if (factory != null) "factory SPP" else "RFCOMM"}")
             if (isStaleWirelessRun(generation)) {
                 return
             }
@@ -1487,6 +1510,9 @@ class CarPlayController(
                 }
                 Iap2WirelessControlTerminal.TIMED_OUT ->
                     if (!wirelessActiveReported.get()) {
+                        if (factory != null) throw com.shilapi.xcertplay.transport.FactoryBluetoothException(
+                            "E01-F08", "Factory SPP opened but CarPlay iAP2 control timed out",
+                        )
                         onStatus(CarPlayStatus.ControlEnded)
                     }
             }
@@ -1499,7 +1525,12 @@ class CarPlayController(
             } else {
                 debugLog("wireless bring-up failed", error)
                 if (error is Error) throw error
-                fail(error, generation)
+                val reported = if (factoryIap2Started && error !is com.shilapi.xcertplay.transport.FactoryBluetoothException) {
+                    com.shilapi.xcertplay.transport.FactoryBluetoothException(
+                        "E01-F08", "Factory SPP opened but CarPlay iAP2 did not complete: ${error.message}", error,
+                    )
+                } else error
+                fail(reported, generation)
                 closeWirelessStack(generation = generation)
             }
         }
@@ -2438,6 +2469,7 @@ class CarPlayController(
         }
 
     private fun configureBluetoothAudioHandoff(session: AirPlaySession, address: String) {
+        if (config.factoryBluetoothEnabled) return // Do not apply the standard-stack audio guard to the SDK transport.
         if (!BluetoothAdapter.checkBluetoothAddress(address.uppercase(Locale.US))) return
         mainHandler.post {
             if (closed || activeSession !== session || factoryBluetoothSession === session) return@post
