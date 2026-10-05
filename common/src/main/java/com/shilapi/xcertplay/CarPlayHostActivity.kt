@@ -181,6 +181,7 @@ class CarPlayHostActivity : ComponentActivity() {
         hostName = "diplay-" + DiPlayBootstrap.deviceId(airPlayIdentity).replace(":", "").lowercase(),
         hostMac = DiPlayBootstrap.deviceId(airPlayIdentity).split(":").map { it.toInt(16).toByte() }.toByteArray(),
         wirelessBluetoothDeviceAddress = DiPlayPreferences.phoneAddress(this),
+        factoryBluetoothEnabled = FactoryBluetoothSettings.enabled(this),
         transport = if (wirelessEnabled) CarPlayTransport.WIRELESS else CarPlayTransport.WIRED,
         wirelessHotspotMode = wirelessHotspotMode,
         wifiP2pPreferredChannel = AirPlayPersistence.loadWifiP2pPreferredChannel(this),
@@ -3591,7 +3592,8 @@ class CarPlayHostActivity : ComponentActivity() {
         return AirPlayConfig(
             deviceName = "DiPlay",
             deviceId = DiPlayBootstrap.deviceId(airPlayIdentity),
-            btMac = DiPlayBluetooth.localAddress(this) ?: DiPlayBootstrap.deviceId(airPlayIdentity),
+            btMac = if (FactoryBluetoothSettings.enabled(this)) DiPlayBootstrap.deviceId(airPlayIdentity)
+                else DiPlayBluetooth.localAddress(this) ?: DiPlayBootstrap.deviceId(airPlayIdentity),
             sourceVersion = "950.7.1",
             main = declared,
             cluster = if (e01) null else clusterDisplayConfig(),
@@ -3927,6 +3929,14 @@ class CarPlayHostActivity : ComponentActivity() {
         val description = status.describe()
         setConnectionStage(description)
         if (status is CarPlayStatus.Failed) {
+            FactoryBluetoothSettings.failureCopy(this, status.message)?.let {
+                FactoryBluetoothSettings.recordResult(this, status.message)
+                stageStatusView?.text = it
+                startupRetryStopped = true
+                startupRetryButton?.visibility = View.VISIBLE
+                appendLog("factory Bluetooth experiment stopped: ${status.message}")
+                return@report
+            }
             AndroidBluetoothFailureCopy.forControllerMessage(this, status.message)?.let { stageStatusView?.text = it }
         }
         when (status) {
@@ -4748,6 +4758,7 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun friendlyStage(message: String): String = when {
+        FactoryBluetoothSettings.failureCopy(this, message) != null -> FactoryBluetoothSettings.failureCopy(this, message)!!
         message == getString(R.string.waiting_for_mfi_coprocessor) ||
             message == getString(R.string.requesting_mfi_usb_permission) -> message
         message.contains("Turn on Wi-Fi", true) -> getString(R.string.turn_on_wi_fi_in_the_head_unit_s_settings_to_connect)

@@ -1,0 +1,15 @@
+<resources>
+    <string name="factory_bt_title">原厂蓝牙实验</string>
+    <string name="factory_bt_enabled">使用车机原厂蓝牙</string>
+    <string name="factory_bt_description">先在原厂电话应用中配对 iPhone，再在下方选择手机。本版尝试原厂数据接口，能否连接 CarPlay 需要实车确认。</string>
+    <string name="factory_bt_reading">正在读取车机原厂配对列表…</string>
+    <string name="factory_bt_error_sdk">未能加载车机内的 ECARX 蓝牙接口。请记录此错误码。</string>
+    <string name="factory_bt_error_spp">原厂接口未提供可用的 SPP 数据通道，本版无法通过该接口继续连接。</string>
+    <string name="factory_bt_error_settings">原厂蓝牙尚未就绪，或无法取得其本机地址。请在原厂电话应用中打开蓝牙。</string>
+    <string name="factory_bt_error_phone">原厂配对列表中没有找到所选 iPhone。请先在原厂电话应用中配对，再重新选择手机。</string>
+    <string name="factory_bt_error_callback">原厂数据回调被拒绝、接口不兼容，或手机已有其他数据连接。</string>
+    <string name="factory_bt_error_connect">原厂数据连接被拒绝或超时。请解锁已配对的 iPhone 并保持手机蓝牙开启。</string>
+    <string name="factory_bt_error_data">原厂数据通道已断开或收发失败。请记录此错误码。</string>
+    <string name="factory_bt_error_iap2">原厂数据通道已打开，但 CarPlay 握手没有完成。蓝牙连接成功尚不代表支持 CarPlay。</string>
+    <string name="factory_bt_error_timeout">原厂接口长时间无响应。请关闭并重新打开 DiPlay 后再试。</string>
+</resources>
