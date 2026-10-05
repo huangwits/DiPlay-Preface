@@ -1,5 +1,9 @@
 # Updating the Android 5.1 E01 adaptation
 
+Maintenance follows the original DiPlay project and carlito’s Geely upstream, with Android 5.1 / API 22 and E01 as the compatibility target. The user-provided APK remains a local reference for interface behavior; it is not described in the public README. Historical Android43 contributions retain attribution in THIRD_PARTY_NOTICES.md. New compatibility work should address the E01 target rather than expand Android 4.3 support.
+
+Keep one bilingual root README.md, Chinese first and English below. Release descriptions use the same language order; version tags remain stable identifiers.
+
 The maintained base is `carlito12345/DiPlay`, which integrates changes from `shihabal3amri/DiPlay`. Prefer the Geely base so that original-author updates do not bypass Geely modifications.
 
 `main` is the sole long-lived branch and owns this project's Android 5.1 / E01 compatibility changes. Release tags preserve published source versions. The initial adaptation was based on `049e080`. The integrated 2026-10-05 update includes carlito `84050d6` and original-author `2fc876e` (0.2.12), extending the earlier `14abe4f` / `a1f8e45` candidate in the retained Git history.
