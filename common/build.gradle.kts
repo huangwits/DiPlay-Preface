@@ -37,3 +37,10 @@ dependencies {
     testImplementation("org.mockito:mockito-core:5.20.0")
     testImplementation(project(":jmdns"))
 }
+
+// Opt-in release verification consumes the actual APK without checking credentials into Git.
+val validationApk = providers.environmentVariable("DIPLAY_VALIDATION_APK")
+tasks.withType<Test>().configureEach {
+    systemProperty("diplay.validationApk", validationApk.getOrElse(""))
+    if (validationApk.isPresent) inputs.file(validationApk)
+}
