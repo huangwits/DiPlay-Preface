@@ -1,41 +1,31 @@
-# DiPlay Preface — Android 5.1 / E01
+# DiPlay Preface · E01
 
-[中文说明](README.zh-CN.md)
+An experimental CarPlay receiver adaptation for the **2020 Geely Preface / GKUI / ECARX E01 (MT6735) / Android 5.1**.
 
-[Download APKs — v0.2.11-preface-e01.1](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.11-preface-e01.1)
+[Download 0.2.12 APK](https://github.com/huangwits/DiPlay-Preface/releases/download/v0.2.12-preface-e01.1/DiPlay-Preface-0.2.12-E01-Android51-source-only.apk) · [Release notes and assets](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.1) · [All releases](https://github.com/huangwits/DiPlay-Preface/releases) · [中文](README.zh-CN.md)
 
-Open **Assets** on the release page. Download the E01 main APK or the standalone Bluetooth diagnostics APK, not the source-code archives. The release notes specify the main APK's authentication configuration. SHA-256 checksums are included. This is an experimental prerelease, not verified vehicle support.
+> The public APK is a source-only preview without accessory authentication materials. It cannot independently complete an iPhone connection. Vehicle connectivity and audiovisual compatibility have not been validated.
 
-The published main APK is explicitly **source-only**: it contains no accessory authentication materials and is not a standalone iPhone-connection build. The diagnostic APK works independently. [Download both APKs and installation instructions as a ZIP](https://github.com/huangwits/DiPlay-Preface/releases/download/v0.2.11-preface-e01.1/DiPlay-Preface-v0.2.11-preface-e01.1-installers.zip).
+## Installation
 
-Experimental adaptation for the owner's 2020 Geely Preface flagship, GKUI ECARX E01 / MT6735, Android 5.1 (API 22).
+Release assets contain the main APK, a ZIP with that APK and Chinese installation instructions, and SHA-256 checksums. GitHub's automatically generated source-code archives are not installable APKs.
 
-- Geely base: [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay), commit `049e080bc3a3a6952e2a99732bfb8353fbc401ac` (0.2.11).
-- Original project: [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay).
-- Legacy compatibility source: [xikai6282/DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43).
-- Maintained adaptation branch: `android51-e01`. `main` retains the fork's upstream snapshot; it is not the Android 5.1 build.
+1. Download the main APK or extract the installation ZIP.
+2. While parked, transfer the APK through an available USB drive or file-transfer method and install it with the head unit's file manager.
+3. The app is **DiPlay E01 Legacy**, package `com.shihab.diplay.e01legacy`. An older build with the same package and signer can be updated in place.
 
-The fork's initial main (`6b2b3b9`) contains newer upstream changes that are **not yet integrated into this validated adaptation**. See [update workflow](docs/UPSTREAM_SYNC.md).
+Minimum Android 5.1 / API 22; ARMv7 and ARM64. E01 defaults use H.264, 30 fps and an aspect-preserving canvas limited to a 960-pixel long edge and a 540-pixel short edge.
 
-## Status
+## Adaptation and validation
 
-Minimum API 22; ARMv7 and ARM64 E01 APK; H.264/30 fps low-load defaults. Local regression: 839 tests passed (833 main-project tests and 6 diagnostic-tool tests). Android NewApi checks passed for common/shared/mobile. The first GitHub Actions build passed. These checks do not establish vehicle runtime compatibility.
+Legacy Android paths cover audio focus, playback, recording, video surfaces, system services and permissions. Version 0.2.12 integrates connection-flow, resolution, steering-control, dashboard, Geely audio and HUD changes. Availability depends on the installed firmware.
 
-**E01 vendor wireless Bluetooth is not implemented.** The factory telephone/music works, but the owner's standard Android adapter is unavailable. Standard RFCOMM cannot be replaced by a vendor power-state query. The included `diagnostics` app reads firmware and candidate factory Bluetooth application metadata without a computer; it does not fix or initialize the vendor stack.
+Main-app builds, unit tests, API compatibility checks and APK signatures were verified. These checks do not establish vehicle runtime compatibility. See the [release notes](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.1).
 
-## Build and downloads
+## Sources and development
 
-Use **Releases** for tagged installation packages. For development builds, use **Actions → Android 5.1 E01 checks**. Its artifact contains:
+Based on [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay), with legacy compatibility from [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43). The original project is [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay).
 
-- An E01 **source-only** APK, without accessory authentication. It must not be presented as a standalone iPhone connection package.
-- A standalone Bluetooth diagnostic APK (no accessory identity needed).
+The 0.2.12 APK was built from verified commit `17e526f`, including carlito `84050d6` and original-author `2fc876e`. Release tags identify release source. The default `android51-e01` branch and update candidates are maintained through pull requests; `main` retains an upstream snapshot.
 
-Local equivalent:
-
-```sh
-./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :diagnostics:testDebugUnitTest :shared:lintDebug :common:lintDebug :mobile:lintE01 :mobile:assembleE01 :diagnostics:assembleRelease -I scripts/android51-api-lint.init.gradle
-```
-
-Standalone vehicle builds use explicitly provisioned local authentication inputs and `:mobile:assembleStandaloneE01`; see [build instructions](docs/BUILD.md). No keys, certificates, local authentication assets or APKs are committed to Git history. Installation packages are distributed as Release assets with their configuration documented in the release notes.
-
-[E01 implementation and limits](docs/ECARX-E01-ANDROID51.md) · [upstream README](docs/CARLITO-README.en.md) · [licenses and credits](docs/THIRD_PARTY_NOTICES.md) · [LICENSE](LICENSE)
+[Build instructions](docs/BUILD.md) · [Build checks](https://github.com/huangwits/DiPlay-Preface/actions/workflows/android51.yml) · [Credits and licenses](docs/THIRD_PARTY_NOTICES.md) · [LICENSE](LICENSE)
