@@ -5,7 +5,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import com.shilapi.xcertplay.compat.Base64Compat
-import com.shilapi.xcertplay.compat.CharsetsCompat
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
 import com.shilapi.xcertplay.iap2.message.Iap2AuthenticationMessages
@@ -223,7 +223,7 @@ class RemoteMfiAuthenticationClient(
             connection.setRequestProperty("Accept", JSON_CONTENT_TYPE)
             bearerToken?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
             if (requestBody != null) {
-                val bodyBytes = requestBody.toByteArray(CharsetsCompat.UTF_8)
+                val bodyBytes = requestBody.toByteArray(StandardCharsets.UTF_8)
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", JSON_CONTENT_TYPE)
                 connection.setFixedLengthStreamingMode(bodyBytes.size)
@@ -251,7 +251,7 @@ class RemoteMfiAuthenticationClient(
             }
             output.write(buffer, 0, count)
         }
-        return output.toString(CharsetsCompat.UTF_8.name())
+        return output.toString(StandardCharsets.UTF_8.name())
     }
 
     private fun decodeBase64(encoded: String, field: String): ByteArray = try {

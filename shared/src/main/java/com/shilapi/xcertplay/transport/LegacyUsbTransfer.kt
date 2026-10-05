@@ -6,12 +6,12 @@ import android.os.Build
 import android.os.SystemClock
 
 /**
- * Synchronous USB bulk transfers for Android 4.3.
+ * Synchronous USB bulk transfers for API 22–25, before bounded UsbRequest waits.
  *
  * The queue(ByteBuffer) and requestWait(timeout) overloads used by the modern path require API 26.
  * Older queue(ByteBuffer, length) and requestWait() exist from API 12, but lack that bounded wait.
  * Older units use synchronous bulkTransfer(). Its (endpoint, byte[], offset, length, timeout) overload was
- * added in API 18, which is this project's floor, so transfers move in place without a per-chunk
+ * available throughout this project's API 22+ range, so transfers move in place without a per-chunk
  * scratch copy.
  *
  * Before API 28 the platform silently truncates any bulkTransfer longer than 16 KB, on every release

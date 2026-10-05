@@ -14,7 +14,7 @@ val modernAudioSupported: Boolean
     @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.M)
     get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
-/** Keep AudioAttributes and AudioFormat out of API 18 classes and method descriptors. */
+/** Builder-based audio creation for API 23 and later; API 22 uses constructors. */
 @RequiresApi(Build.VERSION_CODES.M)
 object ModernAudio {
     fun attributes(usage: Int, contentType: Int, legacyStreamType: Int?): Any {

@@ -6,13 +6,8 @@ import android.os.Build
 import com.shilapi.xcertplay.compat.UsbCompat
 
 /**
- * A platform-independent view of the device's active USB configuration.
- *
- * The typed UsbDevice.getConfiguration()/UsbConfiguration.getInterface() accessors are API 21, so
- * on Android 4.3 a project-owned view is built from UsbDevice.getInterface() — API 12 — and the
- * configuration id and per-interface alternate setting are recovered from rawDescriptors, which the
- * framework exposes on every release. Callers therefore work against one shape on both old and new
- * units instead of silently receiving null on 4.3.
+ * A view of the selected USB configuration. API 22 exposes typed configurations; raw descriptors
+ * remain a fallback for incomplete firmware layouts and preserve alternate-setting selection.
  */
 data class UsbDeviceLayout(
     val configurationId: Int,
@@ -41,12 +36,9 @@ data class UsbInterfaceView(
 
 object UsbDeviceLayoutReader {
 
-    /**
-     * UsbDeviceConnection.getRawDescriptors() has existed since API 13, so it is reachable on 4.3;
-     * it is read reflectively only to keep the call site off the typed accessor list.
-     */
+    /** Reads descriptor bytes without relying on firmware reflection. */
     fun rawDescriptors(connection: UsbDeviceConnection): ByteArray = runCatching {
-        UsbDeviceConnection::class.java.getMethod("getRawDescriptors").invoke(connection) as? ByteArray
+        connection.rawDescriptors
     }.getOrNull() ?: ByteArray(0)
 
     /**
@@ -57,23 +49,21 @@ object UsbDeviceLayoutReader {
      * SET_CONFIGURATION with wValue 0 de-configures the device.
      */
     fun read(device: UsbDevice, connection: UsbDeviceConnection): UsbDeviceLayout {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            val configurations = (0 until UsbCompat.configurationCount(device))
-                .mapNotNull { UsbCompat.configuration(device, it) }
-            // Preserve the original selection: prefer a configuration carrying both the Apple
-            // USB Multiplex and the CDC-NCM control interface rather than blindly taking index 0.
-            val preferred = configurations.firstOrNull { candidate ->
-                IphoneCarPlayConfiguration.hasUsbMux(candidate) &&
-                    IphoneCarPlayConfiguration.hasCdcNcm(candidate)
-            } ?: configurations.firstOrNull { IphoneCarPlayConfiguration.hasUsbMux(it) }
-                ?: configurations.firstOrNull()
-            if (preferred != null) {
-                val interfaces = (0 until UsbCompat.interfaceCount(preferred))
-                    .mapNotNull { UsbCompat.usbInterface(preferred, it) }
-                    .map { UsbInterfaceView(it, UsbCompat.alternateSetting(it)) }
-                if (interfaces.isNotEmpty()) {
-                    return UsbDeviceLayout(UsbCompat.configurationId(preferred), interfaces)
-                }
+        val configurations = (0 until UsbCompat.configurationCount(device))
+            .mapNotNull { UsbCompat.configuration(device, it) }
+        // Preserve the original selection: prefer a configuration carrying both the Apple
+        // USB Multiplex and the CDC-NCM control interface rather than blindly taking index 0.
+        val preferred = configurations.firstOrNull { candidate ->
+            IphoneCarPlayConfiguration.hasUsbMux(candidate) &&
+                IphoneCarPlayConfiguration.hasCdcNcm(candidate)
+        } ?: configurations.firstOrNull { IphoneCarPlayConfiguration.hasUsbMux(it) }
+            ?: configurations.firstOrNull()
+        if (preferred != null) {
+            val interfaces = (0 until UsbCompat.interfaceCount(preferred))
+                .mapNotNull { UsbCompat.usbInterface(preferred, it) }
+                .map { UsbInterfaceView(it, UsbCompat.alternateSetting(it)) }
+            if (interfaces.isNotEmpty()) {
+                return UsbDeviceLayout(UsbCompat.configurationId(preferred), interfaces)
             }
         }
         return fromDescriptors(device, connection)
@@ -81,7 +71,7 @@ object UsbDeviceLayoutReader {
 
     /**
      * Builds the view from UsbDevice.getInterface() (API 12) plus the connection's rawDescriptors.
-     * Used on API 18-20 where the typed configuration accessors do not exist.
+     * Used when the firmware supplies no complete typed configuration.
      */
     fun fromDescriptors(device: UsbDevice, connection: UsbDeviceConnection): UsbDeviceLayout {
         val descriptors = rawDescriptors(connection)

@@ -1507,9 +1507,7 @@ class DiPlayActivity : ComponentActivity() {
             }
         })
         val error = label("", 14, WARNING)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            error.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        }
+        error.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         fields.addView(error)
         val dialog = AlertDialog.Builder(this).setTitle(getString(if (existingWifi) R.string.existing_wifi_details else R.string.car_hotspot_details))
             .setView(ScrollView(this).apply { addView(fields) })
@@ -2888,14 +2886,12 @@ class DiPlayActivity : ComponentActivity() {
                 .setMessage(summary)
                 .setPositiveButton(
                     getString(when {
-                        saveReport && Build.VERSION.SDK_INT < 19 -> R.string.bt_stack_copy_report
                         saveReport -> R.string.bt_stack_save_report
                         adapterEnabled -> R.string.done
                         else -> R.string.bt_stack_open_android_settings
                     }),
                 ) { _, _ ->
-                    if (saveReport && Build.VERSION.SDK_INT < 19) copyBluetoothDiagnosticSummary()
-                    else if (saveReport) chooseReportDestination()
+                    if (saveReport) chooseReportDestination()
                     else if (!adapterEnabled) openSystem(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                 }
                 .setNegativeButton(getString(R.string.later)) { _, _ -> pendingWireless = false }
@@ -3047,10 +3043,6 @@ class DiPlayActivity : ComponentActivity() {
     private fun reportFileName() = "DiPlay-${SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())}.txt"
 
     private fun chooseReportDestination() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
-            toast(getString(R.string.this_head_unit_has_no_available_file_picker_to_save_the_re))
-            return
-        }
         // Some head units omit or disable DocumentsUI. Launch itself can throw, before
         // the result callback and the background writer's exception handler ever run.
         if (exportInProgress) return
@@ -3294,11 +3286,11 @@ class DiPlayActivity : ComponentActivity() {
 
     /** ImageView.setImageTintList and CompoundButton.setButtonTintList are API 21. */
     private fun ImageView.tintCompat(color: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) imageTintList = ColorStateList.valueOf(color)
+        imageTintList = ColorStateList.valueOf(color)
     }
 
     private fun Switch.tintButtonCompat(color: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) buttonTintList = ColorStateList.valueOf(color)
+        buttonTintList = ColorStateList.valueOf(color)
     }
 
     private fun paintChannel(index: Int, selected: Boolean) {
@@ -3321,7 +3313,7 @@ class DiPlayActivity : ComponentActivity() {
                 isAllCaps = false
                 textSize = 16f
                 minHeight = dp(48)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) stateListAnimator = null
+                stateListAnimator = null
                 setOnClickListener {
                     val previous = navigationStreamType
                     navigationStreamType = i
@@ -3335,11 +3327,7 @@ class DiPlayActivity : ComponentActivity() {
             val params = GridLayout.LayoutParams().apply {
                 width = 0
                 height = dp(48)
-                columnSpec = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                } else {
-                    GridLayout.spec(GridLayout.UNDEFINED)
-                }
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
                 setMargins(dp(4), dp(4), dp(4), dp(4))
             }
             grid.addView(btn, params)
@@ -3406,14 +3394,10 @@ class DiPlayActivity : ComponentActivity() {
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(-1, -2) }
     private fun row() = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(-1, -2) }
     private var TextView.trackedSpacing: Float
-        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) letterSpacing else 0f
-        set(value) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) letterSpacing = value }
+        get() = letterSpacing
+        set(value) { letterSpacing = value }
     private fun ripple(content: android.graphics.drawable.Drawable): android.graphics.drawable.Drawable =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x336F9FD9), content, null)
-        } else {
-            content
-        }
+        android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x336F9FD9), content, null)
     private fun label(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
         text = value; textSize = size.toFloat(); setTextColor(color); gravity = Gravity.CENTER_VERTICAL
         typeface = if (bold) Typeface.create("sans-serif-medium", Typeface.NORMAL) else Typeface.create("sans-serif", Typeface.NORMAL)
@@ -3424,7 +3408,7 @@ class DiPlayActivity : ComponentActivity() {
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         background = ripple(rounded(if (primary) ACCENT else SURFACE, if (primary) ACCENT else BORDER))
         setPadding(dp(16), 0, dp(16), 0); minHeight = dp(56)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) stateListAnimator = null
+        stateListAnimator = null
         setOnClickListener { click() }
     }
     private fun rounded(color: Int, stroke: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(20).toFloat(); setStroke(dp(1), stroke) }

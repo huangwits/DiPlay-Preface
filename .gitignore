@@ -39,6 +39,10 @@ release-signing.properties
 *.key
 *.apk
 *.aab
+
+# Python maintenance helpers
+__pycache__/
+*.pyc
 # Private administration and local maintenance files
 /.github/workflows/android51.yml
 /.github/workflows/sync-upstream.yml

@@ -295,7 +295,7 @@ class WifiP2pGroupManager(
         if (removeGroup && activeChannel != null) {
             removeGroupBlocking(activeChannel)
         }
-        // WifiP2pManager.Channel.close was added in API 27; API 18 releases its handler thread.
+        // WifiP2pManager.Channel.close was added in API 27; API 22 releases its handler thread.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) activeChannel?.close()
         activeThread?.quitSafely()
     }
@@ -551,20 +551,16 @@ class WifiP2pGroupManager(
     @Suppress("DEPRECATION")
     private fun readStation(): Station = runCatching {
         val info = appContext.systemService(WifiManager::class.java, "wifi")?.connectionInfo
-        val frequency = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        val frequency = run {
             info?.frequency?.takeIf { it > 0 }
-        } else {
-            null
         }
         Station(info?.supplicantState, frequency)
     }.getOrDefault(Station(null, null))
 
     private fun checkPrerequisites(station: Station) {
         val wifi = appContext.systemService(WifiManager::class.java, "wifi")
-        val fiveGhzSupported = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        val fiveGhzSupported = run {
             runCatching { wifi?.is5GHzBandSupported }.getOrNull()
-        } else {
-            null
         }
         val wifiEnabled = runCatching { wifi?.isWifiEnabled }.getOrNull()
         val locationEnabled = runCatching {
