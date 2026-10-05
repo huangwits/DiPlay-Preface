@@ -25,8 +25,10 @@
     <string name="marker_up">上</string>
     <string name="marker_down">下</string>
     <string name="marker_centre_default">居中 · 默认</string>
-    <string name="hotspot_mode_manual_desc">使用车机自带的热点。若车机支持，请在热点设置中选择 5 GHz。</string>
-    <string name="hotspot_mode_p2p_desc">由车机创建无线网络，iPhone 自动加入。请开启车机 Wi-Fi；使用 2.4 GHz 时可能出现卡顿。</string>
+    <string name="hotspot_mode_auto_desc">自动使用可用的车机热点，或准备兼容的无线连接。</string>
+    <string name="hotspot_hint_auto">DiPlay 会自动选择并准备可用的无线连接。</string>
+    <string name="hotspot_mode_manual_desc">使用车机自带热点。若车机支持，请在车机设置中选择 5 GHz。</string>
+    <string name="hotspot_mode_p2p_desc">备选方案。需要打开车机 Wi-Fi 开关；2.4 GHz 连接可能会卡顿。</string>
     <string name="hotspot_details_off">热点已关闭 · 请在车机设置中开启。</string>
     <string name="hotspot_details_saved">详情已保存 · 连接前请确认车机热点已开启。</string>
     <string name="permission_enabled_ready">权限已启用 · 可以使用</string>
@@ -69,6 +71,7 @@
     <string name="mapping_aaos_buses">AAOS 总线</string>
     <string name="mapping_mobile_compatible">移动设备兼容</string>
     <string name="status_hotspot_ready">热点就绪：%1$s、%2$s、%3$s，信道 %4$s</string>
+    <string name="status_wireless_ready">无线连接已就绪：%1$s</string>
     <string name="status_waiting_reenumeration">正在等待 iPhone 重新识别为 USB 设备</string>
     <string name="status_attaching_ncm">正在连接 NCM/AirPlay 网络</string>
     <string name="status_failed">失败：%1$s</string>
@@ -182,7 +185,7 @@
     <string name="default_icon">默认图标</string>
     <string name="default_placeholder_icon">默认占位图标</string>
     <string name="diagnostic_report_saved">诊断报告已保存</string>
-    <string name="diagnostics">诊断</string>
+    <string name="diagnostics">收集日志</string>
     <string name="diplay">DiPlay</string>
     <string name="discard_changes_and_exit_settings">放弃更改并退出设置</string>
     <string name="disconnect">断开连接</string>
@@ -657,6 +660,7 @@
     <string name="diagnostic_report_saved_in_app">由于公共保存位置不可用，报告已私密保存到 DiPlay。您可以在此分享或查看报告。不会自动发送任何内容。</string>
     <string name="diagnostic_report_saved_to_path">报告已保存到：\n%1$s\n\n您也可以在此分享或查看报告。不会自动发送任何内容。</string>
     <string name="view_diagnostic_report">查看报告</string>
+    <string name="report_share_failed">无法打开分享，请重试，或在文件管理器中分享已保存的报告。</string>
     <string name="diagnostic_report_copy_hint">长按报告文本即可选择并复制。如果没有可用的分享应用，可以使用此方式。</string>
     <string name="video_requires_android_6">驻车视频播放需要 Android 6.0 或更高版本。</string>
     <string name="geely_audio_profile">吉利 H52 音频通道</string>
@@ -738,8 +742,20 @@
     <string name="wheel_zoom_mode_off">音量键已恢复调节音量</string>
     <string name="wheel_zoom_note_zoom">地图缩放</string>
     <string name="wheel_zoom_note_volume">音量</string>
+    <string name="wheel_joystick">方向盘 CarPlay 摇杆</string>
+    <string name="wheel_joystick_description">比亚迪媒体键可开启或关闭用于 CarPlay 中控屏的摇杆，就像车上的旋钮控制器。开启时，音量滚轮或 ⏮ ⏭ 移动选择，⏯ 确认，自定义按键返回；这些按键此时不再控制音乐和音量。通话时按键用于通话。部分车型中控台的音量也会移动选择。</string>
+    <string name="wheel_joystick_auto_off">摇杆自动关闭</string>
+    <string name="wheel_joystick_auto_off_description">15 秒内无按键操作或开始导航时，按键恢复控制音乐和音量。</string>
+    <string name="wheel_joystick_on">摇杆已开启</string>
+    <string name="wheel_joystick_off">摇杆已关闭</string>
+    <string name="wheel_joystick_hint">音量滚轮或 ⏮ ⏭ 移动 · ⏯ 确认 · 自定义按键返回 · 媒体键关闭</string>
+    <string name="wheel_key_role_joystick">摇杆</string>
+    <string name="wheel_key_role_previous">上一项</string>
+    <string name="wheel_key_role_next">下一项</string>
+    <string name="wheel_key_role_select">确认</string>
+    <string name="wheel_key_role_back">返回</string>
     <string name="wheel_key_service_label">DiPlay 方向盘按键</string>
-    <string name="wheel_key_service_description">让 DiPlay 使用在设置中选择的方向盘按键缩放仪表盘上的 CarPlay 地图。它只接收按键，不读取屏幕内容。</string>
+    <string name="wheel_key_service_description">让 DiPlay 使用在设置中选择的方向盘按键缩放仪表盘上的 CarPlay 地图，并在 CarPlay 屏幕上移动选择。它只接收按键，不读取屏幕内容。</string>
     <string name="cluster_song_on_change">仅在切歌时显示</string>
     <string name="cluster_song_on_change_description">新歌曲在仪表盘上显示 5 秒，然后清空卡片。暂停和继续播放不会再次显示。</string>
     <string name="cluster_safe_area_edit">仪表安全区域 · 编辑框</string>
@@ -753,4 +769,8 @@
     <string name="oem_cluster_hold_package">禁用整个原车地图</string>
     <string name="song_on_hud">HUD 显示曲名或歌词</string>
     <string name="song_on_hud_description">无导航指引时显示手机提供的曲名或歌词，导航方向和道路名称优先。</string>
+    <string name="hotspot_network_not_ready">热点网络未就绪</string>
+    <string name="first_tcp_timeout">等待 iPhone 接入 CarPlay 超时</string>
+    <string name="wireless_startup_retries_exhausted">自动重试已停止，请检查连接后手动重试。</string>
+    <string name="retry_carplay_connection">重新连接</string>
 </resources>
