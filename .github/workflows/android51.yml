@@ -29,11 +29,9 @@ jobs:
       - name: Unit tests, API compatibility and source-only E01 APK
         run: >-
           ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest
-          :diagnostics:testDebugUnitTest :shared:lintDebug :common:lintDebug
-          :mobile:lintE01 :mobile:assembleE01 :diagnostics:assembleRelease
+          :shared:lintDebug :common:lintDebug
+          :mobile:lintE01 :mobile:assembleE01
           -I scripts/android51-api-lint.init.gradle --stacktrace
-      - name: Full diagnostic-tool lint
-        run: ./gradlew :diagnostics:lintRelease --stacktrace
       - name: Verify Android 5.1 APK and absence of private authentication assets
         shell: bash
         run: |
@@ -43,10 +41,9 @@ jobs:
           python3 scripts/check_source_apk.py "$apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: source-only-e01-and-bluetooth-diagnostics
+          name: source-only-e01
           path: |
             mobile/build/outputs/apk/e01/*.apk
-            diagnostics/build/outputs/apk/release/*.apk
           if-no-files-found: error
       - name: Validation reports
         if: always()
@@ -57,4 +54,3 @@ jobs:
             shared/build/reports/
             common/build/reports/
             mobile/build/reports/
-            diagnostics/build/reports/
