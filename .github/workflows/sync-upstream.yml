@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: android51-e01
+          ref: main
           fetch-depth: 0
       - name: Prepare update branch
         id: merge
@@ -39,7 +39,7 @@ jobs:
           fi
           git switch -c "$branch"
           if ! git merge --no-ff --no-edit "$sha"; then
-            echo 'Conflicts require manual resolution; nothing was pushed and android51-e01 was not changed.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Conflicts require manual resolution; nothing was pushed and main was not changed.' >> "$GITHUB_STEP_SUMMARY"
             git diff --name-only --diff-filter=U >> "$GITHUB_STEP_SUMMARY"
             git merge --abort
             exit 1
@@ -61,7 +61,7 @@ jobs:
 
           This is an unverified update candidate. Review API compatibility, run Android 5.1 E01 checks and test on the vehicle before merging. A clean Git merge does not establish Android 5.1 or vendor Bluetooth compatibility.
           EOF
-          if [[ "$(gh pr list --base android51-e01 --head "$UPDATE_BRANCH" --state open --json number --jq 'length')" == 0 ]]; then
-            gh pr create --base android51-e01 --head "$UPDATE_BRANCH" --draft \
+          if [[ "$(gh pr list --base main --head "$UPDATE_BRANCH" --state open --json number --jq 'length')" == 0 ]]; then
+            gh pr create --base main --head "$UPDATE_BRANCH" --draft \
               --title 'Review carlito updates for Android 5.1 E01' --body-file "$RUNNER_TEMP/update-body.md"
           fi

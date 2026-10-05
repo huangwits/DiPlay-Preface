@@ -26,6 +26,6 @@ Main-app builds, unit tests, API compatibility checks and APK signatures were ve
 
 Based on [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay), with legacy compatibility from [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43). The original project is [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay).
 
-The 0.2.12 APK was built from verified commit `17e526f`, including carlito `84050d6` and original-author `2fc876e`. Release tags identify release source. The default `android51-e01` branch and update candidates are maintained through pull requests; `main` retains an upstream snapshot.
+The 0.2.12 APK was built from verified commit `17e526f`, including carlito `84050d6` and original-author `2fc876e`. Release tags identify release source. `main` is the sole long-lived branch and contains the Android 5.1 / E01 adaptation. Upstream updates use temporary `sync/carlito-<sha>` branches, deleted after their pull requests are merged.
 
 [Build instructions](docs/BUILD.md) · [Build checks](https://github.com/huangwits/DiPlay-Preface/actions/workflows/android51.yml) · [Credits and licenses](docs/THIRD_PARTY_NOTICES.md) · [LICENSE](LICENSE)

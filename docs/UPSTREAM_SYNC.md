@@ -2,9 +2,9 @@
 
 The maintained base is `carlito12345/DiPlay`, which integrates changes from `shihabal3amri/DiPlay`. Prefer the Geely base so that original-author updates do not bypass Geely modifications.
 
-`android51-e01` owns this project's compatibility changes. `main` retains the fork's upstream snapshot. The initial adaptation was based on `049e080`. The latest 2026-10-05 candidate integrates carlito `84050d6` and original-author `2fc876e` (0.2.12), extending the earlier `14abe4f` / `a1f8e45` candidate on the existing review PR.
+`main` is the sole long-lived branch and owns this project's Android 5.1 / E01 compatibility changes. Release tags preserve published source versions. The initial adaptation was based on `049e080`. The integrated 2026-10-05 update includes carlito `84050d6` and original-author `2fc876e` (0.2.12), extending the earlier `14abe4f` / `a1f8e45` candidate in the retained Git history.
 
-The **Review carlito updates** workflow is manual. It fetches carlito main and attempts a merge on `sync/carlito-<sha>`. If conflicts occur, it reports the files and pushes nothing. If successful, it pushes a candidate, explicitly dispatches **Android 5.1 E01 checks**, and opens a draft PR targeting `android51-e01`. GitHub must allow Actions to create pull requests. No automatic merge occurs; a clean Git merge is not proof of runtime compatibility.
+The **Review carlito updates** workflow is manual. It fetches carlito main and attempts a merge on `sync/carlito-<sha>`. If conflicts occur, it reports the files and pushes nothing. If successful, it pushes a candidate, explicitly dispatches **Android 5.1 E01 checks**, and opens a draft PR targeting `main`. GitHub must allow Actions to create pull requests. Delete temporary update branches after merging. No automatic merge occurs; a clean Git merge is not proof of runtime compatibility.
 
 Use **Actions → Review carlito updates → Run workflow** after the adaptation branch is set as the repository default. Existing workflow branches are not force-pushed. Check for an existing draft before retrying. Review the actual candidate commit's workflow results before merging. PR and workflow creation may require enabling Actions in a new fork.
 

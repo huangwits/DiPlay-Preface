@@ -1,9 +1,9 @@
 name: Android 5.1 E01 checks
 on:
   push:
-    branches: [android51-e01, 'sync/carlito-*']
+    branches: [main, 'sync/carlito-*']
   pull_request:
-    branches: [android51-e01]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read

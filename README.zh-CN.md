@@ -35,6 +35,6 @@ GitHub 自动生成的 `Source code (zip)` / `Source code (tar.gz)` 是源码，
 
 以 [carlito12345/DiPlay 吉利适配版](https://github.com/carlito12345/DiPlay) 为基础，整合 [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43) 的旧系统兼容代码；原项目为 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)。
 
-0.2.12 基于已验证的源码提交 `17e526f`，包含 carlito `84050d6` 和原作者 `2fc876e`。Release 标签对应发布源码；默认分支 `android51-e01` 与更新候选通过 PR 维护，`main` 保留上游快照。
+0.2.12 基于已验证的源码提交 `17e526f`，包含 carlito `84050d6` 和原作者 `2fc876e`。Release 标签对应发布源码；`main` 为唯一长期维护分支，包含 Android 5.1 / E01 适配；上游更新使用临时 `sync/carlito-<sha>` 分支，通过 PR 合并后删除。
 
 [构建说明](docs/BUILD.md) · [构建检查](https://github.com/huangwits/DiPlay-Preface/actions/workflows/android51.yml) · [署名与许可证](docs/THIRD_PARTY_NOTICES.md) · [LICENSE](LICENSE)
