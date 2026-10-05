@@ -92,17 +92,14 @@ class CarPlayVpnService : VpnService() {
             }
             require(hostMac.size == 6) { "hostMac must be 6 bytes" }
 
-            val tunFd = Builder()
+            val builder = Builder()
                 .addAddress(linkLocal, LINK_PREFIX)
                 .addRoute(LINK_LOCAL_ROUTE, LINK_PREFIX)
                 .setSession(SESSION_NAME)
                 .setMtu(TUN_MTU)
                 .setBlocking(true)
-                // An empty app list routes every UID through this VPN. Scope it before establish;
-                // rejection must reach the existing attachment cleanup, never an unscoped retry.
                 .addAllowedApplication(packageName)
-                .establish()
-                ?: throw IOException("VpnService.establish returned null")
+            val tunFd = builder.establish() ?: throw IOException("VpnService.establish returned null")
             tun = tunFd
 
             val ipv6Bridge = Ipv6NcmBridge(ncm, tunFd, hostMac) { error ->
@@ -348,10 +345,10 @@ class CarPlayVpnService : VpnService() {
 
     companion object {
         private const val TAG = "xcertplay-usb"
-        private const val LINK_PREFIX = 64
-        private const val LINK_LOCAL_ROUTE = "fe80::"
-        private const val SESSION_NAME = "xcertplay CarPlay"
-        private const val TUN_MTU = 1500
+        internal const val LINK_PREFIX = 64
+        internal const val LINK_LOCAL_ROUTE = "fe80::"
+        internal const val SESSION_NAME = "xcertplay CarPlay"
+        internal const val TUN_MTU = 1500
 
         /** Returns the VPN consent intent, or null when consent is already granted. */
         fun prepare(context: Context): Intent? = VpnService.prepare(context)

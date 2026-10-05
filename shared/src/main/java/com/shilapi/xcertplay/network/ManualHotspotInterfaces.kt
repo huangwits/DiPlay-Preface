@@ -4,10 +4,12 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Network
 import android.net.TetheringInterface
 import android.net.TetheringManager
 import android.os.Build
 import androidx.annotation.RequiresApi
+import com.shilapi.xcertplay.compat.systemService
 import java.io.Closeable
 import java.io.File
 import java.net.NetworkInterface
@@ -17,13 +19,13 @@ internal class ManualHotspotInterfaces(
     private val context: Context,
     private val onDiagnostic: (String) -> Unit = {},
 ) : Closeable {
-    private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    private val connectivity = context.systemService(ConnectivityManager::class.java, Context.CONNECTIVITY_SERVICE)
     private val publicTethering = if (Build.VERSION.SDK_INT >= 36) PublicTethering(context) else null
     private var lastLegacyDiagnostic: String? = null
 
     fun sample(): HotspotNetworkSnapshot {
-        val ap = publicTethering?.interfaces ?: legacyApInterfaces()
-        val before = runCatching { connectivity?.activeNetwork }
+        val ap = (if (Build.VERSION.SDK_INT >= 36) publicTethering?.interfaces else null) ?: legacyApInterfaces()
+        val before = runCatching { defaultNetwork() }
         val upstreams = runCatching {
             checkNotNull(connectivity)
             connectivity.allNetworks.mapNotNull { network ->
@@ -32,9 +34,7 @@ internal class ManualHotspotInterfaces(
                 links.interfaceName?.takeIf { caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
             }.toSet()
         }.getOrNull()
-        val defaultName = runCatching {
-            before.getOrNull()?.let { connectivity?.getLinkProperties(it)?.interfaceName }
-        }.getOrNull()
+        val defaultName = before.getOrNull()?.second
         val interfaces = runCatching {
             Collections.list(NetworkInterface.getNetworkInterfaces()).mapNotNull { iface ->
                 runCatching {
@@ -45,12 +45,34 @@ internal class ManualHotspotInterfaces(
                 }.getOrNull()
             }
         }.getOrDefault(emptyList())
-        val after = runCatching { connectivity?.activeNetwork }
+        val after = runCatching { defaultNetwork() }
         return HotspotNetworkSnapshot(
             interfaces, ap, upstreams, defaultName,
             consistent = before.isSuccess && after.isSuccess && before.getOrNull() == after.getOrNull(),
             apEnabled = CarHotspotStatus.isEnabled(context),
         )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun defaultNetwork(): Pair<Network?, String?> {
+        val manager = checkNotNull(connectivity)
+        val network = if (Build.VERSION.SDK_INT >= 23) {
+            manager.activeNetwork
+        } else {
+            // API 22 has no getActiveNetwork(). Resolve the connected default type only
+            // when it identifies one network; ambiguous/missing observations reject the sample.
+            val active = manager.activeNetworkInfo?.takeIf { it.isConnected }
+            if (active == null) null else {
+                val matches = manager.allNetworks.filter { candidate ->
+                    manager.getNetworkInfo(candidate)?.let { it.isConnected && it.type == active.type } == true
+                }
+                check(matches.size == 1) { "Default network is not uniquely observable" }
+                matches.single()
+            }
+        }
+        return network to network?.let {
+            checkNotNull(manager.getLinkProperties(it)?.interfaceName) { "Default network interface is unavailable" }
+        }
     }
 
     // 旧平台只使用允许读取的结果；接口归属读不到时保持 unknown，不放宽普通网卡资格。
@@ -73,7 +95,7 @@ internal class ManualHotspotInterfaces(
         ap
     }.getOrNull()
 
-    override fun close() { publicTethering?.close() }
+    override fun close() { if (Build.VERSION.SDK_INT >= 36) publicTethering?.close() }
 
     @RequiresApi(36)
     private class PublicTethering(context: Context) : Closeable {

@@ -55,7 +55,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
                 detachWindow()
                 displayManager?.unregisterDisplayListener(this)
                 activityRef = WeakReference(activity)
-                displayManager = activity.getSystemService(DisplayManager::class.java)
+                displayManager = activity.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
                 displayManager?.registerDisplayListener(this, mainHandler)
             }
             refresh()
@@ -83,7 +83,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
 
     fun setEnabled(context: Context, enabled: Boolean) {
         AirPlayPersistence.saveGeelyHudEnabled(context, enabled)
-        if (enabled && context is Activity && !Settings.canDrawOverlays(context)) {
+        if (enabled && context is Activity && !com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context)) {
             runCatching {
                 context.startActivity(
                     Intent(
@@ -97,7 +97,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     }
 
     fun availableDisplays(context: Context): List<GeelyHudDisplay> =
-        context.getSystemService(DisplayManager::class.java)?.displays.orEmpty()
+        (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)?.displays.orEmpty()
             .asSequence()
             .filter { it.displayId != Display.DEFAULT_DISPLAY && it.state != Display.STATE_OFF }
             .map {
@@ -135,7 +135,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
         val displays = availableDisplays(context)
         return buildString {
             append("enabled=${AirPlayPersistence.loadGeelyHudEnabled(context)} ")
-            append("overlayPermission=${Settings.canDrawOverlays(context)} ")
+            append("overlayPermission=${com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context)} ")
             append("selectedId=$selectedId selectedName=${selectedName.ifBlank { "automatic" }} ")
             append("scale=${AirPlayPersistence.loadGeelyHudScalePercent(context)}% ")
             append("attachedId=$attachedDisplayId attachedSize=${attachedWidth}x$attachedHeight")
@@ -159,7 +159,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
         }
         if (!AirPlayPersistence.loadGeelyHudEnabled(activity) ||
             guidance == null ||
-            !Settings.canDrawOverlays(activity)
+            !com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(activity)
         ) {
             detachWindow()
             return
@@ -186,7 +186,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
             attachedWidth != displayWidth || attachedHeight != displayHeight
         ) {
             detachWindow()
-            val manager = displayContext.getSystemService(WindowManager::class.java) ?: return
+            val manager = (displayContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager) ?: return
             val view = GeelyHudGuidanceView(
                 displayContext,
                 AirPlayPersistence.loadGeelyHudScalePercent(activity),
@@ -194,7 +194,8 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
             val params = WindowManager.LayoutParams(
                 displayWidth,
                 displayHeight,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                if (android.os.Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else WindowManager.LayoutParams.TYPE_PHONE,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -222,8 +223,9 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
 
     private fun displaySize(context: Context, display: Display): Pair<Int, Int> {
         val metrics = context.createDisplayContext(display).resources.displayMetrics
-        return (metrics.widthPixels.takeIf { it > 0 } ?: display.mode.physicalWidth) to
-            (metrics.heightPixels.takeIf { it > 0 } ?: display.mode.physicalHeight)
+        val physical = android.graphics.Point().also(display::getRealSize)
+        return (metrics.widthPixels.takeIf { it > 0 } ?: physical.x).coerceAtLeast(1) to
+            (metrics.heightPixels.takeIf { it > 0 } ?: physical.y).coerceAtLeast(1)
     }
 
     private fun detachWindow() {

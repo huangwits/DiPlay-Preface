@@ -150,7 +150,7 @@ object AirPlayPersistence {
     }
 
     fun loadHevcEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        !E01Settings.enabled(context) && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_HEVC_ENABLED, false)
 
     fun loadUiScalePercent(context: Context): Int = CarPlayUiScale.sanitize(
@@ -170,7 +170,7 @@ object AirPlayPersistence {
     }
 
     fun loadHevcSoftwareDecoderEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        !E01Settings.enabled(context) && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_HEVC_SOFTWARE_DECODER, false)
 
     fun saveHevcSoftwareDecoderEnabled(context: Context, enabled: Boolean) {
@@ -202,6 +202,31 @@ object AirPlayPersistence {
     fun loadAudioFocusEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_AUDIO_FOCUS_ENABLED, GeelyFactoryCarPlay.load(context) != null)
+
+    fun loadGeelyAudioRouting(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("geely_h52_audio_routing", false)
+
+    fun saveGeelyAudioRouting(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("geely_h52_audio_routing", enabled).apply()
+    }
+
+    fun loadGeelyNavigationAlert(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("geely_h52_navigation_alert", false)
+
+    fun saveGeelyNavigationAlert(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("geely_h52_navigation_alert", enabled).apply()
+    }
+
+    fun loadGeelyBluetoothDiagnosticsEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean("geely_h52_bluetooth_diagnostics_enabled", false)
+
+    fun saveGeelyBluetoothDiagnosticsEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("geely_h52_bluetooth_diagnostics_enabled", enabled).apply()
+    }
 
     fun saveAudioFocusEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -493,7 +518,7 @@ object AirPlayPersistence {
             .putString(KEY_CARPLAY_NIGHT_MODE, mode.key).apply()
     }
 
-    fun loadFps(context: Context): Int = AirPlayDisplaySettings.sanitizeFps(
+    fun loadFps(context: Context): Int = if (E01Settings.enabled(context)) 30 else AirPlayDisplaySettings.sanitizeFps(
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_FPS, 30),
     )
@@ -562,7 +587,7 @@ object AirPlayPersistence {
     }
 
     fun loadClusterMapEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CLUSTER_MAP, false)
+        !E01Settings.enabled(context) && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CLUSTER_MAP, false)
 
     fun loadAdbClusterEnabled(context: Context): Boolean = loadClusterMapEnabled(context) &&
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ADB_CLUSTER_ACTIVITY, false)

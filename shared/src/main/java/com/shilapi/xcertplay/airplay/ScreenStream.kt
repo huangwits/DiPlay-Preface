@@ -39,7 +39,7 @@ class ScreenStream(private val key: ByteArray, private val onDiagnostic: (String
         this.listener = listener
         val bound = ServerSocket()
         bound.reuseAddress = true
-        bound.bind(InetSocketAddress(InetAddress.getByName("::"), 0))
+        com.shilapi.xcertplay.compat.WildcardBind.bind(bound)
         server = bound
         thread = Thread({ accept(bound) }, "airplay-screen").apply { isDaemon = true; start() }
         return bound.localPort

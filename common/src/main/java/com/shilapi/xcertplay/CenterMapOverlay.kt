@@ -1,9 +1,10 @@
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.compat.systemService
+import com.shilapi.xcertplay.host.R
 import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Outline
 import android.graphics.PixelFormat
 import android.graphics.SurfaceTexture
 import android.os.Handler
@@ -16,7 +17,6 @@ import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.widget.FrameLayout
 import kotlin.math.abs
@@ -43,7 +43,15 @@ internal object CenterMapOverlay {
     var requestShow: (() -> Unit)? = null
     private val showIfBackground = Runnable { if (!diPlayInFront()) requestShow?.invoke() }
 
-    fun permitted(context: Context): Boolean = Settings.canDrawOverlays(context)
+    fun permitted(context: Context): Boolean =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            Settings.canDrawOverlays(context)
+        } else {
+            com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.SYSTEM_ALERT_WINDOW,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
 
     /** Shows the card shortly, unless a DiPlay screen is in front by then. */
     fun scheduleShow() {
@@ -72,7 +80,7 @@ internal object CenterMapOverlay {
         if (root != null) return true
         if (!aspect.isFinite() || aspect <= 0) return false
         if (!permitted(context)) return false
-        val windows = context.getSystemService(WindowManager::class.java) ?: return false
+        val windows = context.systemService(WindowManager::class.java, "window") ?: return false
         val metrics = context.resources.displayMetrics
         val screenWidth = metrics.widthPixels
         val screenHeight = metrics.heightPixels
@@ -93,10 +101,16 @@ internal object CenterMapOverlay {
             .putLong(KEY_ASPECT, java.lang.Double.doubleToRawLongBits(aspect)).apply()
         val height = (width / aspect).toInt()
         val radius = 24f * metrics.density / 2
+        val overlayType = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
         val params = WindowManager.LayoutParams(
             width,
             height,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, // the TextureView needs it
             PixelFormat.TRANSLUCENT,
@@ -106,7 +120,7 @@ internal object CenterMapOverlay {
                 .coerceIn(0, (screenWidth - width).coerceAtLeast(0))
             y = prefs.getInt(KEY_Y, (96 * metrics.density).toInt())
                 .coerceIn(0, (screenHeight - height).coerceAtLeast(0))
-            title = "DiPlay centre map"
+            title = context.getString(R.string.center_map_card)
         }
         var surface: Surface? = null
         val video = TextureView(context).apply {
@@ -132,11 +146,11 @@ internal object CenterMapOverlay {
         }
         val card = FrameLayout(context).apply {
             setBackgroundColor(Color.BLACK)
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: Outline) =
-                    outline.setRoundRect(0, 0, view.width, view.height, radius)
+            // ViewOutlineProvider and clipToOutline are API 21. Keep the provider class out of
+            // this API 18 entrypoint; older units still get the same draggable/pinchable card.
+            if (RoundedClipCompat.supported) {
+                RoundedClipCompat.apply(this, radius)
             }
-            clipToOutline = true
             addView(video, FrameLayout.LayoutParams(-1, -1))
         }
         val slop = ViewConfiguration.get(context).scaledTouchSlop
@@ -253,7 +267,7 @@ internal object CenterMapOverlay {
     fun hide() {
         val view = root ?: return
         root = null
-        runCatching { view.context.getSystemService(WindowManager::class.java)?.removeViewImmediate(view) }
+        runCatching { view.context.systemService(WindowManager::class.java, "window")?.removeViewImmediate(view) }
         Log.i(TAG, "card hidden")
     }
 

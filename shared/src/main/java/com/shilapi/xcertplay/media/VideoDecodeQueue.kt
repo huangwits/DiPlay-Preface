@@ -2,8 +2,10 @@ package com.shilapi.xcertplay.media
 
 import android.view.Surface
 import com.shilapi.xcertplay.airplay.VideoCodec
-import java.util.concurrent.LinkedBlockingQueue
+import java.util.ArrayDeque
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 internal sealed interface VideoJob {
     data class Config(val codec: VideoCodec, val codecData: ByteArray) : VideoJob
@@ -28,26 +30,57 @@ internal class VideoDecodeQueue(
     private val maxFrames: Int = 60,
     private val maxBytes: Int = 8 * 1024 * 1024,
 ) {
-    private val jobs = LinkedBlockingQueue<VideoJob>()
+    private val jobs = ArrayDeque<VideoJob>()
+    private val lock = ReentrantLock()
+    private val available = lock.newCondition()
+    private var frameCount = 0
+    private var frameBytes = 0L
 
-    @Synchronized fun offer(job: VideoJob) {
+    init { require(maxFrames > 0 && maxBytes > 0) }
+
+    fun offer(job: VideoJob) = lock.withLock {
         if (job is VideoJob.Frame) {
-            val frames = jobs.filterIsInstance<VideoJob.Frame>()
-            if (frames.size >= maxFrames || frames.sumOf { it.nalus.size.toLong() } + job.nalus.size > maxBytes) {
+            // No full-queue scan or temporary frame list on every received frame.
+            if (frameCount >= maxFrames || frameBytes + job.nalus.size > maxBytes) {
                 discardFrames()
-                jobs.offer(VideoJob.Resync)
+                jobs.addLast(VideoJob.Resync)
+                available.signal()
             }
             // A single oversized frame is also a lost reference chain.
             if (job.nalus.size > maxBytes) return
+            frameCount++
+            frameBytes += job.nalus.size
         }
-        jobs.offer(job)
+        jobs.addLast(job)
+        available.signal()
     }
 
-    @Synchronized fun discardFrames() {
-        jobs.removeIf { it is VideoJob.Frame || it is VideoJob.Resync }
+    fun discardFrames() = lock.withLock {
+        // Collection.removeIf is unavailable on Android 5.1 and older.
+        val iterator = jobs.iterator()
+        while (iterator.hasNext()) {
+            when (iterator.next()) {
+                is VideoJob.Frame, is VideoJob.Resync -> iterator.remove()
+                else -> Unit
+            }
+        }
+        frameCount = 0
+        frameBytes = 0L
     }
 
-    fun poll(timeoutMillis: Long): VideoJob? = jobs.poll(timeoutMillis, TimeUnit.MILLISECONDS)
+    fun poll(timeoutMillis: Long): VideoJob? = lock.withLock {
+        var remaining = TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        while (jobs.isEmpty()) {
+            if (remaining <= 0L) return null
+            remaining = available.awaitNanos(remaining)
+        }
+        jobs.removeFirst().also { job ->
+            if (job is VideoJob.Frame) {
+                frameCount--
+                frameBytes -= job.nalus.size
+            }
+        }
+    }
 }
 
 /** Drain output while waiting for input: full output buffers can otherwise starve input forever. */

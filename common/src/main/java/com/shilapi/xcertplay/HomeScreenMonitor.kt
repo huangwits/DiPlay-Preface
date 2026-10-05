@@ -1,10 +1,10 @@
 package com.shilapi.xcertplay
 
-import android.app.usage.UsageEvents
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.app.usage.UsageStatsManager
+import android.util.Log
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.Executors
@@ -76,14 +76,11 @@ internal class HomeScreenMonitor(context: Context, private val onChange: (Boolea
 
     private fun poll() {
         val now = System.currentTimeMillis()
-        val events = runCatching { context.getSystemService(UsageStatsManager::class.java).queryEvents(since, now) }
-            .getOrNull() ?: return
-        val event = UsageEvents.Event()
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            // MOVE_TO_FOREGROUND is ACTIVITY_RESUMED (API 29) under its older name.
-            @Suppress("DEPRECATION")
-            if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND && event.timeStamp >= newestTime) {
+        // UsageStatsManager and UsageEvents are API 21; the holder keeps those types out of this
+        // class so Android 4.3 can load it and simply never see a home-screen change.
+        if (!homeScreenObservable()) return
+        for (event in ModernUsageEvents(context).resumedSince(since, now)) {
+            if (event.timeStamp >= newestTime) {
                 val pkg = event.packageName
                 newestTime = event.timeStamp
                 newestPackage = pkg
@@ -96,6 +93,12 @@ internal class HomeScreenMonitor(context: Context, private val onChange: (Boolea
     }
 
     companion object {
+        private const val TAG = "DiPlay-HomeMonitor"
+
+        /** UsageStatsManager arrived in API 21; the monitor needs it to answer at all. */
+        private fun homeScreenObservable(): Boolean =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP
+
         private const val POLL_MILLIS = 500L
         private const val OVERLAP_MILLIS = 2_000L
         private const val FIRST_LOOK_BACK_MILLIS = 10 * 60_000L
@@ -153,4 +156,30 @@ internal class HomeScreenMonitor(context: Context, private val onChange: (Boolea
             )?.activityInfo?.packageName
         }.getOrNull()?.takeIf { it != "android" && it != context.packageName }
     }
+}
+
+/**
+ * The API 21+ half of the home-screen monitor. UsageStatsManager and UsageEvents postdate Android
+ * 4.3, so they are named only here; below that level [resumedSince] yields nothing and the caller
+ * simply keeps its last answer.
+ */
+@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.LOLLIPOP)
+private class ModernUsageEvents(appContext: Context) {
+    private val context = appContext.applicationContext
+    data class Resumed(val packageName: String?, val timeStamp: Long)
+
+    fun resumedSince(since: Long, now: Long): List<Resumed> = runCatching {
+        val stats = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return emptyList()
+        val events = stats.queryEvents(since, now)
+        val result = ArrayList<Resumed>()
+        // MOVE_TO_FOREGROUND is ACTIVITY_RESUMED (API 29) under its older name.
+        @Suppress("DEPRECATION")
+        val resumed = android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND
+        val event = android.app.usage.UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.eventType == resumed) result.add(Resumed(event.packageName, event.timeStamp))
+        }
+        result
+    }.getOrDefault(emptyList())
 }

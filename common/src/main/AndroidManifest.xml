@@ -23,6 +23,7 @@
         <package android:name="com.autolink.carplay.app" />
         <package android:name="com.geely.service.oneosapi" />
         <package android:name="com.byd.carsettings" />
+        <package android:name="com.anwsdk.service" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
@@ -90,11 +91,7 @@
         <activity
             android:name="com.shilapi.xcertplay.CarPlayVideoActivity"
             android:configChanges="density|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
-            android:exported="false"
-            android:theme="@style/Theme.Xcertplay" />
-
-        <activity
-            android:name="com.shilapi.xcertplay.MainActivity"
+            android:enabled="@bool/carplay_video_player_enabled"
             android:exported="false"
             android:resizeableActivity="true"
             android:theme="@style/Theme.Xcertplay" />

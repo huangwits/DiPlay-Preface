@@ -1,6 +1,5 @@
 plugins {
     id("com.android.library")
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -10,16 +9,12 @@ android {
     }
 
     defaultConfig {
-        minSdk = 28
+        minSdk = 22
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    buildFeatures {
-        compose = true
     }
 
     testOptions {
@@ -31,12 +26,7 @@ android {
 
 dependencies {
     api(project(":shared"))
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.activity)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.media3.exoplayer)
@@ -45,5 +35,12 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("org.mockito:mockito-core:5.20.0")
-    testImplementation(libs.jmdns)
+    testImplementation(project(":jmdns"))
+}
+
+// Opt-in release verification consumes the actual APK without checking credentials into Git.
+val validationApk = providers.environmentVariable("DIPLAY_VALIDATION_APK")
+tasks.withType<Test>().configureEach {
+    systemProperty("diplay.validationApk", validationApk.getOrElse(""))
+    if (validationApk.isPresent) inputs.file(validationApk)
 }

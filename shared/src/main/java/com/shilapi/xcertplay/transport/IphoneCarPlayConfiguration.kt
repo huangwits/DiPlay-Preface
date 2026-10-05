@@ -3,8 +3,11 @@ package com.shilapi.xcertplay.transport
 import android.hardware.usb.UsbConfiguration
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
+import android.os.Build
+import com.shilapi.xcertplay.compat.UsbCompat
 import android.util.Log
 
 /**
@@ -28,21 +31,23 @@ object IphoneCarPlayConfiguration {
     private const val PREFERRED_USBMUX_IN = 0x85
 
     fun find(device: UsbDevice): UsbConfiguration? {
-        val configurations = (0 until device.configurationCount).map(device::getConfiguration)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return null
+        val configurations = (0 until UsbCompat.configurationCount(device))
+            .mapNotNull { UsbCompat.configuration(device, it) }
         val chosen = configurations.firstOrNull { usbMuxInterface(it) != null && hasCdcNcm(it) && hasAppleEthernet(it) }
             ?: configurations.firstOrNull { usbMuxInterface(it) != null && hasCdcNcm(it) }
         Log.i(
             TAG,
-            "carplay config chosen=${chosen?.id} " +
-                "available=${configurations.map { it.id }} detail=${chosen?.let(::describe)}",
+            "carplay config chosen=${chosen?.let(UsbCompat::configurationId)} " +
+                "available=${configurations.map(UsbCompat::configurationId)} detail=${chosen?.let(::describe)}",
         )
         return chosen
     }
 
     fun describe(configuration: UsbConfiguration): String =
-        (0 until configuration.interfaceCount).joinToString(",") { index ->
-            val usbInterface = configuration.getInterface(index)
-            "${usbInterface.id}/${usbInterface.alternateSetting}" +
+        (0 until UsbCompat.interfaceCount(configuration)).joinToString(",") { index ->
+            val usbInterface = UsbCompat.usbInterface(configuration, index) ?: return@joinToString "?"
+            "${usbInterface.id}/${UsbCompat.alternateSetting(usbInterface)}" +
                 ":${usbInterface.interfaceClass.toString(16)}" +
                 ".${usbInterface.interfaceSubclass.toString(16)}" +
                 ".${usbInterface.interfaceProtocol.toString(16)}" +
@@ -50,11 +55,20 @@ object IphoneCarPlayConfiguration {
         }
 
     fun usbMuxInterface(configuration: UsbConfiguration): UsbInterface? =
-        (0 until configuration.interfaceCount).map(configuration::getInterface).firstOrNull {
+        (0 until UsbCompat.interfaceCount(configuration)).mapNotNull { UsbCompat.usbInterface(configuration, it) }.firstOrNull {
             it.interfaceClass == USBMUX_CLASS &&
                 it.interfaceSubclass == USBMUX_SUBCLASS &&
                 it.interfaceProtocol == USBMUX_PROTOCOL
         }
+
+    fun usbMuxInterface(layout: UsbDeviceLayout): UsbInterfaceView? =
+        layout.firstInterfaceMatching {
+            it.interfaceClass == USBMUX_CLASS &&
+                it.interfaceSubclass == USBMUX_SUBCLASS &&
+                it.interfaceProtocol == USBMUX_PROTOCOL
+        }
+
+    fun hasUsbMux(configuration: UsbConfiguration): Boolean = usbMuxInterface(configuration) != null
 
     fun usbMuxEndpoints(usbInterface: UsbInterface): Pair<UsbEndpoint, UsbEndpoint>? {
         val endpoints = (0 until usbInterface.endpointCount).map(usbInterface::getEndpoint)
@@ -77,15 +91,22 @@ object IphoneCarPlayConfiguration {
         return if (out != null && input != null) out to input else null
     }
 
-    private fun hasCdcNcm(configuration: UsbConfiguration): Boolean =
-        (0 until configuration.interfaceCount).map(configuration::getInterface).any {
+    fun hasCdcNcm(configuration: UsbConfiguration): Boolean =
+        (0 until UsbCompat.interfaceCount(configuration)).mapNotNull { UsbCompat.usbInterface(configuration, it) }.any {
             it.interfaceClass == NCM_CONTROL_CLASS && it.interfaceSubclass == NCM_CONTROL_SUBCLASS
         }
 
     private fun hasAppleEthernet(configuration: UsbConfiguration): Boolean =
-        (0 until configuration.interfaceCount).map(configuration::getInterface).any {
+        (0 until UsbCompat.interfaceCount(configuration)).mapNotNull { UsbCompat.usbInterface(configuration, it) }.any {
             it.interfaceClass == APPLE_ETHERNET_CLASS &&
                 it.interfaceSubclass == APPLE_ETHERNET_SUBCLASS &&
                 it.interfaceProtocol == APPLE_ETHERNET_PROTOCOL
         }
+
+    /** Resolves the active configuration without API-21-only UsbConfiguration accessors. */
+    fun readLayout(device: UsbDevice, connection: UsbDeviceConnection): UsbDeviceLayout =
+        UsbDeviceLayoutReader.read(device, connection)
+
+    fun hasCarPlayFunction(layout: UsbDeviceLayout): Boolean =
+        usbMuxInterface(layout) != null && NcmFunctionDiscovery.find(layout) != null
 }
