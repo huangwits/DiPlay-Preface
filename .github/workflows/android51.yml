@@ -41,7 +41,7 @@ jobs:
           python3 scripts/check_source_apk.py "$apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: source-only-e01
+          name: source-only-e01-not-for-car-installation
           path: |
             mobile/build/outputs/apk/e01/*.apk
           if-no-files-found: error

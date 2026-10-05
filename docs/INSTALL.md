@@ -1,6 +1,6 @@
 # Install and connect
 
-**E01 / Android 5.1:** use this fork’s [0.2.12 preview](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.1), not the upstream APK (minSdk 28). The E01 main APK is source-only, without accessory authentication, and vendor wireless Bluetooth remains unimplemented. The instructions below describe upstream features and do not establish E01 vehicle support.
+**E01 / Android 5.1:** install this fork’s [E01.3 full car-test APK](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.3). It corrects the missing-authentication startup failure and can update E01.2 in place. Vehicle wireless Bluetooth remains unverified. The remaining instructions describe upstream features and do not establish E01 vehicle support.
 
 1. Park the car. Download `DiPlay-0.2.12.apk` from the official GitHub release linked on the [website](https://shihabal3amri.github.io/DiPlay/).
 2. Install on the Android head unit using its supported APK installation method. Do not install on the iPhone. Update over an existing DiPlay beta to retain settings and pairing records; the signing key is unchanged.
