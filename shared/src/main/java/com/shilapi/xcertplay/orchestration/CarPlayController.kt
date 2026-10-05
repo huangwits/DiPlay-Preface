@@ -2261,6 +2261,15 @@ class CarPlayController(
             return bonded.firstOrNull { it.address.equals(selected, ignoreCase = true) }
                 ?: throw IOException("The selected iPhone is no longer paired. Choose it again in DiPlay.")
         }
+        val vendorAddresses = com.shilapi.xcertplay.vehicle.vendorConnectedBondedAddresses(
+            bonded.map { it.address },
+            com.shilapi.xcertplay.vehicle.EcarxBluetoothConnections.connectedAddresses(),
+        )
+        val vendorPeers = bonded.filter { it.address.uppercase(Locale.US) in vendorAddresses }
+        if (vendorPeers.size == 1) return vendorPeers.single()
+        if (vendorPeers.size > 1) {
+            throw IOException("Multiple phones connected to factory Bluetooth; choose the iPhone in DiPlay.")
+        }
         val iPhones = bonded.filter { device ->
             device.name?.contains("iPhone", ignoreCase = true) == true
         }
