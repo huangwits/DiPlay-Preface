@@ -275,7 +275,7 @@ public abstract class DNSEntry {
      * @exception IOException
      */
     protected void toByteArray(DataOutputStream dout) throws IOException {
-        dout.write(this.getName().getBytes(java.nio.charset.Charset.forName("UTF-8")));
+        dout.write(this.getName().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         dout.writeShort(this.getRecordType().indexValue());
         dout.writeShort(this.getRecordClass().indexValue());
     }

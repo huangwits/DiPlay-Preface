@@ -8,19 +8,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.locks.LockSupport
 
-/**
- * The VpnService tun lifecycle shared by the CarPlay bridge and by debug probes, so both exercise
- * the same establishment and idle-read behaviour on Android 4.3.
- *
- * VpnService.Builder itself is API 14; only setBlocking() is API 21. On API 18-20 the tun
- * descriptor therefore stays non-blocking and an idle link surfaces as IOException/EAGAIN, which
- * [read] absorbs and retries instead of treating it as a fatal tunnel error.
- */
+/** VPN setup and bounded retries for firmware that returns temporarily idle descriptors. */
 object VpnTunnelCompat {
 
-    /** True when the descriptor returned by [establish] blocks reads, i.e. API 21+. */
-    val blockingSupported: Boolean
-        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
 
     /** Nanoseconds to back off after an idle non-blocking read. */
     const val WOULD_BLOCK_BACKOFF_NANOS = 2_000_000L
@@ -30,7 +20,6 @@ object VpnTunnelCompat {
      * may rely on blocking reads; false means the descriptor stays non-blocking.
      */
     fun configureBlocking(builder: VpnService.Builder): Boolean {
-        if (!blockingSupported) return false
         return runCatching { builder.setBlocking(true); true }.getOrDefault(false)
     }
 

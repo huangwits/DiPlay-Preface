@@ -20,7 +20,7 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
-import com.shilapi.xcertplay.compat.CharsetsCompat
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -144,9 +144,8 @@ class CarPlayBonjour(
     private val onEvent: (CarPlayBonjourEvent) -> Unit = {},
     additionalAddresses: List<InetAddress> = emptyList(),
 ) : Closeable {
-    // Android 4.3 lacks NSD TXT registration/resolution; publish and discover through JmDNS there.
-    // Keep this exact effective value shared by start() and runWorker().
-    private val useInterfaceMdns = useInterfaceMdns || Build.VERSION.SDK_INT < 21
+    // The configured transport determines interface-specific mDNS publication.
+    private val useInterfaceMdns = useInterfaceMdns
     private val nsdManager = (context.applicationContext ?: context)
         .getSystemService(Context.NSD_SERVICE) as NsdManager
     private val services = LinkedBlockingQueue<NsdServiceInfo>()
@@ -302,9 +301,6 @@ class CarPlayBonjour(
                         if (it is Inet4Address) "IPv4" else "IPv6"
                     }
                 } else {
-                    check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        "Android NSD TXT registration requires API 21; JmDNS is selected below it"
-                    }
                     registerAirPlay()
                     registrationRequested = true
                     nsdManager.discoverServices(
@@ -431,7 +427,7 @@ class CarPlayBonjour(
             } ?: continue
             if (closed) return
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) handleService(service)
+                handleService(service)
             } catch (_: InterruptedException) {
                 return
             } catch (error: Exception) {
@@ -596,12 +592,12 @@ class CarPlayBonjour(
                 deviceId = config.deviceId,
             )
             val output = socket.getOutputStream()
-            output.write(request.toByteArray(CharsetsCompat.US_ASCII))
+            output.write(request.toByteArray(StandardCharsets.US_ASCII))
             output.flush()
             stage = CarPlayBonjourEvent.ProbeProgress.Stage.REQUEST_SENT
             emit(CarPlayBonjourEvent.ProbeProgress(CarPlayBonjourEvent.ProbeProgress.Stage.REQUEST_SENT, attempt, address is Inet6Address))
             val reader = BufferedReader(
-                InputStreamReader(socket.getInputStream(), CharsetsCompat.US_ASCII),
+                InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII),
             )
             return reader.readLine()
                 ?: throw IOException("AirPlay control probe returned no status line")
@@ -647,7 +643,7 @@ class CarPlayBonjour(
     }
 
     private fun decodeTxtValue(value: ByteArray): String =
-        String(value, CharsetsCompat.UTF_8).trimEnd('\u0000')
+        String(value, StandardCharsets.UTF_8).trimEnd('\u0000')
 
     private fun joinWorker(worker: Thread) {
         if (worker === Thread.currentThread()) return

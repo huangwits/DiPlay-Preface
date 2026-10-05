@@ -278,7 +278,7 @@ class NcmUsbBridge internal constructor(
         }
     }
 
-    /** API 18-25 have no bounded UsbRequest.wait overload; use one bounded 16 KB bulk read. */
+    /** API 22-25 have no bounded UsbRequest.wait overload; use one bounded 16 KB bulk read. */
     private fun readChunkSynchronously(timeoutMillis: Long): Int? {
         checkOpen()
         val timeout = timeoutMillis.coerceAtMost(Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)

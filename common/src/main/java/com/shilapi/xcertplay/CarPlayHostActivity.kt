@@ -685,7 +685,7 @@ class CarPlayHostActivity : ComponentActivity() {
             com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
 
-    /** Context.startForegroundService is API 26; Android 4.3 starts the service directly. */
+    /** Context.startForegroundService is API 26; Android 5.1 starts the service directly. */
     private fun startForegroundServiceCompat(intent: Intent) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForegroundService(intent)
@@ -3356,32 +3356,24 @@ class CarPlayHostActivity : ComponentActivity() {
         } else {
             val hardware = if (Build.VERSION.SDK_INT >= 29) decoder.isHardwareAccelerated
                 else !decoder.name.startsWith("OMX.google.") && !decoder.name.startsWith("c2.android.")
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-                CanvasSupport(
-                    !hardware,
-                    if (hardware) "capabilities_unavailable" else "software_decoder",
-                    "Decoder capability query skipped mime=$mime hardware=$hardware reason=video_capabilities_need_api21",
-                )
-            } else {
-                val video = decoder.getCapabilitiesForType(mime).videoCapabilities
-                val sizeSupported = video?.isSizeSupported(display.widthPixels, display.heightPixels) == true
-                val rateSupported = sizeSupported && video?.areSizeAndRateSupported(
-                    display.widthPixels, display.heightPixels, display.fps.toDouble()) == true
-                val reason = when {
-                    !hardware -> "software_decoder"
-                    hevcEnabled && hevcSoftwareDecoderEnabled -> "software_hevc_selected"
-                    video == null -> "no_video_capabilities"
-                    !sizeSupported -> "canvas_dimensions_unsupported"
-                    !rateSupported -> "frame_rate_unsupported"
-                    else -> "supported"
-                }
-                CanvasSupport(reason == "supported", reason,
-                    "Decoder capability codec=${decoder.name} mime=$mime hardware=$hardware " +
-                        "sizeSupported=$sizeSupported rateSupported=$rateSupported " +
-                        "widths=${video?.supportedWidths} heights=${video?.supportedHeights} " +
-                        "alignment=${video?.widthAlignment}x${video?.heightAlignment} " +
-                        "fpsRange=${video?.supportedFrameRates} result=$reason")
+            val video = decoder.getCapabilitiesForType(mime).videoCapabilities
+            val sizeSupported = video?.isSizeSupported(display.widthPixels, display.heightPixels) == true
+            val rateSupported = sizeSupported && video?.areSizeAndRateSupported(
+                display.widthPixels, display.heightPixels, display.fps.toDouble()) == true
+            val reason = when {
+                !hardware -> "software_decoder"
+                hevcEnabled && hevcSoftwareDecoderEnabled -> "software_hevc_selected"
+                video == null -> "no_video_capabilities"
+                !sizeSupported -> "canvas_dimensions_unsupported"
+                !rateSupported -> "frame_rate_unsupported"
+                else -> "supported"
             }
+            CanvasSupport(reason == "supported", reason,
+                "Decoder capability codec=${decoder.name} mime=$mime hardware=$hardware " +
+                    "sizeSupported=$sizeSupported rateSupported=$rateSupported " +
+                    "widths=${video?.supportedWidths} heights=${video?.supportedHeights} " +
+                    "alignment=${video?.widthAlignment}x${video?.heightAlignment} " +
+                    "fpsRange=${video?.supportedFrameRates} result=$reason")
         }
     } catch (error: Exception) {
         CanvasSupport(false, "capability_query_${error.javaClass.simpleName}",
@@ -4405,7 +4397,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private fun exitApplication() {
         if (shuttingDown.get()) return
         restoreSettingsBaseline()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) finishAndRemoveTask() else finish()
+        finishAndRemoveTask()
         shutdown(terminateProcess = true, reason = "settings exit application")
     }
 
@@ -4566,10 +4558,7 @@ class CarPlayHostActivity : ComponentActivity() {
         }
     }
 
-    /** MotionEvent.actionToString is API 19; older units keep the raw action code. */
-    private fun motionEventName(action: Int): String =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) MotionEvent.actionToString(action)
-        else "action=$action"
+    private fun motionEventName(action: Int): String = MotionEvent.actionToString(action)
 
     private fun setConnectionStage(message: String) {
         latestStage = message
@@ -4671,7 +4660,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     /** Switch labels are API 21; tint setters are API 23. */
     private fun Switch.applyMenuSwitchTints() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) showText = false
+        showText = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             thumbTintList = ColorStateList(
                 arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
@@ -4686,25 +4675,20 @@ class CarPlayHostActivity : ComponentActivity() {
 
     /** SeekBar tint and split-track setters are API 21. */
     private fun SeekBar.applyMenuSeekBarTints() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
         splitTrack = false
         progressTintList = ColorStateList.valueOf(MENU_ACCENT)
         thumbTintList = ColorStateList.valueOf(MENU_ACCENT)
     }
 
     private fun View.tintBackgroundCompat(color: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            backgroundTintList = ColorStateList.valueOf(color)
-        }
+        backgroundTintList = ColorStateList.valueOf(color)
     }
 
     private fun RadioButton.tintRadioCompat() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            buttonTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(MENU_ACCENT, MENU_SECONDARY),
-            )
-        }
+        buttonTintList = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(MENU_ACCENT, MENU_SECONDARY),
+        )
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

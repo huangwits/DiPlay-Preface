@@ -24,10 +24,8 @@ android {
     defaultConfig {
         applicationId = "com.shihab.diplay"
         minSdk = 22
-        // API 18 predates native multidex; keep the launcher installable on 4.3.
-        multiDexEnabled = true
         targetSdk = 37
-        versionCode = 32
+        versionCode = 33
         versionName = "0.2.12"
 
     }
@@ -61,7 +59,7 @@ android {
         create("e01") {
             initWith(getByName("release"))
             applicationIdSuffix = ".e01legacy"
-            versionNameSuffix = "-e01.3-android51"
+            versionNameSuffix = "-e01.4-android51"
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             matchingFallbacks += listOf("release")
@@ -82,7 +80,6 @@ dependencies {
     implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.multidex)
 }
 
 // No implicit import. Only the two explicitly selected local runtime assets are allowed.

@@ -39,3 +39,7 @@ release-signing.properties
 *.key
 *.apk
 *.aab
+
+# Python maintenance helpers
+__pycache__/
+*.pyc

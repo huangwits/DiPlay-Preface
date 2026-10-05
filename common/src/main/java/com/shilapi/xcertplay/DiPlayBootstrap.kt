@@ -1,7 +1,6 @@
 package com.shilapi.xcertplay
 
 import android.content.Context
-import android.os.Build
 import com.shilapi.xcertplay.airplay.AirPlayIdentity
 import com.shilapi.xcertplay.mfi.LocalMfiAuthenticationClient
 import com.shilapi.xcertplay.orchestration.MfiTarget
@@ -15,13 +14,7 @@ internal object DiPlayBootstrap {
     @Synchronized fun ensure(context: Context, mfiTarget: MfiTarget) {
         if (mfiTarget != MfiTarget.LOCAL) return
         if (ready) return
-        val privateData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            context.noBackupFilesDir
-        } else {
-            // Android 4.3 has no separate no-backup directory; the app-private files dir is
-            // protected by the manifest's allowBackup=false setting.
-            context.filesDir
-        }
+        val privateData = context.noBackupFilesDir
         val target = File(privateData, LocalMfiAuthenticationClient.DIRECTORY)
         if (!target.exists()) {
             val staging = File(privateData, "offline-mfi-staging")

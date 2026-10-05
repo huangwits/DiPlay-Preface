@@ -31,7 +31,6 @@ object IphoneCarPlayConfiguration {
     private const val PREFERRED_USBMUX_IN = 0x85
 
     fun find(device: UsbDevice): UsbConfiguration? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return null
         val configurations = (0 until UsbCompat.configurationCount(device))
             .mapNotNull { UsbCompat.configuration(device, it) }
         val chosen = configurations.firstOrNull { usbMuxInterface(it) != null && hasCdcNcm(it) && hasAppleEthernet(it) }

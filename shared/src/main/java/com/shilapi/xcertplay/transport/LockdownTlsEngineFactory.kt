@@ -4,7 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Build
 import java.io.ByteArrayInputStream
 import com.shilapi.xcertplay.compat.Base64Compat
-import com.shilapi.xcertplay.compat.CharsetsCompat
+import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
 import java.security.KeyFactory
 import java.security.KeyStore
@@ -50,7 +50,7 @@ object LockdownTlsEngineFactory {
             return context.createSSLEngine(PEER_HOST, PEER_PORT).apply {
                 useClientMode = true
                 // SSLParameters.setEndpointIdentificationAlgorithm arrived in API 24. The default
-                // is already null, so Android 4.3 needs no call and keeps the dedicated USB trust
+                // is already null, so Android 5.1 needs no call and keeps the dedicated USB trust
                 // manager above unchanged.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     sslParameters = sslParameters.apply { endpointIdentificationAlgorithm = null }
@@ -105,6 +105,6 @@ object LockdownTlsEngineFactory {
     private const val KEY_ALIAS = "lockdown-host"
     private const val PEER_HOST = "Device"
     private const val PEER_PORT = 0
-    private val BEGIN_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----".toByteArray(CharsetsCompat.US_ASCII)
-    private val END_PRIVATE_KEY = "-----END PRIVATE KEY-----".toByteArray(CharsetsCompat.US_ASCII)
+    private val BEGIN_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----".toByteArray(StandardCharsets.US_ASCII)
+    private val END_PRIVATE_KEY = "-----END PRIVATE KEY-----".toByteArray(StandardCharsets.US_ASCII)
 }

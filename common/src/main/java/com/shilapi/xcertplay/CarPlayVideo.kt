@@ -47,7 +47,7 @@ internal object CarPlayVideo : CarPlayVideoListener {
     var playing = false
         private set
     var pendingSeekMillis: Int? = null
-    // Avoid a direct Activity/Media3 type here: this state object is loaded by the API-18 host.
+    // Avoid a direct Activity/Media3 type here: this state object is loaded by the API-22 host.
     var activity: CarPlayVideoActivityBridge? = null
 
     fun attach(context: Context, next: CarPlayController) {
@@ -260,7 +260,7 @@ internal object CarPlayVideo : CarPlayVideoListener {
         activity?.requestFinish()
     }
 
-    /** API-18 replacement for java.util.concurrent.CompletableFuture (API 24). */
+    /** API-22 replacement for java.util.concurrent.CompletableFuture (API 24). */
     private class UrlAnswer {
         private val ready = CountDownLatch(1)
         @Volatile private var value: Map<*, *>? = null

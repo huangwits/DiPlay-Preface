@@ -7,7 +7,7 @@ import android.content.pm.Signature
 import android.os.Build
 
 /**
- * Permission and signing lookups that moved or changed shape after Android 4.3.
+ * Permission and signing lookups that moved or changed shape after Android 5.1.
  */
 object ContextCompat {
     fun canDrawOverlays(context: Context): Boolean =

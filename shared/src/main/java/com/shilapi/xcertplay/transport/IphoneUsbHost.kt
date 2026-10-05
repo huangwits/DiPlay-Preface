@@ -108,10 +108,8 @@ class IphoneUsbHost(
         val connection = usbManager.openDevice(device) ?: return false
         return try {
             val layout = IphoneCarPlayConfiguration.readLayout(device, connection)
-            val available = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            val available = run {
                 IphoneCarPlayConfiguration.find(device) != null
-            } else {
-                IphoneCarPlayConfiguration.hasCarPlayFunction(layout)
             }
             Log.i(
                 IphoneCarPlayConfiguration.TAG,

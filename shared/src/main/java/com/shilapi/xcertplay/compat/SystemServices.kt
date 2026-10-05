@@ -12,6 +12,6 @@ fun <T> Context.systemService(type: Class<T>, name: String): T? =
         getSystemService(name) as? T
     }
 
-/** Context.getNoBackupFilesDir was added in API 21. App-private files remain safe on API 18. */
+/** Authentication and pairing state must stay outside Android backups. */
 fun Context.appPrivateDir(): java.io.File =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) noBackupFilesDir else filesDir
+    noBackupFilesDir

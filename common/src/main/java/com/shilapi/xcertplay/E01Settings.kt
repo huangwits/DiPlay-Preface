@@ -25,7 +25,7 @@ object E01Settings {
         val dm = context.resources.displayMetrics
         return "Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}; " +
             "RAM ${memory.totalMem / (1024 * 1024)} MiB, available ${memory.availMem / (1024 * 1024)} MiB; " +
-            "ABI ${if (Build.VERSION.SDK_INT >= 21) Build.SUPPORTED_ABIS.joinToString() else Build.CPU_ABI}; ${dm.widthPixels}×${dm.heightPixels}; " +
+            "ABI ${Build.SUPPORTED_ABIS.joinToString()}; ${dm.widthPixels}×${dm.heightPixels}; " +
             "hardware=${Build.HARDWARE}; board=${Build.BOARD}; E01=${enabled(context)}"
     }
 }

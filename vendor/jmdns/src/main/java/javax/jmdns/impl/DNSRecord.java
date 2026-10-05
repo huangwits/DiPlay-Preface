@@ -48,9 +48,6 @@ public abstract class DNSRecord extends DNSEntry {
      * DiPlay local patch (Android): java.util.Objects arrived in API 19, so the null-safe
      * comparison it provides is spelled out here for Android 4.3.
      */
-    private static boolean nullSafeEquals(Object first, Object second) {
-        return first == second || (first != null && first.equals(second));
-    }
 
     protected final Logger logger = LoggerFactory.getLogger(DNSRecord.class);
 
@@ -347,7 +344,7 @@ public abstract class DNSRecord extends DNSEntry {
                     return false;
                 }
                 Address address = (Address) other;
-                return nullSafeEquals(this.getAddress(), address.getAddress());
+                return java.util.Objects.equals(this.getAddress(), address.getAddress());
             } catch (Exception e) {
                 logger1.info("Failed to compare addresses of DNSRecords", e);
                 return false;
@@ -512,7 +509,7 @@ public abstract class DNSRecord extends DNSEntry {
             if ((_alias == null) && (pointer._alias != null)) {
                 return false;
             }
-            return nullSafeEquals(_alias, pointer._alias);
+            return java.util.Objects.equals(_alias, pointer._alias);
         }
 
         @Override
@@ -628,7 +625,7 @@ public abstract class DNSRecord extends DNSEntry {
             // Compare the contents of both arrays if they are non-null
             if (_text != null) {
                 for (int i = 0; i < _text.length; i++) {
-                    if (!nullSafeEquals(_text[i], txt._text[i])) {
+                    if (!java.util.Objects.equals(_text[i], txt._text[i])) {
                         return false;
                     }
                 }
@@ -748,7 +745,7 @@ public abstract class DNSRecord extends DNSEntry {
             dout.writeShort(_weight);
             dout.writeShort(_port);
             try {
-                dout.write(_server.getBytes(java.nio.charset.Charset.forName("UTF-8")));
+                dout.write(_server.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             } catch (UnsupportedEncodingException exception) {
                 /* UTF-8 is always present */
             }
@@ -967,7 +964,7 @@ public abstract class DNSRecord extends DNSEntry {
             HostInformation hostInformation = (HostInformation) other;
 
             // Use Objects.equals for null-safe comparisons
-            return nullSafeEquals(_cpu, hostInformation._cpu) && nullSafeEquals(_os, hostInformation._os);
+            return java.util.Objects.equals(_cpu, hostInformation._cpu) && java.util.Objects.equals(_os, hostInformation._os);
         }
 
         /*

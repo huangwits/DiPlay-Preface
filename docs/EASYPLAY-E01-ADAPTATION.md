@@ -16,6 +16,6 @@ EasyPlay 的 LegacyVendorBluetoothHandoff.PlatformBackend 通过 `ServiceManager
 
 ## 未移植的部分与验证边界
 
-不调用 EasyPlay 的 `reqHfpDisconnect` 或 `reqA2dpDisconnect`，保留本项目原有音频交接行为。没有将 APK 内配件认证文件导入源码或构建输入。公开测试 APK 仍为 source-only，不具备独立 iPhone 认证能力。
+不调用 EasyPlay 的 `reqHfpDisconnect` 或 `reqA2dpDisconnect`，保留本项目原有音频交接行为。没有将 APK 内配件认证文件导入源码或构建输入。这份记录描述接口识别的来源；当前独立安装包通过单独的本地认证输入构建，见 BUILD.md。
 
 这项变更补齐 nFore/ECARX 原车连接识别，不能在无实车验证的情况下承诺修复 E01 蓝牙开关或 Goodocom SPP。目标固件如未提供相同服务，将走原有路径。

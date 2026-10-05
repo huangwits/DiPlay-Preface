@@ -147,10 +147,8 @@ internal object CenterMapOverlay {
         val card = FrameLayout(context).apply {
             setBackgroundColor(Color.BLACK)
             // ViewOutlineProvider and clipToOutline are API 21. Keep the provider class out of
-            // this API 18 entrypoint; older units still get the same draggable/pinchable card.
-            if (RoundedClipCompat.supported) {
-                RoundedClipCompat.apply(this, radius)
-            }
+            // the shared draggable/pinchable card.
+            RoundedClipCompat.apply(this, radius)
             addView(video, FrameLayout.LayoutParams(-1, -1))
         }
         val slop = ViewConfiguration.get(context).scaledTouchSlop

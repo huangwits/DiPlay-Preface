@@ -4,7 +4,7 @@ import android.media.AudioTrack
 import android.media.AudioRecord
 import android.os.Build
 
-/** Helpers that can be called safely on Android 4.3. */
+/** Audio operations with fallbacks for Android 5.1 / API 22. */
 object PortableAudio {
     fun writeBlocking(track: AudioTrack, data: ByteArray, offset: Int, length: Int): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -23,12 +23,7 @@ object PortableAudio {
         }
 
     fun setVolume(track: AudioTrack, volume: Float) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            runCatching { track.setVolume(volume) }
-        } else {
-            @Suppress("DEPRECATION")
-            runCatching { track.setStereoVolume(volume, volume) }
-        }
+        runCatching { track.setVolume(volume) }
     }
 
     fun underrunCount(track: AudioTrack): Int =
