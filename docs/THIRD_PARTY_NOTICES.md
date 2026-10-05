@@ -6,6 +6,10 @@ DiPlay is a modified version of [xcertplay by shilapi](https://github.com/shilap
 
 Upstream credits [LIVI](https://github.com/f-io/LIVI) and [Showcase](https://github.com/amineross/showcase) for protocol research. Existing source comments and attribution are preserved.
 
+## Android compatibility contributions
+
+The initial E01 adaptation imported and subsequently modified compatibility code from [DiPlay-Geely-Android43](https://github.com/xikai6282/DiPlay-Geely-Android43), including legacy Android API, media, USB and networking paths. This historical attribution does not make Android 4.3 a supported target of this project. Ongoing maintenance targets Android 5.1 / API 22 and E01, following the original DiPlay project and carlito’s Geely upstream. Existing source notices and license terms remain applicable.
+
 ## Home and settings UI
 
 `common/src/main/java/com/shilapi/xcertplay/DiPlayActivity.kt` adapts the palette, visual arrangement and interface copy of the [DiAuto project](https://github.com/shihabal3amri/DiAuto). DiAuto's source is licensed under AGPL version 3. The UI file is marked AGPL-3.0-only; its license text is included in `docs/licenses/DiAuto-AGPL-3.0.txt`.

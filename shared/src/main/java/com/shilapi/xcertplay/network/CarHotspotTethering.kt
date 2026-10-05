@@ -25,7 +25,7 @@ object CarHotspotTethering {
         CANCELLED("Hotspot startup was cancelled"),
     }
 
-    fun permitted(context: Context): Boolean = Settings.System.canWrite(context)
+    fun permitted(context: Context): Boolean = com.shilapi.xcertplay.compat.ContextCompat.canWriteSettings(context)
 
     /** Blocking; serialize startup and connection requests, checking cancellation after acquiring the lock. */
     fun enable(
@@ -39,7 +39,7 @@ object CarHotspotTethering {
         val startReflection: (ResultReceiver) -> Unit = { receiver ->
             val service = ConnectivityManager::class.java.getDeclaredField("mService")
                 .apply { isAccessible = true }
-                .get(context.getSystemService(ConnectivityManager::class.java))
+                .get(context.getSystemService(Context.CONNECTIVITY_SERVICE))
                 ?: throw NoSuchMethodException("Connectivity service unavailable")
             service.javaClass.getMethod(
                 "startTethering", Int::class.javaPrimitiveType, ResultReceiver::class.java,

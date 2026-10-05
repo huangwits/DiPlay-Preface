@@ -200,7 +200,7 @@ class CarPlayMediaEngine(
             readKey = key,
             bindAddress = session.localAddress
                 ?: when (session.remoteAddress) {
-                    is Inet6Address -> InetAddress.getByName("::")
+                    is Inet6Address -> com.shilapi.xcertplay.compat.WildcardBind.listenAddress()
                     is Inet4Address -> InetAddress.getByName("0.0.0.0")
                     else -> InetAddress.getByName("0.0.0.0")
                 },
@@ -261,7 +261,7 @@ class CarPlayMediaEngine(
             shared, "DataStream-Salt$seed".toByteArray(Charsets.US_ASCII), label.toByteArray(Charsets.US_ASCII), 32,
         )
         val channel = VideoSettingsChannel(key(DATASTREAM_OUTPUT_KEY), key(DATASTREAM_INPUT_KEY)) { session.logDebug(it) }
-        val port = channel.listen(session.localAddress ?: InetAddress.getByName("::"))
+        val port = channel.listen(session.localAddress ?: com.shilapi.xcertplay.compat.WildcardBind.listenAddress())
         videoSettingsChannels.put(session, channel)?.close()
         session.logTrace("video settings stream listening port=$port")
         return linkedMapOf<String, Any?>("type" to STREAM_TYPE_DATA, "streamID" to VIDEO_SETTINGS_STREAM_ID, "dataPort" to port)

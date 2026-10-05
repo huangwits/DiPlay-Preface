@@ -38,13 +38,17 @@ class DiagnosticExportUiTest {
         val context = activity.applicationContext
         val authority = "${context.packageName}.diagnostic-reports"
         val info = context.packageManager.resolveContentProvider(authority, PackageManager.GET_META_DATA)!!
+        androidx.core.content.FileProvider::class.java.getDeclaredField("sCache").apply { isAccessible = true }
+            .let { (it.get(null) as MutableMap<*, *>).clear() }
         ShadowContentResolver.registerProviderInternal(authority, DiagnosticReportProvider().apply { attachInfo(context, info) })
-        val missingPicker = object : ActivityResultLauncher<String>() {
-            override fun launch(input: String, options: ActivityOptionsCompat?) {
+        val missingPicker = object : ActivityResultLauncher<android.content.Intent>() {
+            override fun launch(input: android.content.Intent, options: ActivityOptionsCompat?) {
+                assertEquals(android.content.Intent.ACTION_CREATE_DOCUMENT, input.action)
+                assertEquals("text/plain", input.type)
                 throw ActivityNotFoundException("No DocumentsUI")
             }
             override fun unregister() = Unit
-            override fun getContract() = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain")
+            override fun getContract() = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
         }
         ReflectionHelpers.setField(activity, "export", missingPicker)
         try {

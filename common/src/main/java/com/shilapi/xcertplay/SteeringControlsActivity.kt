@@ -47,7 +47,10 @@ class SteeringControlsActivity : ComponentActivity() {
     private lateinit var cancelButton: Button
     private var exportProfile: SteeringProfile? = null
     private val developer get() = intent.getBooleanExtra("developer", false) && SteeringProfiles.developerUnlocked(this)
-    private val export = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+    private val export = registerForActivityResult(object : ActivityResultContracts.CreateDocument() {
+        override fun createIntent(context: Context, input: String): android.content.Intent =
+            super.createIntent(context, input).setType("application/json")
+    }) { uri ->
         val profile = exportProfile ?: SteeringProfiles.load(this)
         exportProfile = null
         if (uri != null) {

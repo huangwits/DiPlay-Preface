@@ -112,9 +112,11 @@ internal data class SteeringProfile(
             .trim('.', ' ').ifBlank { "unknown" }
             val part = StringBuilder()
             var bytes = 0
-            val points = safe.codePoints().iterator()
-            while (points.hasNext()) {
-                val letter = String(Character.toChars(points.nextInt()))
+            var offset = 0
+            while (offset < safe.length) {
+                val point = safe.codePointAt(offset)
+                offset += Character.charCount(point)
+                val letter = String(Character.toChars(point))
                 bytes += letter.toByteArray(Charsets.UTF_8).size
                 if (bytes > 64) break
                 part.append(letter)
@@ -166,7 +168,7 @@ internal object SteeringProfiles {
         val job = JobInfo.Builder(JOB_ID, ComponentName(context, SteeringProfileUploadService::class.java))
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPersisted(true)
             .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL).build()
-        if (context.getSystemService(JobScheduler::class.java)?.schedule(job) != JobScheduler.RESULT_SUCCESS) {
+        if ((context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as? JobScheduler)?.schedule(job) != JobScheduler.RESULT_SUCCESS) {
             Log.w(TAG, "Steering profile upload remains pending")
         }
     }
