@@ -1,6 +1,6 @@
 # Upstream-first Android 5.1 / E01 maintenance
 
-The code baseline is the original [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay), currently `2fc876e578eba3905a5b873e3c2dbd74f498433a` (0.2.12). `upstream` points directly to that repository. `geely` points to [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) for selective vehicle changes; it is not the automatic merge source.
+The code baseline is the original [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay), currently `29572a2cba33ede85dd5355a36508af76be1898e` (post-0.2.12 main, reviewed 2026-10-05). `upstream` points directly to that repository. `geely` points to [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) for selective vehicle changes; it is not the automatic merge source.
 
 The GitHub repository stays at `huangwits/DiPlay-Preface`, retaining its existing releases and fork-network membership. GitHub's historical direct parent remains carlito; the network source is the original DiPlay. That display does not control local Git remotes or update policy. No repository deletion, force-push or published-tag movement is required.
 
@@ -24,3 +24,8 @@ The workflow opens a draft PR and explicitly runs Android 5.1 E01 checks. Confli
 Before accepting an update, inspect API 22 behavior, E01 limits and affected vehicle integrations. Run maintenance tests, public-tree checks, common/shared unit tests, NewApi lint and a source-only APK build. Changes affecting connections/audio/video still require vehicle testing; automated checks cannot establish E01 vendor connectivity.
 
 Keep one bilingual README.md, Chinese above English. Use the same language order in release descriptions. Complete car-test builds require explicit local runtime inputs and the APK bootstrap tests described in BUILD.md; CI source-only builds are never installation deliverables.
+
+
+## 2026-10-05 update
+
+The review branch merges original main through `29572a2`, preserving E01 limits, API 22 fallbacks and selected Geely changes. See [update and research record](E01-H52-NFORE-UPDATE-20261005.md). Published tags remain unchanged; the original upstream `v0.2.12` tag was not forced over this fork's existing tag.

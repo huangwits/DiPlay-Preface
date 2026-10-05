@@ -1,6 +1,6 @@
 {
   "previous_main": "11136b93df966d09eb63e5c2b9d83aac84b8fa3e",
-  "upstream_base": "2fc876e578eba3905a5b873e3c2dbd74f498433a",
+  "upstream_base": "29572a2cba33ede85dd5355a36508af76be1898e",
   "geely_reviewed": "84050d6ad85d6c24170811427fb04a5b6e7c3221",
   "geely_selected_files": [
     "common/src/main/AndroidManifest.xml",
@@ -68,5 +68,12 @@
     "server/steering_profiles/install.py",
     "server/steering_profiles/server.py"
   ],
-  "policy": "Original-author main; selective Geely commits; API 22 E01 adaptations."
+  "policy": "Original-author main; selective Geely commits; API 22 E01 adaptations.",
+  "initial_upstream_base": "2fc876e578eba3905a5b873e3c2dbd74f498433a",
+  "upstream_update_2026_10_05": {
+    "previous_base": "2fc876e578eba3905a5b873e3c2dbd74f498433a",
+    "reviewed_h52": "b0fdb35",
+    "h52_transport_imported": false,
+    "reason": "ANW and public nFore SPP contracts do not match verified E01 firmware evidence"
+  }
 }

@@ -22,6 +22,7 @@
 
 ### 适配状态
 
+- 本分支另含 [E01.5 更新候选](docs/releases/PREFACE-0.2.12-E01.5.md)：跟进原作者 `29572a2`，保留 API 22 与低负载限制；上方下载仍指向已发布的 E01.4。蓝牙问题的新增调查见 [H52 / nFore 核对](docs/E01-H52-NFORE-UPDATE-20261005.md)。
 - E01.4 改为原作者主线维护，保留所需吉利功能与 E01 修复，清理 Android 4.3 专用兼容代码。
 - E01 默认 H.264、30 fps，画布长边不超过 960、短边不超过 540，保持比例。
 - E01.3 修复旧预览包缺少认证资料造成的启动失败，已通过认证加载和覆盖升级验证。
@@ -53,6 +54,7 @@ Use the full APK for installation. Ordinary CI source-check packages are not sta
 
 ### Adaptation status
 
+- This branch also contains the [E01.5 update candidate](docs/releases/PREFACE-0.2.12-E01.5.md), following original main `29572a2` with API 22 and E01 performance limits. Downloads above still refer to published E01.4. See the [H52 / nFore research](docs/E01-H52-NFORE-UPDATE-20261005.md) for the unresolved Bluetooth issue.
 - E01.4 follows the original-author baseline, retains selected Geely integrations and E01 fixes, and removes Android 4.3-only compatibility code.
 - E01 defaults to H.264 at 30 fps, preserving aspect ratio within a 960-pixel long edge and a 540-pixel short edge.
 - E01.3 fixes the missing-authentication startup failure in earlier previews. Authentication loading and in-place upgrade checks passed.

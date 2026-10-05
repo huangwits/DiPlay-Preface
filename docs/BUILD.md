@@ -53,3 +53,11 @@ failure, and perform local signing. Robolectric uses API 23 with the API 22 code
 this does not replace an actual vehicle/iPhone test. Verify the APK package, higher version code,
 same signing certificate and file hash before publishing. Only the full APK belongs in the
 user's transfer directory; preserve old source-only artifacts outside it.
+
+
+## Windows unit-test shell
+
+The USB permission command tests execute POSIX shell fixtures. On Windows, set
+`DIPLAY_TEST_SH` to an existing Git for Windows `bin/sh.exe` before running Gradle.
+Scripts are passed through files to preserve their quoting across Windows process creation.
+Linux CI defaults to `sh`. No host shell is required by the Android application.
