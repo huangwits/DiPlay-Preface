@@ -11,6 +11,8 @@
 
 完整 APK 为 `DiPlay-Preface-0.2.12-E01.5-Android51-full.apk`；包名 `com.shihab.diplay.e01legacy`，版本 `0.2.12-e01.5-android51`，versionCode 34，最低 API 22，ARMv7 / ARM64。完整包必须通过 BUILD.md 的认证资产、启动与覆盖升级签名校验后才可交付。旧版发布标签不移动。
 
+本地验证：1,372 项常规 Android 测试通过；完整 APK 的 2 项认证启动/覆盖升级测试另行通过（零跳过），4 项维护测试通过，shared/common/mobile API 22 NewApi 检查无问题。完整包的认证资产匹配输入，签名与 E01.4 相同，SHA-256 为 `389894cbd6dd3b0f9dd7a916b7e9739623d3e82a014e08652a15f7b757e2db7b`。APK 对应代码提交 `79e1bdc9ea9509fcd8726dea67526ba050daa48f`。
+
 当前没有新的实车连接验证，不要求重复安装诊断采集器。H52 的模拟测试及本项目的桌面回归不能证明 E01/iPhone 握手成功。
 
 ---
@@ -25,5 +27,7 @@ This candidate follows original-author post-0.2.12 main through `29572a2`, retai
 - Review the latest H52 ANW transport and two public nFore binary SPP contracts. None is confirmed to match this E01 firmware; see the linked research record.
 
 Full APK: `DiPlay-Preface-0.2.12-E01.5-Android51-full.apk`; package `com.shihab.diplay.e01legacy`; version `0.2.12-e01.5-android51`; code 34; minimum API 22; ARMv7 / ARM64. Delivery requires BUILD.md authentication, bootstrap, upgrade-signature and package checks. Published tags remain unchanged.
+
+Local validation: 1,372 regular Android tests and both actual-APK bootstrap/upgrade tests passed (zero bootstrap skips), plus four maintenance tests and API 22 NewApi checks for all three modules. Authentication inputs match the package and the signer matches E01.4. The APK code revision is `79e1bdc9ea9509fcd8726dea67526ba050daa48f`; its SHA-256 is listed above.
 
 No new vehicle connection testing was performed. No repeated diagnostic-app installation is requested. Mock and desktop tests cannot establish E01/iPhone interoperability.
