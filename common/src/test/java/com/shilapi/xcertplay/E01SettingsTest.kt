@@ -26,6 +26,16 @@ class E01SettingsTest {
         assertFalse(E01Settings.enabled(context))
     }
 
+    @Test fun e01SuppressesSquareCanvasWithoutErasingRotationPreference() {
+        E01Settings.setEnabled(context, false)
+        CarPlayRotation.setEnabled(context, true)
+        assertTrue(CarPlayRotation.enabled(context))
+        E01Settings.setEnabled(context, true)
+        assertFalse(CarPlayRotation.enabled(context))
+        E01Settings.setEnabled(context, false)
+        assertTrue(CarPlayRotation.enabled(context))
+    }
+
     @Test fun modeLimitsEffectiveSettingsWithoutErasingUserChoices() {
         E01Settings.setEnabled(context, false)
         AirPlayPersistence.saveFps(context, 60)
