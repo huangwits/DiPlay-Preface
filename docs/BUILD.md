@@ -61,3 +61,7 @@ The USB permission command tests execute POSIX shell fixtures. On Windows, set
 `DIPLAY_TEST_SH` to an existing Git for Windows `bin/sh.exe` before running Gradle.
 Scripts are passed through files to preserve their quoting across Windows process creation.
 Linux CI defaults to `sh`. No host shell is required by the Android application.
+
+## Public Release format
+
+Follow [RELEASE-POLICY.md](RELEASE-POLICY.md) after all standalone/authentication/signature gates pass. Publish `DiPlay-Preface-v<version>.apk`, `DiPlay-Preface-source.zip`, `INSTALL-README.md`, and `SHA256SUMS.txt`. The APK filename has no `-full` suffix; its contents must still be the validated full standalone build. Keep validation JSON, logs and intermediate APKs in the local audit directory. Generate SHA-256 lines after choosing the final asset names, covering the APK, source ZIP and install guide.

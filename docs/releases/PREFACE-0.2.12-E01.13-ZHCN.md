@@ -1,4 +1,4 @@
-# E01.13 · 简体中文与连接界面修复 / Chinese interface and connection fixes
+# 简体中文与连接界面修复 / Chinese interface and connection fixes
 
 ## 中文
 
@@ -9,9 +9,9 @@
 - 等待连接画面跟随现有日夜模式即时刷新背景和文字，保留固定日间/夜间与自动模式、短屏布局、手动重试。
 - 保留系统蓝牙默认、E01 ECARX / H52 ANW 手动接口、吉利 HUD / 方向盘和 API 22 低负载适配。
 
-直接覆盖安装完整 `-full.apk`；保留包名 `com.shihab.diplay.e01legacy` 与原签名，最低 Android 5.1，支持 ARMv7 / ARM64。本次不改成原作者完整 0.2.13，只移植已审查的两个修复及配套测试。原作者来源：`32550b2`、`690945d`、`1240f8e`。
+直接覆盖安装`DiPlay-Preface-v0.2.13.apk`；保留包名 `com.shihab.diplay.e01legacy` 与原签名，最低 Android 5.1，支持 ARMv7 / ARM64。本次不改成原作者完整 0.2.13，只移植已审查的两个修复及配套测试。原作者来源：`32550b2`、`690945d`、`1240f8e`。
 
-实车与 iPhone 连接仍需验证，桌面回归不代表实车连接成功。各项构建结果见附件 `validation.json` 和 `apk-verification.json`。
+实车与 iPhone 连接仍需验证，桌面回归不代表实车连接成功。完整回归、API 22、认证与签名检查已通过；详细验证记录由维护者本地留存。
 
 ## English
 
@@ -19,4 +19,4 @@ Version `0.2.12-e01.13-zhcn-android51`, code 42. The app now uses Simplified Chi
 
 System Bluetooth remains default; manual E01 ECARX/H52 ANW, Geely integrations and API 22 performance adaptations remain. This release selectively ports original commits `32550b2`, `690945d`, and `1240f8e`; it is not a wholesale upstream 0.2.13 update.
 
-Install the full APK over the existing app. Package/signing identity is preserved, minimum Android is 5.1, ARMv7/ARM64 are included. Vehicle/iPhone connectivity is not established by desktop tests. See the attached validation records.
+Install `DiPlay-Preface-v0.2.13.apk` over the existing app. Package/signing identity is preserved, minimum Android is 5.1, ARMv7/ARM64 are included. Vehicle/iPhone connectivity is not established by desktop tests. Regression, API 22, authentication and signature checks passed; detailed records are retained locally.

@@ -7,6 +7,7 @@
 - Target Android 5.1 / API 22 and E01. Retain necessary API 23+ fallbacks, low-load settings and validated fixes; do not reintroduce API 18-only compatibility.
 - The user-provided APK is a local behavior reference. Do not mention it in README or distribute it. Preserve historical third-party attribution.
 - Keep one root README, Chinese first and English below. Release descriptions follow the same order.
+- Follow the owner's public release format in docs/RELEASE-POLICY.md: title `preface v.<version>`, APK `DiPlay-Preface-v<version>.apk`, source `DiPlay-Preface-source.zip`, plus `INSTALL-README.md` and `SHA256SUMS.txt` only. Keep validation JSON/logs local and generate checksums from the final public filenames.
 - Preserve com.shihab.diplay.e01legacy and the existing signer for upgrades. Only full standalone builds may be delivered for installation; follow docs/BUILD.md authentication and signature gates.
 - Keep credentials outside Git. Do not claim real vehicle connectivity based on desktop tests.
 - Run relevant common/shared regression tests, API 22 lint, source APK checks and scripts/tests for maintenance changes. Preserve published tags unless the owner explicitly requests removal; back up refs, release metadata and assets before authorized cleanup.

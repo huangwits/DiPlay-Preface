@@ -8,7 +8,7 @@
 
 以 [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) 为代码基准与默认更新来源，保留原作者 [DiPlay](https://github.com/shihabal3amri/DiPlay) 及其他贡献者署名。当前同步 carlito `8f53b27`，适配 Android 5.1 / API 22 及以上。
 
-[下载最新完整安装包](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.13-zhcn) · [所有发布](https://github.com/huangwits/DiPlay-Preface/releases) · [E01.13 说明](docs/releases/PREFACE-0.2.12-E01.13-ZHCN.md)
+[下载最新完整安装包](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.13-zhcn) · [所有发布](https://github.com/huangwits/DiPlay-Preface/releases) · [preface v.0.2.13 说明](docs/releases/PREFACE-0.2.12-E01.13-ZHCN.md)
 
 在 **连接设置 → 蓝牙连接接口 → 选择蓝牙接口** 中手动选择：
 
@@ -19,6 +19,8 @@
 | H52 车机蓝牙（ANW） | 具有匹配 ANW 服务的 H52 车机；先在原厂电话应用配对。 |
 
 切换接口后重新选择 iPhone。原厂接口不会自动启用，也不会在失败后自动切换到其他接口。H52 移植范围是蓝牙数据接口，项目最低系统仍为 Android 5.1，不包含 Android 4.3 整套兼容层。E01 / H52 实车 CarPlay 连接仍待验证。
+
+安装包名称为 `DiPlay-Preface-v0.2.13.apk`。发布附件只保留安装包、源码包、安装说明和 SHA-256 校验文件，后续沿用[发布规范](docs/RELEASE-POLICY.md)。
 
 只安装完整 APK。包名 `com.shihab.diplay.e01legacy`、原签名保留，可以覆盖升级；新版本为 `0.2.12-e01.13-zhcn-android51` / versionCode 42。已明确保存的接口选择继续有效。E01 保留 H.264、30 fps、长边 960 / 短边 540 的低负载显示配置，可在设置中调整性能模式。
 
@@ -34,7 +36,7 @@ Focused on Geely Preface: BYD/DiLink integrations and rotating-screen settings r
 
 Based on [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay), the default update source, with attribution retained for original [DiPlay](https://github.com/shihabal3amri/DiPlay) and other contributors. Current carlito baseline: `8f53b27`. Minimum Android version: 5.1 / API 22.
 
-[Download the latest full package](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.13-zhcn) · [All releases](https://github.com/huangwits/DiPlay-Preface/releases) · [E01.13 notes](docs/releases/PREFACE-0.2.12-E01.13-ZHCN.md)
+[Download the latest full package](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.13-zhcn) · [All releases](https://github.com/huangwits/DiPlay-Preface/releases) · [preface v.0.2.13 notes](docs/releases/PREFACE-0.2.12-E01.13-ZHCN.md)
 
 Open **Connection setup → Bluetooth connection → Choose Bluetooth interface**:
 
@@ -45,6 +47,8 @@ Open **Connection setup → Bluetooth connection → Choose Bluetooth interface*
 | H52 car Bluetooth (ANW) | H52 units with a matching ANW service. Pair in the factory phone app first. |
 
 Reselect the iPhone after switching interfaces. Vendor transports require manual selection and never silently fall through to another backend. The H52 import covers its Bluetooth transport, not the full Android 4.3 compatibility layer. Actual E01/H52 CarPlay connectivity remains unverified.
+
+The installable asset is `DiPlay-Preface-v0.2.13.apk`. Releases contain the APK, source archive, installation guide and SHA-256 checksums; see the [release format](docs/RELEASE-POLICY.md).
 
 Install only the full APK. Version `0.2.12-e01.13-zhcn-android51` / code 42 retains package `com.shihab.diplay.e01legacy`, signing identity, saved settings and in-place upgrades. The E01 performance profile retains H.264, 30 fps and a proportional 960-by-540 bounding box. Explicit saved interface choices remain effective.
 
