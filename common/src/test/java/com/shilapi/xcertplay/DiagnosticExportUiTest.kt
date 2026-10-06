@@ -58,7 +58,7 @@ class DiagnosticExportUiTest {
                 ReflectionHelpers.callInstanceMethod<Unit>(activity, "render")
                 repeat(7) {
                     descendants(activity.window.decorView).filterIsInstance<TextView>()
-                        .single { it.text.startsWith("Version ") }.performClick()
+                        .single { it.text == activity.getString(R.string.steering_version, activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "0.1.0-beta.1") }.performClick()
                 }
                 assertTrue(SteeringProfiles.developerUnlocked(activity))
             }
