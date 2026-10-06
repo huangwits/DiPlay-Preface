@@ -86,6 +86,30 @@ class CarPlayHostThemeDiagnosticsTest {
         assertTrue(logFile.readText().contains("reported=dark applied=light sessionActive=true"))
     }
 
+    @Test fun waitingScreenRepaintsWithTheActiveNightModeWithoutRecreatingItsLayout() {
+        val root = activity.javaClass.getDeclaredMethod("buildContentView")
+            .apply { isAccessible = true }.invoke(activity) as android.widget.FrameLayout
+        val viewport = root.getChildAt(2) as android.widget.FrameLayout
+        val panel = viewport.getChildAt(0) as android.widget.LinearLayout
+        val title = panel.getChildAt(1) as android.widget.TextView
+        fun assertColors(night: Boolean) {
+            val colors = WaitingScreenColors.of(night)
+            assertEquals(colors.background, (viewport.background as android.graphics.drawable.ColorDrawable).color)
+            assertEquals(colors.text, title.currentTextColor)
+            org.junit.Assert.assertSame(panel, viewport.getChildAt(0))
+        }
+        assertColors(true)
+        refresh(Configuration.UI_MODE_NIGHT_NO, ThemeModeDiagnostics.Source.CALLBACK)
+        assertColors(false)
+        refresh(Configuration.UI_MODE_NIGHT_YES, ThemeModeDiagnostics.Source.CALLBACK)
+        assertColors(true)
+        val controller = activity.javaClass.getDeclaredMethod("getNightModeController")
+            .apply { isAccessible = true }.invoke(activity) as CarPlayNightModeController
+        controller.configure(CarPlayNightMode.DAY, true)
+        refresh(Configuration.UI_MODE_NIGHT_YES, ThemeModeDiagnostics.Source.POLL)
+        assertColors(false)
+    }
+
     private fun refresh(mode: Int, source: ThemeModeDiagnostics.Source) {
         activity.javaClass.getDeclaredMethod("refreshConfiguration", Configuration::class.java, ThemeModeDiagnostics.Source::class.java)
             .apply { isAccessible = true }.invoke(activity, configuration(mode), source)
