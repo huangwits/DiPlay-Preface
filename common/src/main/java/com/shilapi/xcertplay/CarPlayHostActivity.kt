@@ -391,6 +391,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private var menuOpen = false
     private var latestStage = "Preparing CarPlay"
     private var darkMode = false
+    private var paintWaitingScreen: () -> Unit = {}
     private var carPlayNightMode = CarPlayNightMode.SYSTEM
     private var ambientLightThreshold = AmbientLightThreshold()
     private var ambientDelaySeconds = 2
@@ -402,6 +403,7 @@ class CarPlayHostActivity : ComponentActivity() {
             initialNight = darkMode,
         ) { night ->
             darkMode = night
+            paintWaitingScreen()
             appendLog("CarPlay switched to ${if (night) "night" else "day"} mode")
             logThemeState(nightModeDiagnosticSource, resources.configuration)
             syncAirPlayDarkMode(nightModeDiagnosticSource)
@@ -1083,7 +1085,6 @@ class CarPlayHostActivity : ComponentActivity() {
                 )
             }
         }.apply {
-            setBackgroundColor(Color.rgb(233, 238, 246))
             isClickable = true
         }
         val panel = LinearLayout(this).apply {
@@ -1097,7 +1098,6 @@ class CarPlayHostActivity : ComponentActivity() {
         panel.addView(icon, LinearLayout.LayoutParams(dp(88), dp(88)))
         val title = TextView(this).apply {
             text = getString(R.string.diplay)
-            setTextColor(Color.rgb(28, 28, 30))
             gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         }
@@ -1105,14 +1105,12 @@ class CarPlayHostActivity : ComponentActivity() {
         val stage = TextView(this).apply {
             text = getString(R.string.getting_carplay_ready)
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(28, 28, 30))
         }
         panel.addView(stage)
         val instructions = TextView(this).apply {
             text = if (wirelessEnabled) getString(R.string.keep_your_iphone_nearby_with_bluetooth_and_wi_fi_on_allow)
                 else getString(R.string.use_a_usb_data_cable_and_unlock_your_iphone_allow_trust_an)
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(90, 100, 116))
         }
         panel.addView(instructions)
         val recovery = Button(this).apply {
@@ -1153,9 +1151,17 @@ class CarPlayHostActivity : ComponentActivity() {
         val gestureHint = TextView(this).apply {
             text = getString(R.string.open_diplay_settings_hint, gestureFingerCount)
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(90, 100, 116))
         }
         panel.addView(gestureHint)
+        paintWaitingScreen = {
+            val colors = WaitingScreenColors.of(darkMode)
+            viewport.setBackgroundColor(colors.background)
+            title.setTextColor(colors.text)
+            stage.setTextColor(colors.text)
+            instructions.setTextColor(colors.secondary)
+            gestureHint.setTextColor(colors.secondary)
+        }
+        paintWaitingScreen()
         viewport.addView(panel, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
         root.addView(viewport, FrameLayout.LayoutParams(-1, -1))
         // Above the video and gesture layer, below the menus.
