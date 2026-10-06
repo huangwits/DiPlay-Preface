@@ -1,5 +1,7 @@
 # Unreleased
 
+- E01.7: merge original main through e6477e1 while retaining API 22, upgrade identity and the E01.6 factory Bluetooth experiment.
+
 - E01.4: rebuild the maintenance line on original DiPlay 0.2.12, retain selected Geely integrations and E01 fixes, and remove API 18-only compatibility. Original-author updates are the default; Geely changes are reviewed individually.
 - E01.4: preserve API 22, package identity and upgrade signing; vehicle Bluetooth remains unverified.
 
@@ -7,6 +9,13 @@
 - Use the car's current hotspot password on Android 9 when the system makes it available, so wireless CarPlay does not keep retrying with outdated saved details.
 - Prefer the hotspot's IPv4 connection on older Geely head units and recognize steering-button press and release events on more Geely models.
 - Let steering-button identification learn the wider range of key codes reported by OneOS head units.
+- Add a Smaller dashboard-map scale (125 %) so more of the map fits on the cluster.
+- Cross-fade the cluster waiting placeholder and the map (300 ms) and use a light waiting screen instead of a black panel.
+- Keep the custom dashboard turn card across a wireless session replacement within its existing stale window; repeated NoRouteSet packets do not extend that window. Arrival, explicit stop and wired disconnect still clear the card.
+
+- Fix the DiLink 3 cluster map staying empty: send full-screen projection (16) before half-screen projection (17), because after projection off (18) the cluster ignores 17 on its own.
+
+- Experimental DiLink 3 call controls (disabled by default): the call key answers, hang-up/menu keys end or decline, voice keys open Siri, and play/pause key 331 toggles CarPlay. A separate optional dashboard-call setting (needs ADB) shows caller and call time. Actual call, card and microphone acceptance is still pending.
 
 # DiPlay 0.2.12 — 2026-10-04
 

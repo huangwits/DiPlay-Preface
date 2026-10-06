@@ -1,6 +1,6 @@
 {
   "previous_main": "11136b93df966d09eb63e5c2b9d83aac84b8fa3e",
-  "upstream_base": "29572a2cba33ede85dd5355a36508af76be1898e",
+  "upstream_base": "e6477e1741ad91a18452f0099a432dde63311a19",
   "geely_reviewed": "84050d6ad85d6c24170811427fb04a5b6e7c3221",
   "geely_selected_files": [
     "common/src/main/AndroidManifest.xml",
@@ -75,5 +75,13 @@
     "reviewed_h52": "b0fdb35",
     "h52_transport_imported": false,
     "reason": "ANW and public nFore SPP contracts do not match verified E01 firmware evidence"
+  },
+  "upstream_update_2026_10_06": {
+    "previous_base": "29572a2cba33ede85dd5355a36508af76be1898e",
+    "factory_bluetooth_preserved": true,
+    "min_sdk": 22,
+    "reviewed_h52": "16656d6e7d757e95e95454f55d86cb99550bb8b1",
+    "h52_transport_imported": false,
+    "reason": "H52 ANW contract remains unverified for E01; retain ECARX SPP experiment"
   }
 }

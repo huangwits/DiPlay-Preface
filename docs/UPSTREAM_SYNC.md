@@ -1,6 +1,6 @@
 # Upstream-first Android 5.1 / E01 maintenance
 
-The code baseline is the original [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay), currently `29572a2cba33ede85dd5355a36508af76be1898e` (post-0.2.12 main, reviewed 2026-10-05). `upstream` points directly to that repository. `geely` points to [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) for selective vehicle changes; it is not the automatic merge source.
+The code baseline is the original [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay), currently `e6477e1741ad91a18452f0099a432dde63311a19` (post-0.2.12 main, reviewed 2026-10-06). `upstream` points directly to that repository. `geely` points to [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) for selective vehicle changes; it is not the automatic merge source.
 
 The GitHub repository stays at `huangwits/DiPlay-Preface`, retaining its existing releases and fork-network membership. GitHub's historical direct parent remains carlito; the network source is the original DiPlay. That display does not control local Git remotes or update policy. No repository deletion, force-push or published-tag movement is required.
 
@@ -29,3 +29,7 @@ Keep one bilingual README.md, Chinese above English. Use the same language order
 ## 2026-10-05 update
 
 The review branch merges original main through `29572a2`, preserving E01 limits, API 22 fallbacks and selected Geely changes. See [update and research record](E01-H52-NFORE-UPDATE-20261005.md). Published tags remain unchanged; the original upstream `v0.2.12` tag was not forced over this fork's existing tag.
+
+## 2026-10-06 update
+
+E01.7 merges original main through `e6477e1`, preserving the E01.6 ECARX SPP experiment and API 22 compatibility. Merge resolutions retain automatic hotspot selection, software Opus, USB descriptor fallbacks and Geely steering-key handling alongside upstream fixes. See [release notes](releases/PREFACE-0.2.12-E01.7-FACTORYBT.md).

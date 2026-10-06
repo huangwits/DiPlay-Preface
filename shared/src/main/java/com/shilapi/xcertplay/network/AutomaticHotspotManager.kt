@@ -133,7 +133,7 @@ class AutomaticHotspotManager(
             LocalOnlyHotspotManager(appContext, onDiagnostic)
         }
         val generated = mutableListOf(local)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             generated += Attempt(WirelessHotspotBackend.WIFI_P2P, WIFI_P2P_MILLIS) {
                 WifiP2pGroupManager(appContext, onDiagnostic, wifiP2pPreferredChannel)
             }
