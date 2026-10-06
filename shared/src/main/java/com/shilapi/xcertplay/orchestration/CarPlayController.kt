@@ -1201,8 +1201,8 @@ class CarPlayController(
             }
 
             val factory = if (config.factoryBluetoothEnabled) {
-                com.shilapi.xcertplay.transport.EcarxSppTransport.prepare(
-                    appContext, config.wirelessBluetoothDeviceAddress, ::debugLog,
+                com.shilapi.xcertplay.transport.FactoryBluetoothTransport.prepare(
+                    appContext, config.factoryBluetoothBackend, config.wirelessBluetoothDeviceAddress, ::debugLog,
                 )
             } else null
             val adapter = if (factory == null) bluetoothAdapter else null

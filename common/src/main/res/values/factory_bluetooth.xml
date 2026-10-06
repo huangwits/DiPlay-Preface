@@ -13,4 +13,11 @@
     <string name="factory_bt_error_data">The factory data channel disconnected or could not transfer data. Keep this code for the test result.</string>
     <string name="factory_bt_error_iap2">The factory data channel opened, but the CarPlay handshake did not complete. A Bluetooth connection alone does not confirm compatibility.</string>
     <string name="factory_bt_error_timeout">The factory interface stopped responding. Close and reopen DiPlay before retrying.</string>
+    <string name="factory_bt_backend">Factory Bluetooth backend</string>
+    <string name="factory_bt_ecarx">ECARX (E01 experiment)</string>
+    <string name="factory_bt_anw">H52 ANW (additional experiment)</string>
+    <string name="factory_anw_hint">Select H52 ANW to check its factory paired list. Missing or incompatible services fail explicitly. Connecting may initialize the local SPP service; it does not switch the factory radio on or off.</string>
+    <string name="factory_anw_unavailable">H52 ANW service is unavailable, unresponsive or incompatible. This does not mean factory Bluetooth is broken; try the ECARX backend.</string>
+    <string name="factory_anw_phone">Choose your iPhone from the H52 ANW factory paired list again.</string>
+    <string name="factory_anw_connection">H52 ANW did not establish a usable data connection. Keep factory Bluetooth on and record this error and the diagnostic report.</string>
 </resources>

@@ -83,5 +83,18 @@
     "reviewed_h52": "16656d6e7d757e95e95454f55d86cb99550bb8b1",
     "h52_transport_imported": false,
     "reason": "H52 ANW contract remains unverified for E01; retain ECARX SPP experiment"
+  },
+  "h52_anw_import_2026_10_06": {
+    "commit": "b0fdb350b3a2fc4c6ebda5d62510caa043d3fc23",
+    "modules": [
+      "AnwBluetoothBackend",
+      "AnwSppProtocol",
+      "AnwSppDataCallback",
+      "CallbackDuplexByteStream"
+    ],
+    "default_backend": "ECARX",
+    "activation": "Explicit H52 ANW selection; matching Binder required before vendor transactions",
+    "min_sdk": 22,
+    "vehicle_verified": false
   }
 }

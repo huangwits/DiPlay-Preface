@@ -213,13 +213,13 @@ internal class ReflectiveSppApi(
 }
 
 class PreparedFactoryBluetooth internal constructor(
-    val phone: FactoryBluetoothPhone,
-    val localAddress: String,
+    override val phone: FactoryBluetoothPhone,
+    override val localAddress: String,
     private val api: FactorySppApi,
     private val calls: FactorySdkCalls,
     private val log: (String) -> Unit,
-) {
-    fun stream(): FactorySppDuplexStream = FactorySppDuplexStream(phone.address, api, calls, log)
+) : PreparedVendorBluetooth {
+    override fun stream(): FactorySppDuplexStream = FactorySppDuplexStream(phone.address, api, calls, log)
 }
 
 /** Bounded binary callback transport. State integers are logged, never guessed to mean connected. */
@@ -228,7 +228,7 @@ class FactorySppDuplexStream internal constructor(
     private val api: FactorySppApi,
     private val calls: FactorySdkCalls,
     private val log: (String) -> Unit = {},
-) : BlockingDuplexByteStream {
+) : ConnectingBluetoothStream {
     private val lock = Object()
     private val sendLock = Any()
     private val pending = ArrayDeque<ByteArray>()
@@ -239,7 +239,7 @@ class FactorySppDuplexStream internal constructor(
     private var requested = false // SDK worker only.
     private var failure: FactoryBluetoothException? = null
 
-    fun connect(timeoutMillis: Long = 15_000) {
+    override fun connect(timeoutMillis: Long) {
         try {
             val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
             while (!call("E01-F02") { api.ready() }) {

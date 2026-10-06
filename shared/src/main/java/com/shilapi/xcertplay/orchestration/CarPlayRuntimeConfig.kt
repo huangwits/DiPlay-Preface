@@ -66,6 +66,7 @@ class CarPlayRuntimeConfig(
     val manualHotspotSecurity: ManualHotspotSecurity = ManualHotspotSecurity.WPA2,
     val wirelessBluetoothDeviceAddress: String? = null,
     val factoryBluetoothEnabled: Boolean = false,
+    val factoryBluetoothBackend: com.shilapi.xcertplay.transport.FactoryBluetoothBackend = com.shilapi.xcertplay.transport.FactoryBluetoothBackend.ECARX,
     val locationReportingEnabled: Boolean = false,
     val wifiP2pPreferredChannel: Int = WifiP2pChannels.AUTO,
     val existingWifiSsid: String = "",
