@@ -186,6 +186,7 @@ class CarPlayHostActivity : ComponentActivity() {
         hostMac = DiPlayBootstrap.deviceId(airPlayIdentity).split(":").map { it.toInt(16).toByte() }.toByteArray(),
         wirelessBluetoothDeviceAddress = DiPlayPreferences.phoneAddress(this),
         factoryBluetoothEnabled = FactoryBluetoothSettings.enabled(this),
+        factoryBluetoothBackend = FactoryBluetoothSettings.backend(this),
         transport = if (wirelessEnabled) CarPlayTransport.WIRELESS else CarPlayTransport.WIRED,
         wirelessHotspotMode = wirelessHotspotMode,
         wifiP2pPreferredChannel = AirPlayPersistence.loadWifiP2pPreferredChannel(this),
@@ -389,6 +390,8 @@ class CarPlayHostActivity : ComponentActivity() {
     private var remoteMfiServer = ""
     private var remoteMfiToken = ""
     private var wirelessPermissionsReady = false
+    private var factoryBackendAtLoad = com.shilapi.xcertplay.transport.FactoryBluetoothBackend.ECARX
+    private var factoryEnabledAtLoad = false
     private var wirelessHotspotMode = WirelessHotspotMode.AUTOMATIC
     private var manualHotspotSsid = ""
     private var existingWifiSsid = ""
@@ -635,6 +638,8 @@ class CarPlayHostActivity : ComponentActivity() {
      * mode, hotspot and MFI settings that were current when this screen was first opened.
      */
     private fun loadConnectionSettings() {
+        factoryBackendAtLoad = FactoryBluetoothSettings.backend(this)
+        factoryEnabledAtLoad = FactoryBluetoothSettings.enabled(this)
         wirelessEnabled = AirPlayPersistence.loadWirelessEnabled(this)
         mfiTarget = AirPlayPersistence.loadMfiTarget(this)
         mfiI2cPath = AirPlayPersistence.loadMfiI2cPath(this)
@@ -875,7 +880,9 @@ class CarPlayHostActivity : ComponentActivity() {
             }
             return true
         }
-        if (reloadHotspotSettingsIfChanged()) {
+        val factoryChanged = factoryBackendAtLoad != FactoryBluetoothSettings.backend(this) ||
+            factoryEnabledAtLoad != FactoryBluetoothSettings.enabled(this)
+        if (reloadHotspotSettingsIfChanged() || factoryChanged) {
             switchingTransport = true
             val restart = { recreate() }
             if (CarPlayBackgroundSession.hasSession() || controller != null) {

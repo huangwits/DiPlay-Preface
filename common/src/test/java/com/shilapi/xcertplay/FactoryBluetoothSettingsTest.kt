@@ -29,4 +29,26 @@ class FactoryBluetoothSettingsTest {
         assertTrue(text.contains("握手"))
         assertNull(FactoryBluetoothSettings.failureCopy(context, "Generic Bluetooth failure"))
     }
+
+    @Test fun choosingAnotherBackendClearsOnlyThePreviousPhoneSelection() {
+        val context = RuntimeEnvironment.getApplication()
+        val prefs = context.getSharedPreferences("diplay", android.content.Context.MODE_PRIVATE)
+        prefs.edit().clear().apply()
+        DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "Phone")
+        DiPlayPreferences.saveAutoConnect(context, true)
+        assertEquals(com.shilapi.xcertplay.transport.FactoryBluetoothBackend.ECARX, FactoryBluetoothSettings.backend(context))
+        FactoryBluetoothSettings.setBackend(context, com.shilapi.xcertplay.transport.FactoryBluetoothBackend.H52_ANW)
+        assertNull(DiPlayPreferences.phoneAddress(context))
+        assertTrue(DiPlayPreferences.autoConnect(context))
+        assertEquals(com.shilapi.xcertplay.transport.FactoryBluetoothBackend.H52_ANW, FactoryBluetoothSettings.backend(context))
+        DiPlayPreferences.savePhone(context, "22:33:44:55:66:77", "Factory phone")
+        FactoryBluetoothSettings.setBackend(context, com.shilapi.xcertplay.transport.FactoryBluetoothBackend.H52_ANW)
+        assertEquals("22:33:44:55:66:77", DiPlayPreferences.phoneAddress(context))
+    }
+
+    @Test @Config(qualifiers = "zh-rCN") fun missingAnwServiceKeepsItsOwnErrorCode() {
+        val text = FactoryBluetoothSettings.failureCopy(RuntimeEnvironment.getApplication(), "[E01-H01] Wrong descriptor")!!
+        assertTrue(text.contains("E01-H01"))
+        assertTrue(text.contains("ANW"))
+    }
 }

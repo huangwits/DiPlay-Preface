@@ -12,4 +12,11 @@
     <string name="factory_bt_error_data">原厂数据通道已断开或收发失败。请记录此错误码。</string>
     <string name="factory_bt_error_iap2">原厂数据通道已打开，但 CarPlay 握手没有完成。蓝牙连接成功尚不代表支持 CarPlay。</string>
     <string name="factory_bt_error_timeout">原厂接口长时间无响应。请关闭并重新打开 DiPlay 后再试。</string>
+    <string name="factory_bt_backend">原厂蓝牙接口</string>
+    <string name="factory_bt_ecarx">ECARX（E01 实验）</string>
+    <string name="factory_bt_anw">H52 ANW（新增实验）</string>
+    <string name="factory_anw_hint">选择 H52 ANW 后检测并读取它的原厂配对列表。服务缺失或不兼容会明确提示。连接时可能初始化本地 SPP 数据服务，不会切换原厂蓝牙电源。</string>
+    <string name="factory_anw_unavailable">H52 ANW 服务不可访问、未响应或接口不匹配。这不代表原厂蓝牙坏了，可切回 ECARX 接口尝试。</string>
+    <string name="factory_anw_phone">请从 H52 ANW 原厂配对列表重新选择 iPhone。</string>
+    <string name="factory_anw_connection">H52 ANW 尚未建立可用的数据连接。请保持原厂蓝牙开启，记录错误码并保存诊断报告。</string>
 </resources>

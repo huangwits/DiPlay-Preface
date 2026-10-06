@@ -4,11 +4,23 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import com.shilapi.xcertplay.host.R
-import com.shilapi.xcertplay.transport.EcarxSppTransport
+import com.shilapi.xcertplay.transport.FactoryBluetoothTransport
+import com.shilapi.xcertplay.transport.FactoryBluetoothBackend
 import com.shilapi.xcertplay.transport.FactoryBluetoothPhone
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal object FactoryBluetoothSettings {
+    fun backend(context: Context): FactoryBluetoothBackend = FactoryBluetoothBackend.entries.firstOrNull {
+        it.name == context.getSharedPreferences("diplay", Context.MODE_PRIVATE).getString("factory_bluetooth_backend", null)
+    } ?: FactoryBluetoothBackend.ECARX
+
+    fun setBackend(context: Context, backend: FactoryBluetoothBackend) {
+        if (backend(context) == backend) return
+        context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit()
+            .putString("factory_bluetooth_backend", backend.name)
+            .remove("phone_address").remove("phone_name").apply()
+    }
+
     fun enabled(context: Context): Boolean = context.getSharedPreferences("diplay", Context.MODE_PRIVATE)
         .getBoolean("factory_bluetooth_enabled", context.resources.getBoolean(R.bool.config_factory_bluetooth_default))
 
@@ -20,17 +32,26 @@ internal object FactoryBluetoothSettings {
     fun recordResult(context: Context, result: String) {
         context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit()
             .putString("factory_bluetooth_last_result", result.take(600))
-            .putString("factory_bluetooth_sdk", EcarxSppTransport.diagnosticSummary).apply()
+            .putString("factory_bluetooth_sdk", FactoryBluetoothTransport.diagnosticSummary).apply()
     }
 
     fun diagnostics(context: Context): String {
         val prefs = context.getSharedPreferences("diplay", Context.MODE_PRIVATE)
-        return "FactoryBluetooth enabled=${enabled(context)}\n" +
+        return "FactoryBluetooth enabled=${enabled(context)} backend=${backend(context)}\n" +
             "Result=${prefs.getString("factory_bluetooth_last_result", "not attempted")}\n" +
             "SDK=${prefs.getString("factory_bluetooth_sdk", "not queried")}"
     }
 
     fun failureCopy(context: Context, message: String): String? {
+        val anwCode = Regex("E01-H0[1-3]").find(message)?.value
+        if (anwCode != null) {
+            val resource = when (anwCode) {
+                "E01-H01" -> R.string.factory_anw_unavailable
+                "E01-H02" -> R.string.factory_anw_phone
+                else -> R.string.factory_anw_connection
+            }
+            return "[$anwCode] ${context.getString(resource)}"
+        }
         val code = Regex("E01-F0[1-9]").find(message)?.value ?: return null
         val resource = when (code) {
             "E01-F01" -> R.string.factory_bt_error_sdk
@@ -58,15 +79,16 @@ internal class FactoryBluetoothPicker(
 
     fun show() {
         val app = activity.applicationContext
+        val backend = FactoryBluetoothSettings.backend(app)
         dialog = AlertDialog.Builder(activity).setTitle(R.string.factory_bt_title)
             .setMessage(R.string.factory_bt_reading)
             .setNegativeButton(R.string.cancel) { _, _ -> cancel() }
             .setOnCancelListener { cancel() }.show()
         Thread({
-            val result = runCatching { EcarxSppTransport.pairedPhones(app) }
+            val result = runCatching { FactoryBluetoothTransport.pairedPhones(app, backend) }
             FactoryBluetoothSettings.recordResult(app, result.exceptionOrNull()?.message ?: "Factory paired list read")
             activity.runOnUiThread {
-                if (!active.get() || activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                if (!active.get() || activity.isFinishing || activity.isDestroyed || backend != FactoryBluetoothSettings.backend(app)) return@runOnUiThread
                 dialog?.dismiss()
                 val phones = result.getOrNull()
                 if (phones.isNullOrEmpty()) {
