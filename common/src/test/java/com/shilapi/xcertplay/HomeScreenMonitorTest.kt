@@ -21,44 +21,9 @@ class HomeScreenMonitorTest {
         context = RuntimeEnvironment.getApplication()
     }
 
-    @Test
-    fun knownCarLaunchersContainDiYouDesktop() {
-        assertTrue(HomeScreenMonitor.KNOWN_CAR_LAUNCHERS.contains("com.smg.dydesktop"))
-        assertTrue(HomeScreenMonitor.KNOWN_CAR_LAUNCHERS.contains("com.smg.dydesktop.pro"))
-        assertTrue(HomeScreenMonitor.KNOWN_CAR_LAUNCHERS.contains("com.dy.launcher"))
-        assertTrue(HomeScreenMonitor.KNOWN_CAR_LAUNCHERS.contains("com.king.dyzm"))
-        assertTrue(HomeScreenMonitor.KNOWN_CAR_LAUNCHERS.contains("com.dudu.android.launcher"))
-    }
-
-    @Test
-    fun isHomePackageRecognizesBYDAndThirdPartyLaunchers() {
-        val monitor = HomeScreenMonitor(context) {}
-        val isHomeMethod = HomeScreenMonitor::class.java.getDeclaredMethod("isHomePackage", String::class.java).apply {
-            isAccessible = true
-        }
-
-        // Standard BYD launchers
-        assertTrue(isHomeMethod.invoke(monitor, "com.android.launcher3") as Boolean)
-        assertTrue(isHomeMethod.invoke(monitor, "com.byd.launchermap") as Boolean)
-        assertTrue(isHomeMethod.invoke(monitor, "com.byd.naviauto") as Boolean)
-        assertTrue(isHomeMethod.invoke(monitor, "com.byd.mycar") as Boolean)
-
-        // Third-party launchers
-        assertTrue(isHomeMethod.invoke(monitor, "com.smg.dydesktop") as Boolean)
-        assertTrue(isHomeMethod.invoke(monitor, "com.smg.dydesktop.pro") as Boolean)
-        assertTrue(isHomeMethod.invoke(monitor, "com.dy.launcher") as Boolean)
-        assertTrue(isHomeMethod.invoke(monitor, "com.king.dyzm") as Boolean)
-        assertTrue(isHomeMethod.invoke(monitor, "com.dudu.android.launcher") as Boolean)
-        assertFalse(isHomeMethod.invoke(monitor, "com.custom.carlauncher") as Boolean)
-
-        // Non-home full-screen apps
-        assertFalse(isHomeMethod.invoke(monitor, "com.byd.panoramic") as Boolean)
-        assertFalse(isHomeMethod.invoke(monitor, "com.netease.cloudmusic") as Boolean)
-        assertFalse(isHomeMethod.invoke(monitor, "com.byd.carsetting") as Boolean)
-        assertFalse(isHomeMethod.invoke(monitor, "com.kugou.android") as Boolean)
-        assertFalse(isHomeMethod.invoke(monitor, "com.autonavi.amapauto") as Boolean)
-        assertFalse(isHomeMethod.invoke(monitor, "com.yecon.carsetting") as Boolean)
-        assertFalse(isHomeMethod.invoke(monitor, "com.unrelated.desktop.settings") as Boolean)
+    @Test fun undeclaredVendorLaunchersAreNotAssumedToBeHome() {
+        assertFalse(HomeScreenMonitor.queryHomePackages(context).contains("com.byd.mycar"))
+        assertFalse(HomeScreenMonitor.queryHomePackages(context).contains("com.smg.dydesktop"))
     }
 
     @Test
@@ -68,6 +33,11 @@ class HomeScreenMonitorTest {
             observedVisibility = visible
         }
 
+        val info = android.content.pm.ResolveInfo().apply {
+            activityInfo = android.content.pm.ActivityInfo().apply { packageName = "com.geely.launcher"; name = "Home" }
+        }
+        org.robolectric.Shadows.shadowOf(context.packageManager).addResolveInfoForIntent(
+            android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME), info)
         monitor.start()
         assertTrue(monitor.running)
 
@@ -77,7 +47,7 @@ class HomeScreenMonitorTest {
         assertEquals(false, observedVisibility)
 
         // Switch to DiYou Desktop -> should show (true)
-        HomeScreenMonitor.notifyForegroundPackage("com.smg.dydesktop")
+        HomeScreenMonitor.notifyForegroundPackage("com.geely.launcher")
         org.robolectric.shadows.ShadowLooper.idleMainLooper()
         assertEquals(true, observedVisibility)
 
