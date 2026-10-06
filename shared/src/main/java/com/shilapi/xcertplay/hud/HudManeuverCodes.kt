@@ -4,7 +4,7 @@ package com.shilapi.xcertplay.hud
  * Apple iAP2 RouteGuidanceManeuverType -> Gaode maneuver code, the vocabulary of the BYD HUD
  * icon set (assets/byd-hud-icons/0x<code>.png) and of the native HUD arrow.
  */
-internal object BydManeuverCodes {
+internal object HudManeuverCodes {
     const val NONE = 0
     const val LEFT = 1
     const val RIGHT = 2

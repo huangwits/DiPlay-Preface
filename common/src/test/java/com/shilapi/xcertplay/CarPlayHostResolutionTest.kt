@@ -106,7 +106,7 @@ class CarPlayHostResolutionTest {
     @Test fun e01PixelBudgetStillAppliesToEnlargedResolutionAndSmallerControls() {
         E01Settings.setEnabled(activity, true)
         decoder(maxWidth = 3840, maxHeight = 3840)
-        CarPlayRotation.setEnabled(activity, true)
+        activity.getSharedPreferences("diplay_carplay_rotation", 0).edit().putBoolean("enabled", true).commit()
         CarPlayDock.save(activity, CarPlayDock.BOTTOM)
         AirPlayPersistence.saveClusterMapEnabled(activity, true)
         try {
