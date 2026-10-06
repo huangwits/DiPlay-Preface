@@ -1272,6 +1272,17 @@ class DiPlayActivity : ComponentActivity() {
         if (E01Settings.enabled(this)) {
             section(content, getString(R.string.factory_bt_title)) { card ->
                 card.addView(label(getString(R.string.factory_bt_description), 16, MUTED))
+                val backends = com.shilapi.xcertplay.transport.FactoryBluetoothBackend.entries
+                choice(card, getString(R.string.factory_bt_backend),
+                    listOf(getString(R.string.factory_bt_ecarx), getString(R.string.factory_bt_anw)),
+                    backends.indexOf(FactoryBluetoothSettings.backend(this)), reconnects = false) { selected ->
+                    factoryPhonePicker?.cancel()
+                    FactoryBluetoothSettings.setBackend(this, backends[selected])
+                    FactoryBluetoothSettings.setEnabled(this, true)
+                    pendingWireless = false
+                    choosePhone()
+                }
+                card.addView(label(getString(R.string.factory_anw_hint), 14, MUTED))
                 card.addView(button("${if (FactoryBluetoothSettings.enabled(this)) "✓  " else ""}${getString(R.string.factory_bt_enabled)}",
                     FactoryBluetoothSettings.enabled(this)) {
                     FactoryBluetoothSettings.setEnabled(this, !FactoryBluetoothSettings.enabled(this))

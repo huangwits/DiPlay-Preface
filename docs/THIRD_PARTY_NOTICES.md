@@ -46,3 +46,7 @@ The static site layout, CSS and generator adapt DiAuto (AGPL-3.0). The AGPL lice
 Required Notice: Copyright AndyShaman (https://github.com/AndyShaman/BYDMate)
 
 The maneuver PNGs under `shared/src/main/assets/byd-hud-icons` were imported from BYDMate. Its PolyForm Noncommercial 1.0.0 terms and required notice are included alongside the assets. These files are separate from the project code license; upstream describes them as donor assets and their original provenance is not independently established. The validated DiLink5.1 windshield path uses factory turn codes rather than these images.
+
+## H52 ANW optional transport (E01.8)
+
+The optional `AnwBluetoothBackend`, `AnwSppProtocol`, `AnwSppDataCallback` and `CallbackDuplexByteStream` modules and their three original test files were selectively imported from [xikai6282/DiPlay-Geely-Android43 at b0fdb350b3a2fc4c6ebda5d62510caa043d3fc23](https://github.com/xikai6282/DiPlay-Geely-Android43/tree/b0fdb350b3a2fc4c6ebda5d62510caa043d3fc23/shared/src). Their original GPL-3.0 provenance is retained. E01 integration adds explicit backend selection, error mapping and cancellation-safe controller ownership. No OEM firmware or Android 4.3-only compatibility layer is distributed by this import.
