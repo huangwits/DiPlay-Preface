@@ -231,8 +231,6 @@ class AndroidMediaSink(
     private val audioFocusEnabled: Boolean = false,
     private val mediaChannel: Int = 0,
     private val navigationChannel: Int = 0,
-    geelyAudioRouting: Boolean = false,
-    private val geelyNavigationAlert: Boolean = false,
     context: Context? = null,
     private val navigationStreamType: Int = AudioChannelMapper.DEFAULT_NAVIGATION_STREAM_TYPE,
     onScreenStreamActiveChanged: ((Int, Boolean) -> Unit)? = null,
@@ -246,7 +244,6 @@ class AndroidMediaSink(
 ) : MediaSink {
     private val appContext = context?.applicationContext
     private val factoryAudio = appContext?.let(GeelyFactoryCarPlay::load)
-    private val legacyGeelyAudio = if (geelyAudioRouting && factoryAudio == null) GeelyAudioCapabilities.detect() else null
     private val audioManager = appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private val audioFocusCoordinator = AudioFocusCoordinator(
         appContext,
@@ -537,8 +534,8 @@ class AndroidMediaSink(
             format,
             advancedAudioChannelMapping,
             audioFocusEnabled,
-            legacyGeelyAudio?.carPlay ?: mediaChannel,
-            legacyGeelyAudio?.navigationStream(format.audioType, geelyNavigationAlert) ?: navigationChannel,
+            mediaChannel,
+            navigationChannel,
             audioFocusCoordinator,
             navigationStreamType,
             mediaBufferMillis,

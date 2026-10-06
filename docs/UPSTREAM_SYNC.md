@@ -10,7 +10,7 @@ E01.13 已逐项审查移植原作者 `32550b2`（NSD 延迟加载）、`690945d
 
 本地使用：先更新 `geely/main` 和 `upstream/main`，从干净工作树运行 `python scripts/prepare_upstream_update.py`；原作者单项更新用 `--source original --commit <full-sha>`。保留 `upstream` 指向原作者、`geely` 指向 carlito。
 
-H52 仅引入匹配 ANW 协议的数据后端，最低系统仍为 Android 5.1。系统蓝牙默认启用；E01 ECARX、H52 ANW 都是明确手动选项，与 E01 性能模式独立。切换接口必须重新选择手机。不同厂商的事务号和服务不能混用。
+H52 蓝牙、诊断和专用音频适配已移除，最低系统仍为 Android 5.1。系统蓝牙默认启用；E01 ECARX 都是明确手动选项，与 E01 性能模式独立。切换接口必须重新选择手机。不同厂商的事务号和服务不能混用。
 
 提交前运行 common/shared 测试、维护脚本测试、API 22 NewApi lint、源码 APK 无认证检查。完整安装包另需通过 [BUILD.md](BUILD.md) 的认证与原签名检查。自动化测试不代表实车连接成功。历史 tag/Release 仅按所有者明确要求删除，先备份源码指向、发布说明和全部附件。
 
@@ -22,6 +22,6 @@ At the owner's request on 2026-10-06, carlito12345/DiPlay is the baseline and de
 
 The update workflow defaults to `geely`, merging carlito main into a review branch. `original` requires one full non-merge SHA from original-author main and uses `cherry-pick -x`. Conflicts abort back to the starting branch; the script does not update main or publish releases. Locally run `python scripts/prepare_upstream_update.py` after fetching both remotes, or `--source original --commit <full-sha>` for a selected original-author change.
 
-System Bluetooth is the default. E01 ECARX and H52 ANW are explicit choices independent of the E01 performance profile. Changing interfaces clears only the previous phone selection. The H52 transport import does not lower the minimum Android version below API 22. Keep vendor contracts separate.
+System Bluetooth is the default. E01 ECARX is explicit choices independent of the E01 performance profile. Changing interfaces clears only the previous phone selection. H52 transport, diagnostics and audio routing have been removed; the minimum Android version remains API 22. Keep vendor contracts separate.
 
 Require common/shared and maintenance tests, API 22 lint and source-package isolation checks; full deliverables additionally require the authentication and upgrade-signature gates in BUILD.md. Vehicle connectivity remains a separate validation. Delete historical tags/releases only on explicit owner instruction after backing up refs, metadata and all assets.

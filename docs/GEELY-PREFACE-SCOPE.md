@@ -4,7 +4,7 @@
 
 E01.13 应用界面固定为简体中文；其他翻译和语言选择已移除。旧语言偏好会清理，其他已保存设置保留。已接入无 NSD 服务的接口 mDNS 启动修复和等待画面日夜模式。
 
-E01.12 以 carlito 为基准，聚焦吉利星瑞 Android 5.1 / API 22 及以上车机。系统蓝牙为默认；E01 ECARX、H52 ANW 保留为手动选项。切换接口后重新选择 iPhone。
+E01.12 以 carlito 为基准，聚焦吉利星瑞 Android 5.1 / API 22 及以上车机。系统蓝牙为默认；E01 ECARX 保留为手动选项。切换接口后重新选择 iPhone。
 
 保留无线/USB CarPlay、通用网络兼容处理、音频与解码、吉利 HUD、吉利方向盘识别与学习、桌面导航组件和 E01 低负载配置。桌面地图使用通用虚拟视频流；E01 性能模式继续关闭额外视频流以控制负载。
 
@@ -18,7 +18,7 @@ E01.12 以 carlito 为基准，聚焦吉利星瑞 Android 5.1 / API 22 及以上
 
 E01.13 uses a Simplified-Chinese-only interface, migrates legacy language settings and preserves unrelated preferences. Includes deferred NSD lookup for interface mDNS and day/night waiting-screen colors.
 
-E01.12 keeps carlito and targets Geely Preface on Android 5.1 / API 22+. System Bluetooth remains the default; E01 ECARX and H52 ANW are manual choices. Reselect the iPhone after switching.
+E01.12 keeps carlito and targets Geely Preface on Android 5.1 / API 22+. System Bluetooth remains the default; E01 ECARX is a manual choice. Reselect the iPhone after switching.
 
 Wireless/USB CarPlay, shared network/decoder compatibility, Geely HUD and learned steering controls, navigation widgets, launcher maps and E01 performance remain. E01 mode still disables the extra video stream.
 

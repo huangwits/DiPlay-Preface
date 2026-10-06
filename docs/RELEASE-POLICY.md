@@ -28,4 +28,4 @@ Use the owner's confirmed format: title `preface v.<version>` and exactly four u
 
 The short APK name still denotes a fully provisioned, validated standalone package with the existing application identity and signer. Checksums cover the other three assets under their final names. Release notes and installation instructions must match those names and must not refer to unpublished attachments. Keep Chinese first, followed by English.
 
-Preserve existing tags and their matching source archives. This naming convention does not authorize history deletion or tag rewriting. Back up release metadata, assets and refs before changing published attachments. The current public version is `0.2.13`; its existing tag and APK internal version remain unchanged.
+Preserve existing tags and their matching source archives. This naming convention does not authorize history deletion or tag rewriting. Back up release metadata, assets and refs before changing published attachments. The historical `0.2.13` tag and its APK internal version remain unchanged.

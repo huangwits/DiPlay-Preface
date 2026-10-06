@@ -1,11 +1,11 @@
 # DiPlay Preface maintenance
 
 - Follow carlito12345/DiPlay as the code baseline and default update source, as requested by the owner on 2026-10-06. Keep original-author attribution; import direct shihabal3amri changes only as explicitly reviewed commits.
-- Default to Android system Bluetooth. Offer E01 ECARX and H52 ANW as explicit manual choices, independently of the E01 performance profile. Keep the API-18 H52 fork as a selected transport source only.
+- Default to Android system Bluetooth. Offer E01 ECARX as an explicit manual choice, independently of the E01 performance profile. H52 ANW transport, diagnostics and audio routing were removed at the owner's request on 2026-10-06; do not reintroduce them.
 - Ship a Simplified-Chinese-only app: Chinese default resources, no language picker or foreign translations. Preserve language migration and APK locale filtering when syncing upstream.
 - Focus on Geely Preface: no BYD/DiLink vehicle services, fixed key codes, rotating-screen canvas or vendor instrument UI. Retain shared protocols and historical attribution.
 - Target Android 5.1 / API 22 and E01. Retain necessary API 23+ fallbacks, low-load settings and validated fixes; do not reintroduce API 18-only compatibility.
-- The user-provided APK is a local behavior reference. Do not mention it in README or distribute it. Preserve historical third-party attribution.
+- The user-provided APK is a local behavior reference. Do not mention it in README or distribute the original. The owner also requested a separate adapted APK: keep that work outside this public source tree, deliver it only in local outputs, and never publish it to GitHub. Preserve historical third-party attribution.
 - Keep one root README, Chinese first and English below. Release descriptions follow the same order.
 - Follow the owner's public release format in docs/RELEASE-POLICY.md: title `preface v.<version>`, APK `DiPlay-Preface-v<version>.apk`, source `DiPlay-Preface-source.zip`, plus `INSTALL-README.md` and `SHA256SUMS.txt` only. Keep validation JSON/logs local and generate checksums from the final public filenames.
 - Preserve com.shihab.diplay.e01legacy and the existing signer for upgrades. Only full standalone builds may be delivered for installation; follow docs/BUILD.md authentication and signature gates.

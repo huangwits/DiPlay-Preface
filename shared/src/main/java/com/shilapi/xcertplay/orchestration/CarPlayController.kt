@@ -1847,8 +1847,7 @@ class CarPlayController(
                 permissionPollGeneration++
                 when (phase) {
                     Phase.REENUMERATION, Phase.IPHONE -> {
-                        // API 18 exposes the active USB layout only after opening a connection;
-                        // inspect it off the main thread and keep the same re-enumeration policy.
+                        val generation = availabilityPollGeneration.get()
                         executor.execute {
                             val configurationReady = try {
                                 iphoneHost.hasCarPlayConfiguration(result.device)
@@ -1857,7 +1856,7 @@ class CarPlayController(
                                 false
                             }
                             mainHandler.post {
-                                if (closed) return@post
+                                if (closed || generation != availabilityPollGeneration.get()) return@post
                                 connectionDiagnostic(
                                     "USB configuration ready=$configurationReady " +
                                         "api=${android.os.Build.VERSION.SDK_INT} " +
@@ -1920,25 +1919,68 @@ class CarPlayController(
     }
 
     private fun beginReenumeration(device: UsbDevice) {
+        val generation = availabilityPollGeneration.incrementAndGet()
         phase = Phase.REENUMERATION
         reenumerationAttempts += 1
         connectionDiagnostic("USB transition requested count=$reenumerationAttempts")
         onStatus(CarPlayStatus.SelectingConfiguration)
         iphoneHost.requestCarPlayReenumerationAsync(device, executor) { transition ->
-            when (transition) {
-                IphoneUsbHost.TransitionResult.ReenumerationRequested ->
-                    onStatus(CarPlayStatus.WaitingForReenumeration)
-                is IphoneUsbHost.TransitionResult.Failed -> fail(transition.error)
+            mainHandler.post {
+                if (closed || phase != Phase.REENUMERATION || generation != availabilityPollGeneration.get()) return@post
+                when (transition) {
+                    IphoneUsbHost.TransitionResult.ReenumerationRequested -> {
+                        onStatus(CarPlayStatus.WaitingForReenumeration)
+                        val deadline = android.os.SystemClock.uptimeMillis() + USB_REENUMERATION_TIMEOUT_MILLIS
+                        pollReenumeratedIphone(device.deviceName, generation, deadline)
+                    }
+                    is IphoneUsbHost.TransitionResult.Failed -> fail(transition.error)
+                }
             }
+        }
+    }
+
+    /** Refresh the device list even when firmware omits the attach broadcast. Never reuse an
+     * unchanged pre-transition descriptor just because Android still lists the old device. */
+    private fun pollReenumeratedIphone(previousName: String, generation: Int, deadline: Long) {
+        if (closed || phase != Phase.REENUMERATION || generation != availabilityPollGeneration.get()) return
+        try {
+            val devices = iphoneHost.discover()
+            val device = devices.firstOrNull { it.deviceName != previousName }
+                ?: devices.firstOrNull { iphoneHost.hasCarPlayConfiguration(it) }
+            if (device != null) {
+                availabilityPollGeneration.incrementAndGet()
+                connectionDiagnostic("USB reenumeration device rediscovered; requesting current permission")
+                requestIphonePermission(device)
+                return
+            }
+            if (android.os.SystemClock.uptimeMillis() >= deadline) {
+                availabilityPollGeneration.incrementAndGet()
+                phase = Phase.IDLE
+                fail(IphoneUsbException.DeviceUnavailable(
+                    "USB 配置切换后未重新识别到 iPhone，请重新插拔数据线后重试；也可检查数据线、转接头和车机数据接口。",
+                ))
+                return
+            }
+            mainHandler.postDelayed(
+                { pollReenumeratedIphone(previousName, generation, deadline) },
+                USB_REENUMERATION_POLL_INTERVAL_MILLIS,
+            )
+        } catch (error: Exception) {
+            availabilityPollGeneration.incrementAndGet()
+            phase = Phase.IDLE
+            fail(error)
         }
     }
 
     private fun onIphoneAttached(device: UsbDevice) {
         when (phase) {
-            Phase.REENUMERATION, Phase.IPHONE -> {
+            Phase.IPHONE -> {
                 availabilityPollGeneration.incrementAndGet()
                 requestIphonePermission(device)
             }
+            // The transition worker must close its connection first. The subsequent poll uses
+            // fresh descriptors and handles both received and missing attach broadcasts once.
+            Phase.REENUMERATION -> Unit
             else -> Unit
         }
     }
@@ -2830,6 +2872,8 @@ class CarPlayController(
         private const val DEVICE_AVAILABILITY_POLL_INTERVAL_MILLIS = 2_000L
         private const val WIRELESS_HANDOFF_TIMEOUT_MILLIS = 45_000L
         private const val RFCOMM_CONNECT_TIMEOUT_MILLIS = 15_000L
+        private const val USB_REENUMERATION_TIMEOUT_MILLIS = 15_000L
+        private const val USB_REENUMERATION_POLL_INTERVAL_MILLIS = 500L
         private const val MAXIMUM_REENUMERATION_ATTEMPTS = 2
         private const val EXECUTOR_CLOSE_TIMEOUT_MILLIS = 2_000L
         private const val ADAPTER_ADDRESS_PLACEHOLDER = "02:00:00:00:00:00"
