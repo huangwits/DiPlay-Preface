@@ -36,9 +36,8 @@ import com.shilapi.xcertplay.airplay.VideoInCar
 import com.shilapi.xcertplay.airplay.VideoPlaybackDelivery
 import com.shilapi.xcertplay.compat.systemService
 import com.shilapi.xcertplay.compat.appPrivateDir
-import com.shilapi.xcertplay.hud.BydNavigationOutputs
-import com.shilapi.xcertplay.hud.BydHudRouteChange
-import com.shilapi.xcertplay.hud.BydHudRouteState
+import com.shilapi.xcertplay.hud.CarPlayRouteChange
+import com.shilapi.xcertplay.hud.CarPlayRouteState
 import com.shilapi.xcertplay.hud.CarPlayHudGuidance
 import com.shilapi.xcertplay.iap2.session.Iap2Session
 import com.shilapi.xcertplay.mfi.Iap2MfiAuthenticationClient
@@ -175,8 +174,6 @@ class CarPlayController(
             "A location provider is required when location reporting is enabled"
         }
         WifiScanPause.restoreIfNeeded(context.applicationContext)
-        BydNavigationOutputs.start(context.applicationContext)
-        BydNavigationOutputs.setClusterStreamControl(::applyClusterUi)
     }
 
     private enum class Phase { IDLE, MFI, WIRELESS, IPHONE, REENUMERATION, DATAPATHS, CONTROL }
@@ -236,7 +233,7 @@ class CarPlayController(
     private val dashboardMapEpoch = AtomicInteger()
     private val playbackStatus = com.shilapi.xcertplay.media.CarPlayPlaybackStatus()
     private val hudRouteLock = Any()
-    private val hudRouteState = BydHudRouteState()
+    private val hudRouteState = CarPlayRouteState()
 
     /** Told when the iPhone starts or stops playing media; may run on any thread. */
     @Volatile var playbackListener: ((Boolean) -> Unit)? = null
@@ -301,7 +298,6 @@ class CarPlayController(
         override fun onSessionActive(session: AirPlaySession) {
             val replacement = activeSession !== session
             if (replacement) {
-                BydNavigationOutputs.start(appContext)
                 com.shilapi.xcertplay.glance.CarPlayGlance.setConnected(true)
                 // The gear may have changed since /info.
                 if (videoListener != null) {
@@ -331,7 +327,6 @@ class CarPlayController(
             }
             if (activeSession === session) {
                 activeSession = null
-                BydNavigationOutputs.endNow(preserveTurnOverlay = !closed && config.transport == CarPlayTransport.WIRELESS)
                 clearHudGuidance()
                 com.shilapi.xcertplay.glance.CarPlayGlance.setConnected(false)
                 videoListener?.onVideoSessionEnded()
@@ -649,9 +644,7 @@ class CarPlayController(
         val teardownStarted = System.nanoTime()
         connectionDiagnostic("teardown begin transport=${config.transport}")
         videoGate?.close()
-        BydNavigationOutputs.endNow()
         com.shilapi.xcertplay.glance.CarPlayGlance.setConnected(false)
-        BydNavigationOutputs.clearClusterStreamControl(::applyClusterUi)
         clearHudGuidance()
         closeReceivers()
         availabilityPollGeneration.incrementAndGet()
@@ -792,11 +785,10 @@ class CarPlayController(
 
     // Vehicle output and the secondary-display HUD keep independent route state.
     private fun onRouteFrame(frame: com.shilapi.xcertplay.iap2.wire.Iap2Frame) {
-        BydNavigationOutputs.onFrame(frame)
         var changed = false
         val guidance = synchronized(hudRouteLock) {
             val update = hudRouteState.accept(frame.messageId, frame.payload)
-            changed = update != BydHudRouteChange.NONE
+            changed = update != CarPlayRouteChange.NONE
             hudRouteState.current()?.let {
                 CarPlayHudGuidance(it.distanceMeters, it.maneuver, it.road)
             }

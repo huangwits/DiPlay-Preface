@@ -108,7 +108,7 @@ object AirPlayPersistence {
 
     const val DEFAULT_MANUFACTURER = "DiPlay"
     const val DEFAULT_MODEL = "DiPlay"
-    const val DEFAULT_OEM_LABEL = "BYD"
+    const val DEFAULT_OEM_LABEL = "Geely"
     const val DEFAULT_MFI_I2C_PATH = "/dev/i2c-1"
 
     fun loadAmbientDelaySeconds(context: Context): Int =
@@ -493,10 +493,11 @@ object AirPlayPersistence {
 
     fun loadOemLabel(context: Context): String {
         val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_OEM_LABEL, null)
-        val factory = GeelyFactoryCarPlay.load(context)
-        // Older installs saved BYD automatically even on Geely; preserve other custom labels.
-        if (factory != null && (stored.isNullOrBlank() || stored == DEFAULT_OEM_LABEL)) return factory.iconLabel
-        return stored.orEmpty().ifBlank { DEFAULT_OEM_LABEL }
+        // Migrate the former upstream default, while preserving an owner's custom label.
+        if (stored.isNullOrBlank() || stored == "BYD") {
+            return GeelyFactoryCarPlay.load(context)?.iconLabel ?: DEFAULT_OEM_LABEL
+        }
+        return stored
     }
 
     fun saveOemLabel(context: Context, oemLabel: String) {
@@ -714,7 +715,7 @@ object AirPlayPersistence {
     fun loadClusterContent(context: Context): CarPlayClusterDisplay.Content =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CLUSTER_CONTENT, null)
             ?.let { name -> CarPlayClusterDisplay.Content.entries.firstOrNull { it.name == name } }
-            ?: if (AdbClusterRouter.enabled(context)) CarPlayClusterDisplay.Content.INSTRUMENTS else CarPlayClusterDisplay.Content.MAP
+            ?: CarPlayClusterDisplay.Content.MAP
 
     fun saveClusterContent(context: Context, content: CarPlayClusterDisplay.Content) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_CLUSTER_CONTENT, content.name).apply()

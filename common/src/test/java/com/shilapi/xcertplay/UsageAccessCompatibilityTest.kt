@@ -17,7 +17,6 @@ class UsageAccessCompatibilityTest {
         val context = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
             override fun getSystemService(name: String): Any? = null
         }
-        assertFalse(DiLink51ClusterMonitor.hasAccess(context))
     }
 
     @Test
@@ -28,6 +27,5 @@ class UsageAccessCompatibilityTest {
                 return super.getSystemService(name)
             }
         }
-        assertFalse(DiLink51ClusterMonitor.hasAccess(context))
     }
 }

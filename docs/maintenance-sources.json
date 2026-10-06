@@ -110,5 +110,18 @@
     ],
     "android43_scope": "H52 ANW transport only; minimum API remains 22",
     "owner_requested_old_release_cleanup": true
+  },
+  "geely_scope_2026_10_06": {
+    "release": "E01.12",
+    "removed": "BYD/DiLink output services, vehicle-data probes, fixed vendor keys, rotating-screen canvas, vendor icon assets and settings",
+    "preserved": [
+      "System Bluetooth",
+      "E01 ECARX",
+      "H52 ANW",
+      "Geely HUD",
+      "learned steering",
+      "shared CarPlay protocols and network compatibility"
+    ],
+    "vehicle_verified": false
   }
 }

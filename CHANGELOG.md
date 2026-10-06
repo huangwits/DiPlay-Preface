@@ -1,5 +1,8 @@
 # Unreleased
 
+- E01.12：聚焦吉利星瑞，移除 BYD / DiLink 专用界面、服务、按键与图标；保留通用协议和吉利适配。
+- E01.12: remove BYD/DiLink integrations, keep shared CarPlay and Geely adaptations.
+
 - E01.11：以 carlito 为默认基准，连接设置统一为系统蓝牙 / E01 ECARX / H52 ANW 三项手动选择；切换接口后重新选手机。
 - E01.11: follow carlito by default; expose System / E01 ECARX / H52 ANW Bluetooth choices and clear the previous phone selection when switching.
 
