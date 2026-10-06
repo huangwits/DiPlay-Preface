@@ -145,7 +145,6 @@ class DiPlayActivity : ComponentActivity() {
         if (result.resultCode == RESULT_OK) result.data?.data?.let(::exportDiagnostics)
     }
 
-    private var languagePreferenceAtCreate = AppLocale.SYSTEM
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -153,7 +152,6 @@ class DiPlayActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        languagePreferenceAtCreate = AppLocale.preference(this)
         WindowCompat.setDecorFitsSystemWindows(window, true)
         window.statusBarColor = BG; window.navigationBarColor = BG
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -211,10 +209,6 @@ class DiPlayActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (Build.VERSION.SDK_INT < 33 && AppLocale.preference(this) != languagePreferenceAtCreate) {
-            recreate()
-            return
-        }
         handler.removeCallbacks(tick); handler.post(tick)
         // Back from the car settings: refresh the car hotspot reminder on the home page.
         if (!initialLaunch && !adbSwitchChangePending && !pausedForAdbSwitchChange &&
@@ -746,7 +740,6 @@ class DiPlayActivity : ComponentActivity() {
         section(content, getString(R.string.about), R.drawable.ic_dp_about) { card ->
             card.addView(button(getString(R.string.about_diplay), false) { page = "about"; render() }, matchButton(0, 60))
         }
-        languageSettings(content)
     }
 
     private fun about(content: LinearLayout) {
@@ -2456,15 +2449,6 @@ class DiPlayActivity : ComponentActivity() {
         return grid
     }
     private fun version() = packageManager.getPackageInfo(packageName, 0).versionName ?: "0.1.0-beta.1"
-    private fun languageSettings(content: LinearLayout) {
-        section(content, getString(R.string.language_section_title), R.drawable.ic_dp_language) { card ->
-            card.addView(label(getString(R.string.language_hint), 14, MUTED))
-            val current = AppLocale.preference(this)
-            val languageButton = button("${getString(R.string.language_app_language)} · ${AppLocale.displayName(this, current)}", false) { }
-            languageButton.setOnClickListener { AppLocale.showPicker(this) }
-            card.addView(languageButton, matchButton(12, 60))
-        }
-    }
 
     private fun section(parent: LinearLayout, title: String, icon: Int? = null, build: (LinearLayout) -> Unit) {
         val card = card()

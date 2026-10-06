@@ -145,7 +145,6 @@ class CarPlayHostActivity : ComponentActivity() {
     private var startupRetryButton: View? = null
     private var startupFailureGeneration = -1
     private lateinit var airPlayIdentity: AirPlayIdentity
-    private var languagePreferenceAtCreate = AppLocale.SYSTEM
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -497,7 +496,6 @@ class CarPlayHostActivity : ComponentActivity() {
         CenterMapOverlay.requestShow = ::showCenterMap
         MapMirrors.sink = mirrorSink
         MapMirrors.onChanged = mirrorsChanged
-        languagePreferenceAtCreate = AppLocale.preference(this)
         if (isIphoneUsbAttachment(intent)) {
             AirPlayPersistence.saveWirelessEnabled(this, false)
             intent.removeExtra(EXTRA_TRANSPORT_WIRELESS)
@@ -777,12 +775,6 @@ class CarPlayHostActivity : ComponentActivity() {
         if (intent.getBooleanExtra("picture_controls", false)) {
             intent.removeExtra("picture_controls")
             openPicturePanel()
-        }
-        val languagePreference = AppLocale.preference(this)
-        if (Build.VERSION.SDK_INT < 33 && languagePreference != languagePreferenceAtCreate) {
-            languagePreferenceAtCreate = languagePreference
-            recreate()
-            return
         }
         // The settings screen returns here with FLAG_ACTIVITY_REORDER_TO_FRONT, so this screen is
         // resumed, not recreated: refresh what that screen can change before it is used again.
@@ -1765,11 +1757,6 @@ class CarPlayHostActivity : ComponentActivity() {
             ).apply { topMargin = dp(12) },
         )
 
-        content.addView(Button(this).apply {
-            text = getString(R.string.language_app_language)
-            isAllCaps = false
-            setOnClickListener { AppLocale.showPicker(this@CarPlayHostActivity) }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
 
         val gestureButton = Button(this).apply {
             isAllCaps = false

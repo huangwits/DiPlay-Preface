@@ -41,6 +41,15 @@ class CarPlayBonjourDualStackTest {
         main = AirPlayDisplayConfig(widthPixels = 1280, heightPixels = 720))
     private val identity = AirPlayIdentity(ByteArray(32), ByteArray(32), "test-pairing")
 
+    @Test @Config(sdk = [23, 29]) fun systemNsdPathReportsUnavailableServiceAndReleasesItsLock() {
+        setup()
+        val bonjour = CarPlayBonjour(context, config, identity, ipv4.hostAddress, false)
+        val error = assertThrows(IOException::class.java) { bonjour.start() }
+        assertEquals("Android NSD service is unavailable", error.message)
+        bonjour.close()
+        verify(lock, times(1)).release()
+    }
+
     private fun setup() {
         `when`(context.applicationContext).thenReturn(context)
         if (Build.VERSION.SDK_INT >= 23) {

@@ -27,6 +27,7 @@ class GeelyScopeTest {
         try {
             val activity = host.get()
             val texts = descendants(activity.window.decorView).filterIsInstance<TextView>().map { it.text.toString() }.toList()
+            assertFalse(texts.any { it.contains("应用语言") || it.contains("App language") })
             assertTrue(texts.contains(activity.getString(R.string.geely_vehicle)))
             assertTrue(texts.contains(activity.getString(R.string.steering_identification)))
             assertFalse(texts.any { it.contains("BYD", true) || it.contains("DiLink", true) || it.contains("比亚迪") })

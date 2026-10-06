@@ -39,7 +39,7 @@ class WifiDirectChannelSettingsTest {
     @Test fun defaultIsAutoAndCancelDoesNotSavePreviewedChannel() {
         assertEquals(WifiP2pChannels.AUTO, AirPlayPersistence.loadWifiP2pPreferredChannel(activity))
         val control = channelControl(controls())!!
-        assertTrue(control.text.toString().endsWith("Auto"))
+        assertTrue(control.text.toString().endsWith(activity.getString(R.string.auto)))
         control.performClick()
         val dialog = ShadowAlertDialog.getLatestAlertDialog()
         assertEquals(0, dialog.listView.checkedItemPosition)
@@ -47,7 +47,7 @@ class WifiDirectChannelSettingsTest {
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(WifiP2pChannels.AUTO, AirPlayPersistence.loadWifiP2pPreferredChannel(activity))
-        assertTrue(control.text.toString().endsWith("Auto"))
+        assertTrue(control.text.toString().endsWith(activity.getString(R.string.auto)))
     }
 
     @Test fun savedChannelSurvivesModeChangesAndCanBeResetToAuto() {

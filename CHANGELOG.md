@@ -1,5 +1,8 @@
 # Unreleased
 
+- E01.13：应用只保留简体中文，迁移旧语言设置；接入无 NSD 接口 mDNS 修复与等待画面日夜模式。
+- E01.13: Simplified-Chinese-only app, language migration, deferred NSD access and day/night waiting screen.
+
 - E01.12：聚焦吉利星瑞，移除 BYD / DiLink 专用界面、服务、按键与图标；保留通用协议和吉利适配。
 - E01.12: remove BYD/DiLink integrations, keep shared CarPlay and Geely adaptations.
 
