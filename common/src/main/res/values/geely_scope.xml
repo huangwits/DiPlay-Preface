@@ -1,0 +1,5 @@
+<resources>
+    <string name="geely_hotspot_permissions">Car hotspot permissions</string>
+    <string name="geely_launcher_map">Launcher map</string>
+    <string name="geely_launcher_map_description">Provide the CarPlay map to a compatible launcher or a floating card. No factory instrument display is controlled.</string>
+</resources>

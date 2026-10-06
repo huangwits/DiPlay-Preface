@@ -1,38 +1,21 @@
 #!/usr/bin/env python3
-"""Generate the static GitHub Pages editions, one per language in content.json; no runtime dependencies."""
+"""Build the Geely Preface download page."""
 from pathlib import Path
-import json
-from html import escape as e
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / 'site'
-data = json.loads((SITE / 'content.json').read_text())
-BASE = 'https://shihabal3amri.github.io/DiPlay/'
-REPO = 'https://github.com/shihabal3amri/DiPlay'
-VERSION = '0.2.12'
-RELEASE = REPO + f'/releases/tag/v{VERSION}'
-DOWNLOAD = REPO + f'/releases/download/v{VERSION}/DiPlay-{VERSION}.apk'
-for lang, d in data.items():
-    folder = SITE if lang == 'en' else SITE / lang
-    folder.mkdir(exist_ok=True)
-    prefix = './' if lang == 'en' else '../'
-    url = BASE + ('' if lang == 'en' else lang + '/')
-    nav = ''.join(f'<a href="{prefix}{"" if code == "en" else code + "/"}" lang="{code}" hreflang="{code}" dir="auto"'+(' aria-current="page"' if code == lang else '')+f'>{e(v["name"])}</a>' for code,v in data.items())
-    alternates = ''.join(f'<link rel="alternate" hreflang="{code}" href="{BASE}{"" if code == "en" else code + "/"}">' for code in data)
-    pics = ''.join(f'<figure><a href="{prefix}assets/{pic}.png"><img src="{prefix}assets/{pic}.png" width="1920" height="1080" loading="lazy" alt="{e(cap)}"></a><figcaption>{e(cap)}</figcaption></figure>' for pic,cap in zip(['home','settings'],d['captions']))
-    (folder/'index.html').write_text(f'''<!doctype html>
-<html lang="{lang}" dir="{d['dir']}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DiPlay · {e(d['download'])}</title><meta name="description" content="{e(d['intro'])}"><meta name="theme-color" content="#0c121c">
-<link rel="icon" href="{prefix}assets/icon.png"><link rel="stylesheet" href="{prefix}assets/site.css"><link rel="canonical" href="{url}">{alternates}
-<meta property="og:title" content="DiPlay — CarPlay for compatible Android head units"><meta property="og:description" content="{e(d['promise'])}"><meta property="og:image" content="{BASE}assets/home.png"><meta property="og:url" content="{url}"><meta property="og:type" content="website">
-</head><body><main>
-<header><a class="brand" href="{prefix}"><img src="{prefix}assets/icon.png" width="56" height="56" alt=""><span><strong>DiPlay</strong><small>{e(d['tag'])}</small></span></a><nav class="languages" aria-label="Language">{nav}</nav></header>
-<section class="hero"><span class="badge">{e(d['badge'])} · <bdi>{VERSION}</bdi></span><h1>{e(d['title']).replace(chr(10),'<br>')}</h1><p class="intro">{e(d['intro'])}</p><div class="actions"><a class="button" href="{DOWNLOAD}">{e(d['download'])} <span aria-hidden="true">↓</span></a><a class="button secondary" href="#install">{e(d['install'])}</a></div><p class="promise">{e(d['promise'])}</p><p class="note">{e(d['requires'])}</p><p class="note support-scope"><strong>{e(d['supportScope'])}</strong></p></section>
-<section class="gallery"><h2>{e(d['gallery'])}</h2><div class="screens">{pics}</div></section>
-<div class="grid"><section class="card" id="install"><span class="eyebrow">01</span><h2>{e(d['setup'])}</h2><ol>{''.join('<li>'+e(x)+'</li>' for x in d['steps'])}</ol><p class="note">{e(d['bssid'])}</p><a href="{REPO}/blob/main/docs/INSTALL.md">{e(d['adb'])} ↗</a></section>
-<section class="card"><span class="eyebrow">02</span><h2>{e(d['whats'])}</h2><ul>{''.join('<li>'+e(x)+'</li>' for x in d['features'])}</ul><a href="{RELEASE}">{e(d['notes'])} ↗</a><h3>{e(d['compat'])}</h3><p>{e(d['compatText'])}</p></section></div>
-<section class="card updates"><div><h2>{e(d['follow'])}</h2><p>{e(d['followText'])}</p></div><a class="button secondary" href="https://t.me/byd_localized">{e(d['telegram'])} ↗</a></section>
-<section class="signing"><h2>{e(d['update'])}</h2><p>{e(d['updateText'])}</p></section>
-<section class="card"><h2>{e(d['diagnosticsTitle'])}</h2><p>{e(d['diagnosticsText'])}</p><a href="{REPO}/issues">{e(d['feedback'])} ↗</a> · <a href="{REPO}/issues/new/choose">{e(d['newIssue'])} ↗</a></section>
-<footer><nav><a href="{REPO}/blob/main/docs/PRIVACY.md">{e(d["privacy"])}</a><a href="{REPO}">{e(d['source'])}</a><a href="{RELEASE}">{e(d['notes'])}</a><a href="{REPO}/issues">{e(d['feedback'])}</a></nav><p>{e(d['footer'])}</p></footer>
-</main></body></html>''')
-print('Generated', len(data), 'language pages')
+REPO = 'https://github.com/huangwits/DiPlay-Preface'
+html = '''<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DiPlay · 吉利星瑞</title>
+<style>body{font:18px/1.7 system-ui,sans-serif;max-width:800px;margin:64px auto;padding:0 24px;color:#dae7f4;background:#101923}a{color:#9fd5ff}h1{font-size:40px}section{margin:40px 0}small{color:#a7b7c8}</style>
+<main><h1>DiPlay · 吉利星瑞</h1>
+<p>面向 Android 5.1 及以上的吉利星瑞车机，保留系统蓝牙、E01 ECARX、H52 ANW 手动连接、吉利 HUD 和方向盘识别。</p>
+<p><a href="REPO/releases/latest">下载最新完整安装包</a> · <a href="REPO/blob/main/docs/GEELY-PREFACE-SCOPE.md">功能范围与兼容性</a></p>
+<p>请覆盖安装完整 APK。实际手机与实车连接仍需验证。</p>
+<section lang="en"><h2>Geely Preface</h2><p>CarPlay receiver for Android 5.1+ with System Bluetooth, manual E01 ECARX / H52 ANW selection, Geely HUD and learned steering controls.</p>
+<p><a href="REPO/releases/latest">Download the latest full APK</a> · <a href="REPO">Source and installation notes</a></p><p>Phone and vehicle connectivity still require real-device validation.</p></section>
+<small>Based on <a href="https://github.com/carlito12345/DiPlay">carlito/DiPlay</a> and original <a href="https://github.com/shihabal3amri/DiPlay">DiPlay</a>. <a href="REPO/blob/main/docs/THIRD_PARTY_NOTICES.md">Attribution and licenses</a>.</small></main></html>
+'''.replace('REPO', REPO)
+(SITE / 'index.html').write_text(html, encoding='utf-8')
+for path in SITE.glob('*/index.html'):
+    path.write_text('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=../index.html"><a href="../index.html">DiPlay · 吉利星瑞 / Geely Preface</a>\n', encoding='utf-8')
