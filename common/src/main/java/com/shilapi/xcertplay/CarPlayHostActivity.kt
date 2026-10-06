@@ -18,7 +18,6 @@ import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Build
 import android.os.Bundle
@@ -100,6 +99,7 @@ import com.shilapi.xcertplay.transport.IphoneUsbMatcher
 import com.shilapi.xcertplay.transport.UsbDeviceId
 import com.shilapi.xcertplay.transport.VehicleSpeedLocationProvider
 import com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay
+import com.shilapi.xcertplay.media.VideoDecoderSupport
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
@@ -3418,28 +3418,26 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private data class CanvasSupport(val supported: Boolean, val reason: String, val details: String)
 
-    private fun largerCanvasSupport(display: AirPlayDisplayConfig): CanvasSupport =
+    private fun largerCanvasSupport(display: AirPlayDisplayConfig, useHevc: Boolean = hevcEnabled): CanvasSupport =
         if (maxOf(display.widthPixels, display.heightPixels) > 3840 || minOf(display.widthPixels, display.heightPixels) > 2160) {
             CanvasSupport(false, "canvas_4k_limit", "Decoder capability check skipped: canvas exceeds enlargement limit")
-        } else decoderCanvasSupport(display)
+        } else decoderCanvasSupport(display, useHevc)
 
-    private fun decoderCanvasSupport(display: AirPlayDisplayConfig): CanvasSupport = try {
-        val mime = if (hevcEnabled) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
-        // Match MediaCodec.createDecoderByType's first suitable decoder; do not silently force
-        // an enlarged stream through a software decoder on a slower head unit.
-        val decoder = com.shilapi.xcertplay.media.CodecCompat.videoDecoderFor(mime)
+    private fun decoderCanvasSupport(display: AirPlayDisplayConfig, useHevc: Boolean): CanvasSupport = try {
+        val mime = if (useHevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+        val decoder = VideoDecoderSupport.candidates(mime, display.widthPixels, display.heightPixels, display.fps)
+            .firstOrNull()
         if (decoder == null) {
             CanvasSupport(false, "no_decoder", "Decoder capability mime=$mime result=no_decoder")
         } else {
-            val hardware = if (Build.VERSION.SDK_INT >= 29) decoder.isHardwareAccelerated
-                else !decoder.name.startsWith("OMX.google.") && !decoder.name.startsWith("c2.android.")
+            val hardware = VideoDecoderSupport.isHardware(decoder)
             val video = decoder.getCapabilitiesForType(mime).videoCapabilities
             val sizeSupported = video?.isSizeSupported(display.widthPixels, display.heightPixels) == true
             val rateSupported = sizeSupported && video?.areSizeAndRateSupported(
                 display.widthPixels, display.heightPixels, display.fps.toDouble()) == true
             val reason = when {
                 !hardware -> "software_decoder"
-                hevcEnabled && hevcSoftwareDecoderEnabled -> "software_hevc_selected"
+                useHevc && hevcSoftwareDecoderEnabled -> "software_hevc_selected"
                 video == null -> "no_video_capabilities"
                 !sizeSupported -> "canvas_dimensions_unsupported"
                 !rateSupported -> "frame_rate_unsupported"
@@ -3455,6 +3453,31 @@ class CarPlayHostActivity : ComponentActivity() {
     } catch (error: Exception) {
         CanvasSupport(false, "capability_query_${error.javaClass.simpleName}",
             "Decoder capability query failed error=${error.javaClass.simpleName}")
+    }
+
+    private fun compatibleVideoDisplay(display: AirPlayDisplayConfig): Pair<AirPlayDisplayConfig, Boolean> {
+        if (hevcEnabled && hevcSoftwareDecoderEnabled) return display to true
+        fun hardware(mime: String) = VideoDecoderSupport
+            .candidates(mime, display.widthPixels, display.heightPixels, display.fps)
+            .filter(VideoDecoderSupport::isHardware)
+        fun supports(decoders: List<android.media.MediaCodecInfo>, mime: String, rate: Int) = decoders.any {
+            VideoDecoderSupport.supportsRate(it, mime, display.widthPixels, display.heightPixels, rate)
+        }
+        var useHevc = hevcEnabled
+        var mime = if (useHevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+        var decoders = hardware(mime)
+        if (useHevc && !supports(decoders, mime, display.fps) && !supports(decoders, mime, 30)) {
+            val avc = hardware(MediaFormat.MIMETYPE_VIDEO_AVC)
+            if (supports(avc, MediaFormat.MIMETYPE_VIDEO_AVC, display.fps) ||
+                supports(avc, MediaFormat.MIMETYPE_VIDEO_AVC, 30)) {
+                useHevc = false
+                mime = MediaFormat.MIMETYPE_VIDEO_AVC
+                decoders = avc
+            }
+        }
+        val rate = if (display.fps > 30 && !supports(decoders, mime, display.fps) &&
+            supports(decoders, mime, 30)) 30 else display.fps
+        return display.copy(fps = rate) to useHevc
     }
 
     private fun createAirPlayConfig(size: DisplaySize): AirPlayConfig {
@@ -3492,12 +3515,15 @@ class CarPlayHostActivity : ComponentActivity() {
         val requestedPercent = uiScalePercent
         var scaledDisplay = if (e01) resolutionDisplay else CarPlayUiScale.apply(resolutionDisplay, uiScalePercent)
         val candidate = scaledDisplay
+        val candidatePlayback = compatibleVideoDisplay(scaledDisplay)
+        // Gate an enlarged canvas at the selected frame rate; adjust playback only after sizing.
+        var effectiveHevc = candidatePlayback.second
         var support = when {
             e01 -> CanvasSupport(true, "e01_pixel_budget", "E01: H.264 <=960x540 at 30 fps, single screen")
             uiScalePercent < CarPlayUiScale.DEFAULT && scaledDisplay === resolutionDisplay ->
                 CanvasSupport(false, "canvas_4k_limit", "Decoder capability check skipped: canvas exceeds enlargement limit")
             uiScalePercent < CarPlayUiScale.DEFAULT || scaledDisplay.widthPixels > baseDisplay.widthPixels ||
-                scaledDisplay.heightPixels > baseDisplay.heightPixels -> largerCanvasSupport(scaledDisplay)
+                scaledDisplay.heightPixels > baseDisplay.heightPixels -> largerCanvasSupport(scaledDisplay, effectiveHevc)
             else -> CanvasSupport(true, "not_enlarging", "Decoder capability enlargement check not required")
         }
         var smallerUiFallback = false
@@ -3507,11 +3533,11 @@ class CarPlayHostActivity : ComponentActivity() {
             smallerUiFallback = true
             uiScalePercent = CarPlayUiScale.DEFAULT
             AirPlayPersistence.saveUiScalePercent(this, uiScalePercent)
-            scaledDisplay = resolutionDisplay
+            scaledDisplay = resolutionDisplay.copy(fps = scaledDisplay.fps)
             appendLog("Larger CarPlay canvas unavailable reason=${failedCanvas.reason}; using Default icon and text size")
             // Removing the smaller-controls enlargement may leave a separately enlarged resolution.
             if (displayScalePercent > 100) {
-                val resolutionSupport = largerCanvasSupport(scaledDisplay)
+                val resolutionSupport = largerCanvasSupport(scaledDisplay, effectiveHevc)
                 support = resolutionSupport.copy(
                     reason = if (resolutionSupport.supported) failedCanvas.reason else resolutionSupport.reason,
                     details = "${failedCanvas.details}\n${resolutionSupport.details}",
@@ -3536,6 +3562,9 @@ class CarPlayHostActivity : ComponentActivity() {
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
+        val playback = compatibleVideoDisplay(scaledDisplay.copy(fps = fps))
+        scaledDisplay = playback.first
+        effectiveHevc = playback.second
         appendLog("CarPlay size=${CarPlayUiScale.label(uiScalePercent)} canvas=${scaledDisplay.widthPixels}x${scaledDisplay.heightPixels}")
         val display = scaledDisplay.copy(
             safeArea = AirPlaySafeArea.toInsets(
@@ -3590,7 +3619,8 @@ class CarPlayHostActivity : ComponentActivity() {
             "candidate=${candidate.widthPixels}x${candidate.heightPixels} fps=$fps e01=$e01 " +
             "codec=${if (hevcEnabled) "HEVC" else "H.264"} softwareHevc=$hevcSoftwareDecoderEnabled"
         val effectiveSummary = "Display effective percent=$uiScalePercent resolution=${displayScalePercent}% " +
-            "canvas=${display.widthPixels}x${display.heightPixels} decision=${support.reason} " +
+            "canvas=${display.widthPixels}x${display.heightPixels} fps=${display.fps} " +
+            "codec=${if (effectiveHevc) "HEVC" else "H.264"} decision=${support.reason} " +
             "physical=${physical.widthMm}x${physical.heightMm}mm safeArea=${display.safeArea} " +
             "drawOutside=${display.safeAreaDrawOutside}"
         displayDiagnosticAttempt = DisplayDiagnosticSnapshot.begin(this, requestSummary, support.details, effectiveSummary)
@@ -3606,7 +3636,7 @@ class CarPlayHostActivity : ComponentActivity() {
             main = declared,
             cluster = if (e01) null else clusterDisplayConfig(),
             rightHandDrive = rightHandDrive,
-            hevc = hevcEnabled,
+            hevc = effectiveHevc,
             opusOutputSupported = supportsOpusOutput(),
             microphone = microphoneAvailable,
             manufacturer = normalizedManufacturer(),
@@ -3792,6 +3822,7 @@ class CarPlayHostActivity : ComponentActivity() {
         videoWidth: Int,
         videoHeight: Int,
         controllerGeneration: Int,
+        videoFps: Int,
     ): AndroidMediaSink {
         // Capture this session's log: late decoder shutdown must not write into a new session.
         val diagnosticLog = sessionLog
@@ -3799,6 +3830,7 @@ class CarPlayHostActivity : ComponentActivity() {
             surface = null,
             videoWidth = videoWidth,
             videoHeight = videoHeight,
+            videoFps = videoFps,
             preferSoftwareHevcDecoder = hevcSoftwareDecoderEnabled,
             advancedAudioChannelMapping = advancedAudioChannelMapping,
             audioFocusEnabled = AirPlayPersistence.loadAudioFocusEnabled(this),
@@ -3806,6 +3838,7 @@ class CarPlayHostActivity : ComponentActivity() {
             navigationChannel = AirPlayPersistence.loadNavigationAudioChannel(this),
             geelyAudioRouting = geelyAudioRouting,
             geelyNavigationAlert = geelyNavigationAlert,
+            navigationOutputDevice = AirPlayPersistence.loadNavigationOutputDevice(this),
             context = this,
             navigationStreamType = navigationStreamType,
             onScreenStreamActiveChanged = { type, active ->
@@ -4082,6 +4115,7 @@ class CarPlayHostActivity : ComponentActivity() {
             videoWidth = airPlayConfig.main.widthPixels,
             videoHeight = airPlayConfig.main.heightPixels,
             controllerGeneration = controllerGeneration,
+            videoFps = airPlayConfig.main.fps,
         )
         sink = renderer
         currentSurface?.let(::attachSurface)

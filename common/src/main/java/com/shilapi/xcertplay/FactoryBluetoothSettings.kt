@@ -10,6 +10,25 @@ import com.shilapi.xcertplay.transport.FactoryBluetoothPhone
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal object FactoryBluetoothSettings {
+    enum class Choice(val backend: FactoryBluetoothBackend?) {
+        SYSTEM(null), E01(FactoryBluetoothBackend.ECARX), H52(FactoryBluetoothBackend.H52_ANW),
+    }
+
+    fun choice(context: Context): Choice = if (!enabled(context)) Choice.SYSTEM else
+        Choice.entries.first { it.backend == backend(context) }
+
+    /** Change transport and discard only the phone selected through the previous paired list. */
+    fun select(context: Context, choice: Choice): Boolean {
+        if (this.choice(context) == choice) return false
+        context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().apply {
+            putBoolean("factory_bluetooth_enabled", choice.backend != null)
+            choice.backend?.let { putString("factory_bluetooth_backend", it.name) }
+            remove("phone_address")
+            remove("phone_name")
+        }.apply()
+        return true
+    }
+
     fun backend(context: Context): FactoryBluetoothBackend = FactoryBluetoothBackend.entries.firstOrNull {
         it.name == context.getSharedPreferences("diplay", Context.MODE_PRIVATE).getString("factory_bluetooth_backend", null)
     } ?: FactoryBluetoothBackend.ECARX
