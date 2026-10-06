@@ -11,6 +11,8 @@ import android.os.Looper
 import android.util.Log
 import com.shilapi.xcertplay.media.ModernAudio
 import com.shilapi.xcertplay.media.PortableAudio
+import com.shilapi.xcertplay.media.AudioOutputDevice
+import com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay
 import java.io.Closeable
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -20,6 +22,7 @@ import kotlin.math.sin
 
 /** Plays one short tone through the same legacy stream route used by CarPlay audio. */
 internal class AudioChannelPreview(private val context: Context? = null, private val onUnavailable: (Int) -> Unit) : Closeable {
+    private val factoryAudio = context?.applicationContext?.let(GeelyFactoryCarPlay::load)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { task ->
         Thread(task, "diplay-channel-preview").apply { isDaemon = true }
@@ -29,7 +32,7 @@ internal class AudioChannelPreview(private val context: Context? = null, private
     private var pending: Future<*>? = null
     @Volatile private var closed = false
 
-    fun play(channel: Int, navigation: Boolean, geelyFocusGain: Int? = null) {
+    fun play(channel: Int, navigation: Boolean, geelyFocusGain: Int? = null, output: AudioOutputDevice? = null) {
         if (closed) return
         require(channel in AirPlayPersistence.AUDIO_CHANNELS ||
             (geelyFocusGain != null && channel in listOf(11, 23, 25)))
@@ -66,7 +69,8 @@ internal class AudioChannelPreview(private val context: Context? = null, private
                 val built = if (channel == 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     ModernAudio.usageTrack(
                         attributes = ModernAudio.attributes(
-                            usage = if (navigation) 12 else 1,
+                            usage = factoryAudio?.audioUsage(if (navigation) "GUIDANCE" else "MEDIA",
+                                if (navigation) 12 else 1) ?: if (navigation) 12 else 1,
                             contentType = if (navigation) 1 else 2,
                             legacyStreamType = null,
                         ),
@@ -85,12 +89,20 @@ internal class AudioChannelPreview(private val context: Context? = null, private
                 track = built
                 focusTrack.set(built)
                 check(built.state == AudioTrack.STATE_INITIALIZED) { "Audio output did not initialize" }
-                if (geelyFocusGain != null) {
+                if (output != null && Build.VERSION.SDK_INT >= 23) {
+                    val device = checkNotNull(output.resolve(manager)) { "Output device unavailable" }
+                    check(built.setPreferredDevice(device)) { "Output preference rejected" }
+                }
+                val focusGain = geelyFocusGain ?: AudioManager.AUDIOFOCUS_GAIN_TRANSIENT.takeIf {
+                    context?.let(AirPlayPersistence::loadAudioFocusEnabled) == true
+                }
+                if (focusGain != null) {
                     check(manager != null) { "Audio focus service unavailable" }
                     PortableAudio.setVolume(built, 0f)
                     val versionBeforeRequest = callbackVersion.get()
                     @Suppress("DEPRECATION")
-                    val result = manager.requestAudioFocus(listener, channel, geelyFocusGain)
+                    val result = manager.requestAudioFocus(listener,
+                        if (channel == 0) AudioManager.STREAM_MUSIC else channel, focusGain)
                     focusRequested = true
                     check(result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { "Audio focus denied" }
                     if (callbackVersion.get() == versionBeforeRequest) {
@@ -99,7 +111,7 @@ internal class AudioChannelPreview(private val context: Context? = null, private
                 }
                 if (closed || generation.get() != request) return@submit
                 activeTrack.set(built)
-                if (geelyFocusGain == null) PortableAudio.setVolume(built, PREVIEW_VOLUME)
+                if (focusGain == null) PortableAudio.setVolume(built, PREVIEW_VOLUME)
                 built.play()
                 var written = 0
                 while (written < pcm.size && !closed && generation.get() == request) {
@@ -122,7 +134,7 @@ internal class AudioChannelPreview(private val context: Context? = null, private
                 focusTrack.set(null)
                 if (focusRequested) runCatching { manager?.abandonAudioFocus(listener) }
                 activeTrack.compareAndSet(track, null)
-                track?.let { runCatching { it.stop() }; it.release() }
+                track?.let { runCatching { it.stop() }; runCatching { it.release() } }
             }
         }
     }

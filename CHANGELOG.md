@@ -1,5 +1,8 @@
 # Unreleased
 
+- E01.11：以 carlito 为默认基准，连接设置统一为系统蓝牙 / E01 ECARX / H52 ANW 三项手动选择；切换接口后重新选手机。
+- E01.11: follow carlito by default; expose System / E01 ECARX / H52 ANW Bluetooth choices and clear the previous phone selection when switching.
+
 - E01.10：恢复系统蓝牙默认路径；保留明确选择的 ECARX / H52 原厂接口及 E01.9 状态/超时修正。实际连接待复测。
 - E01.10: restore system Bluetooth by default, preserving explicit vendor choices and E01.9 status/timeout fixes. Actual connectivity remains unverified.
 

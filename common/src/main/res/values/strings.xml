@@ -621,13 +621,13 @@
     <string name="steering_identify">Identify</string>
     <string name="steering_press_button">Press the steering button for %1$s.</string>
     <string name="steering_press_again">Button detected. Press the same button again for %1$s.</string>
-    <string name="steering_no_key">No complete button information received. Check that this head unit allows button access and try again.</string>
+    <string name="steering_no_key">No complete button information received. Allow button access first; if identification still fails, send a report through Collect logs.</string>
     <string name="steering_event_incomplete">Button detected. Press and release it once more.</string>
     <string name="steering_allow_access">Allow button access</string>
     <string name="steering_access_needed">Allow button access before identification.</string>
-    <string name="steering_access_connecting">Connecting to the head unit. Allow DiPlay to connect if an approval prompt appears.</string>
+    <string name="steering_access_connecting">Enabling button access. Allow DiPlay to connect if an approval prompt appears.</string>
     <string name="steering_access_approval">Allow DiPlay in the head unit’s approval prompt and try again.</string>
-    <string name="steering_access_unavailable">Cannot connect to this head unit. Check that it allows app connections and try again.</string>
+    <string name="steering_access_unavailable">Automatic button access is unavailable. Try identification; if there is still no response, send a report through Collect logs.</string>
     <string name="steering_access_denied">Button access was not granted. Check approval and try again.</string>
     <string name="steering_reassigned">This button has moved from %1$s to %2$s. Save to apply it.</string>
     <string name="steering_restore_defaults">Restore original controls</string>
@@ -821,4 +821,13 @@
     <string name="car_button_description">CarPlay shows this icon and name in its app list. Tap it to return to the car\'s own screen. Changes apply the next time CarPlay connects.</string>
     <string name="car_button_saved_next_connection">Saved. CarPlay shows the new icon and name the next time it connects.</string>
     <string name="this_head_unit_has_no_image_picker">This head unit has no image picker.</string>
+    <string name="navigation_output_title">Navigation output device</string>
+    <string name="navigation_output_summary">Navigation output: %1$s</string>
+    <string name="navigation_output_auto">Automatic</string>
+    <string name="navigation_output_device_label">%1$s #%2$d</string>
+    <string name="navigation_output_speaker">Speaker</string>
+    <string name="navigation_output_number">Device number (blank for automatic)</string>
+    <string name="navigation_output_preview">Play test sound</string>
+    <string name="navigation_output_unavailable">Device unavailable</string>
+    <string name="navigation_output_test_note">Select a device or enter its number, then play a test sound to find the speaker you want.</string>
 </resources>

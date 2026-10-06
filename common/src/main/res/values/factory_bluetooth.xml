@@ -1,8 +1,8 @@
 <resources>
     <bool name="config_factory_bluetooth_default">false</bool>
-    <string name="factory_bt_title">Factory Bluetooth experiment</string>
+    <string name="factory_bt_title">Bluetooth connection</string>
     <string name="factory_bt_enabled">Use the car’s factory Bluetooth</string>
-    <string name="factory_bt_description">Pair your iPhone in the factory phone app, then choose it below. This experiment tries the car’s data interface. CarPlay compatibility is unverified.</string>
+    <string name="factory_bt_description">Use system Bluetooth on Android phones. Select E01 or H52 only for a matching head unit, and pair in its factory phone app. After switching, choose your iPhone again below. Vehicle connectivity remains unverified.</string>
     <string name="factory_bt_reading">Reading devices paired with the car…</string>
     <string name="factory_bt_error_sdk">The installed ECARX Bluetooth SDK could not be loaded. Keep this code for the test result.</string>
     <string name="factory_bt_error_spp">The factory SDK has no usable SPP data interface. This firmware cannot run this experiment through that interface.</string>
@@ -13,9 +13,10 @@
     <string name="factory_bt_error_data">The factory data channel disconnected or could not transfer data. Keep this code for the test result.</string>
     <string name="factory_bt_error_iap2">The factory data channel opened, but the CarPlay handshake did not complete. A Bluetooth connection alone does not confirm compatibility.</string>
     <string name="factory_bt_error_timeout">The factory interface stopped responding. Close and reopen DiPlay before retrying.</string>
-    <string name="factory_bt_backend">Factory Bluetooth backend</string>
-    <string name="factory_bt_ecarx">ECARX (E01 experiment)</string>
-    <string name="factory_bt_anw">H52 ANW (additional experiment)</string>
+    <string name="factory_bt_backend">Choose Bluetooth interface</string>
+    <string name="factory_bt_system">System Bluetooth (default)</string>
+    <string name="factory_bt_ecarx">E01 car Bluetooth (ECARX)</string>
+    <string name="factory_bt_anw">H52 car Bluetooth (ANW)</string>
     <string name="factory_anw_hint">Select H52 ANW to check its factory paired list. Missing or incompatible services fail explicitly. Connecting may initialize the local SPP service; it does not switch the factory radio on or off.</string>
     <string name="factory_anw_unavailable">H52 ANW service is unavailable, unresponsive or incompatible. This does not mean factory Bluetooth is broken; try the ECARX backend.</string>
     <string name="factory_anw_phone">Choose your iPhone from the H52 ANW factory paired list again.</string>

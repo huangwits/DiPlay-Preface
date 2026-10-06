@@ -16,19 +16,19 @@ def prepare(source, commit=None):
         raise RuntimeError("A clean working tree is required")
     start = git("rev-parse", "HEAD").stdout.strip()
     original_branch = git("symbolic-ref", "--short", "HEAD").stdout.strip()
-    if source == "original":
-        target = git("rev-parse", "upstream/main").stdout.strip()
+    if source == "geely":
+        target = git("rev-parse", "geely/main").stdout.strip()
         if git("merge-base", "--is-ancestor", target, start, check=False).returncode == 0:
             return None
         operation = ["merge", "--no-ff", "--no-edit", target]
-    elif source == "geely":
+    elif source == "original":
         if not commit or not re.fullmatch(r"[0-9a-fA-F]{40}", commit):
-            raise ValueError("Geely updates require one reviewed full commit SHA")
+            raise ValueError("Direct original-author updates require one reviewed full commit SHA")
         target = git("rev-parse", commit + "^{commit}").stdout.strip()
-        if git("merge-base", "--is-ancestor", target, "geely/main", check=False).returncode:
-            raise ValueError("The selected commit is not in geely/main")
+        if git("merge-base", "--is-ancestor", target, "upstream/main", check=False).returncode:
+            raise ValueError("The selected commit is not in upstream/main")
         if len(git("show", "-s", "--format=%P", target).stdout.split()) != 1:
-            raise ValueError("Select a single non-merge Geely commit, not a branch merge")
+            raise ValueError("Select a single non-merge original-author commit, not a branch merge")
         history = git("log", "--format=%B").stdout
         if git("merge-base", "--is-ancestor", target, start, check=False).returncode == 0 or (
             "cherry picked from commit " + target in history
@@ -50,7 +50,7 @@ def prepare(source, commit=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", choices=["original", "geely"], default="original")
+    parser.add_argument("--source", choices=["geely", "original"], default="geely")
     parser.add_argument("--commit")
     args = parser.parse_args()
     branch = prepare(args.source, args.commit)

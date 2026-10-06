@@ -1,35 +1,23 @@
-# Upstream-first Android 5.1 / E01 maintenance
+# Carlito baseline / carlito 基准维护
 
-The code baseline is the original [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay), currently `e6477e1741ad91a18452f0099a432dde63311a19` (post-0.2.12 main, reviewed 2026-10-06). `upstream` points directly to that repository. `geely` points to [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) for selective vehicle changes; it is not the automatic merge source.
+## 中文
 
-The GitHub repository stays at `huangwits/DiPlay-Preface`, retaining its existing releases and fork-network membership. GitHub's historical direct parent remains carlito; the network source is the original DiPlay. That display does not control local Git remotes or update policy. No repository deletion, force-push or published-tag movement is required.
+根据仓库所有者 2026-10-06 的要求，以 `carlito12345/DiPlay` 为代码基准和默认更新来源。当前合入 `8f53b27b3168aedb661e9f9bb7122ea344b75ada`；保留已有验证过的 API 22 / E01 修正与 Git 历史，不重写发布历史来伪装成全新分支。先前原作者主线迁移见 [历史记录](UPSTREAM-FIRST-MIGRATION.md)。
 
-## Layered migration
+**Actions → Review upstream updates** 默认 `geely`：完整合入 carlito main 到临时审查分支。`original` 仅接受一个完整、非合并提交 SHA，验证来自原作者 main 后以 `cherry-pick -x` 保留来源。脚本不直接修改 main，不自动发布；冲突时回到原分支并报告。
 
-The migration starts at the original-author commit, adds the reviewed Geely runtime, resources, dependencies and supporting documentation from `84050d6` (full commit in the migration manifest), then applies the E01 changes from former main `11136b93df966d09eb63e5c2b9d83aac84b8fa3e` and removes obsolete pre-API-22 paths. See [migration details](UPSTREAM-FIRST-MIGRATION.md) and `maintenance-sources.json` for exact source identifiers and the selected-file list.
+本地使用：先更新 `geely/main` 和 `upstream/main`，从干净工作树运行 `python scripts/prepare_upstream_update.py`；原作者单项更新用 `--source original --commit <full-sha>`。保留 `upstream` 指向原作者、`geely` 指向 carlito。
 
-Preserved E01 behavior includes audio focus/read/write fallbacks, Media3 gating, bounded USB transfers, Java/network compatibility, H.264/30 fps/canvas limits, factory Bluetooth detection and complete-build authentication validation. Factory connection detection does not provide a verified vendor RFCOMM backend.
+H52 仅引入匹配 ANW 协议的数据后端，最低系统仍为 Android 5.1。系统蓝牙默认启用；E01 ECARX、H52 ANW 都是明确手动选项，与 E01 性能模式独立。切换接口必须重新选择手机。不同厂商的事务号和服务不能混用。
 
-The user-provided APK remains a local reference for interface behavior. Do not describe that reference in the root README or publish the reference binary. Historical reused code retains its attribution in THIRD_PARTY_NOTICES.md.
+提交前运行 common/shared 测试、维护脚本测试、API 22 NewApi lint、源码 APK 无认证检查。完整安装包另需通过 [BUILD.md](BUILD.md) 的认证与原签名检查。自动化测试不代表实车连接成功。历史 tag/Release 仅按所有者明确要求删除，先备份源码指向、发布说明和全部附件。
 
-## Updates
+## English
 
-Use **Actions → Review upstream updates**:
+At the owner's request on 2026-10-06, carlito12345/DiPlay is the baseline and default update source. Current merge: `8f53b27b3168aedb661e9f9bb7122ea344b75ada`. Verified API 22/E01 changes and source history remain intact. The earlier original-author migration is retained as a historical record.
 
-- `original` (default): merge original DiPlay main into a temporary `sync/original-<sha>` branch.
-- `geely`: supply one reviewed full, non-merge commit SHA. Only that commit is cherry-picked with provenance onto `sync/geely-<sha>`. Do not merge the whole Geely branch.
+The update workflow defaults to `geely`, merging carlito main into a review branch. `original` requires one full non-merge SHA from original-author main and uses `cherry-pick -x`. Conflicts abort back to the starting branch; the script does not update main or publish releases. Locally run `python scripts/prepare_upstream_update.py` after fetching both remotes, or `--source original --commit <full-sha>` for a selected original-author change.
 
-The workflow opens a draft PR and explicitly runs Android 5.1 E01 checks. Conflicts are aborted and reported. Existing remote candidates are reused, never overwritten. Main and releases are not changed automatically. For local use, fetch `upstream main` and `geely main`, then run `python scripts/prepare_upstream_update.py --source original` or `--source geely --commit <full-sha>` from a clean review checkout.
+System Bluetooth is the default. E01 ECARX and H52 ANW are explicit choices independent of the E01 performance profile. Changing interfaces clears only the previous phone selection. The H52 transport import does not lower the minimum Android version below API 22. Keep vendor contracts separate.
 
-Before accepting an update, inspect API 22 behavior, E01 limits and affected vehicle integrations. Run maintenance tests, public-tree checks, common/shared unit tests, NewApi lint and a source-only APK build. Changes affecting connections/audio/video still require vehicle testing; automated checks cannot establish E01 vendor connectivity.
-
-Keep one bilingual README.md, Chinese above English. Use the same language order in release descriptions. Complete car-test builds require explicit local runtime inputs and the APK bootstrap tests described in BUILD.md; CI source-only builds are never installation deliverables.
-
-
-## 2026-10-05 update
-
-The review branch merges original main through `29572a2`, preserving E01 limits, API 22 fallbacks and selected Geely changes. See [update and research record](E01-H52-NFORE-UPDATE-20261005.md). Published tags remain unchanged; the original upstream `v0.2.12` tag was not forced over this fork's existing tag.
-
-## 2026-10-06 update
-
-E01.7 merges original main through `e6477e1`, preserving the E01.6 ECARX SPP experiment and API 22 compatibility. Merge resolutions retain automatic hotspot selection, software Opus, USB descriptor fallbacks and Geely steering-key handling alongside upstream fixes. See [release notes](releases/PREFACE-0.2.12-E01.7-FACTORYBT.md).
+Require common/shared and maintenance tests, API 22 lint and source-package isolation checks; full deliverables additionally require the authentication and upgrade-signature gates in BUILD.md. Vehicle connectivity remains a separate validation. Delete historical tags/releases only on explicit owner instruction after backing up refs, metadata and all assets.

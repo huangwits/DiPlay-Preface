@@ -3,12 +3,12 @@ on:
   workflow_dispatch:
     inputs:
       source:
-        description: Original DiPlay main or one reviewed Geely commit
+        description: Carlito main or one reviewed original-author commit
         type: choice
-        options: [original, geely]
-        default: original
+        options: [geely, original]
+        default: geely
       commit:
-        description: Full non-merge commit SHA (required for Geely)
+        description: Full non-merge commit SHA (required for original)
         type: string
         required: false
 permissions:
@@ -65,9 +65,9 @@ jobs:
           set -euo pipefail
           gh workflow run android51.yml --ref "$UPDATE_BRANCH"
           cat > "$RUNNER_TEMP/update-body.md" <<'EOF'
-          更新候选：保留 Android 5.1 / API 22 与 E01 适配。原作者更新合入主线；吉利更新仅引入指定提交。请核对差异、API 检查和实车影响后合并。
+          更新候选：保留 Android 5.1 / API 22 与 E01 适配。carlito 主线为默认更新来源；原作者更新仅引入指定提交。请核对差异、API 检查和实车影响后合并。
 
-          Update candidate preserving Android 5.1 / API 22 and E01 support. Original-author updates follow main; Geely updates select one explicit commit. Review the diff, compatibility checks and vehicle impact before merging.
+          Update candidate preserving Android 5.1 / API 22 and E01 support. Carlito updates follow main; direct original-author updates select one explicit commit. Review the diff, compatibility checks and vehicle impact before merging.
           EOF
           if [[ "$(gh pr list --base main --head "$UPDATE_BRANCH" --state open --json number --jq 'length')" == 0 ]]; then
             gh pr create --base main --head "$UPDATE_BRANCH" --draft \

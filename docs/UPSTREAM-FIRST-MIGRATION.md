@@ -1,5 +1,7 @@
 # 原作者主线迁移 / Upstream-first migration
 
+历史记录；2026-10-06 起改为 [carlito 基准维护](UPSTREAM_SYNC.md)。Historical record; superseded by the carlito baseline policy.
+
 ## 中文
 
 本次从原作者 DiPlay 0.2.12 的 `2fc876e` 建立代码基线，分开提交已经审查的吉利功能与原有 E01 适配，再清理只为 API 18 保留的实现。迁移清单见 `maintenance-sources.json`。

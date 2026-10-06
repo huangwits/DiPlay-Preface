@@ -1,6 +1,6 @@
 {
   "previous_main": "11136b93df966d09eb63e5c2b9d83aac84b8fa3e",
-  "upstream_base": "e6477e1741ad91a18452f0099a432dde63311a19",
+  "upstream_base": "8f53b27b3168aedb661e9f9bb7122ea344b75ada",
   "geely_reviewed": "84050d6ad85d6c24170811427fb04a5b6e7c3221",
   "geely_selected_files": [
     "common/src/main/AndroidManifest.xml",
@@ -68,7 +68,7 @@
     "server/steering_profiles/install.py",
     "server/steering_profiles/server.py"
   ],
-  "policy": "Original-author main; selective Geely commits; API 22 E01 adaptations.",
+  "policy": "Carlito main baseline; direct original-author changes by reviewed commit; API 22 with explicit System/E01/H52 Bluetooth selection.",
   "initial_upstream_base": "2fc876e578eba3905a5b873e3c2dbd74f498433a",
   "upstream_update_2026_10_05": {
     "previous_base": "2fc876e578eba3905a5b873e3c2dbd74f498433a",
@@ -96,5 +96,19 @@
     "activation": "Explicit H52 ANW selection; matching Binder required before vendor transactions",
     "min_sdk": 22,
     "vehicle_verified": false
+  },
+  "historical_original_base": "e6477e1741ad91a18452f0099a432dde63311a19",
+  "upstream_repository": "https://github.com/carlito12345/DiPlay",
+  "carlito_baseline_2026_10_06": {
+    "commit": "8f53b27b3168aedb661e9f9bb7122ea344b75ada",
+    "integration": "Merge current carlito main, preserving verified API 22 compatibility and upgrade identity",
+    "bluetooth_default": "SYSTEM",
+    "manual_choices": [
+      "SYSTEM",
+      "E01_ECARX",
+      "H52_ANW"
+    ],
+    "android43_scope": "H52 ANW transport only; minimum API remains 22",
+    "owner_requested_old_release_cleanup": true
   }
 }

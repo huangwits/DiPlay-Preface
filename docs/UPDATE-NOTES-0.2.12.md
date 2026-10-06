@@ -14,6 +14,10 @@
 - 增加方向盘控制仪表地图缩放和主屏焦点移动的可选功能。
 - 改善仪表转向卡片、歌曲显示和专辑封面的更新与恢复。
 - 诊断报告可在下载目录不可用时继续保存，并提供查看和分享入口。
+- 优化画面播放兼容性与延迟控制，并根据车机能力选择合适的播放方式。
+- 新增导航输出设备选择、设备编号输入和试听，方便确认所需扬声器。
+- 改进 USB 通话结束后的音乐播放恢复。
+- 改善方向盘按键读取状态与授权失败提示，识别无响应时可收集日志反馈。
 
 ## 吉利车机适配
 
@@ -41,6 +45,10 @@
 - Add optional steering-wheel controls for dashboard-map zoom and main-screen focus movement.
 - Improve dashboard turn cards, song display and album-art continuity.
 - Keep diagnostic reports available when the normal Downloads location cannot be used, with View and Share actions.
+- Improve video playback compatibility and latency control, adapting playback to the head unit’s capabilities.
+- Add navigation output selection, a device-number field and a test sound to help identify the desired speaker.
+- Improve music playback recovery after USB phone calls.
+- Improve steering-button access status and authorization messages, with a log-report option when identification receives no response.
 
 ## Geely adaptation
 

@@ -11,6 +11,49 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23], manifest = Config.NONE)
 class FactoryBluetoothSettingsTest {
+    @Test fun freshInstallUsesSystemBluetoothWithoutSelectingAVendor() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear().commit()
+        assertEquals(FactoryBluetoothSettings.Choice.SYSTEM, FactoryBluetoothSettings.choice(context))
+        assertFalse(FactoryBluetoothSettings.enabled(context))
+    }
+
+    @Test fun eachManualTransportChangeClearsOnlyThePreviousPhone() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear().commit()
+        DiPlayPreferences.saveAutoConnect(context, true)
+        for (choice in listOf(FactoryBluetoothSettings.Choice.H52,
+            FactoryBluetoothSettings.Choice.E01, FactoryBluetoothSettings.Choice.SYSTEM)) {
+            DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "Previous interface phone")
+            assertTrue(FactoryBluetoothSettings.select(context, choice))
+            assertEquals(choice, FactoryBluetoothSettings.choice(context))
+            assertEquals(choice.backend != null, FactoryBluetoothSettings.enabled(context))
+            choice.backend?.let { assertEquals(it, FactoryBluetoothSettings.backend(context)) }
+            assertNull(DiPlayPreferences.phoneAddress(context))
+            assertTrue(DiPlayPreferences.autoConnect(context))
+        }
+    }
+
+    @Test fun selectingTheCurrentInterfaceKeepsItsPairedPhone() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear().commit()
+        FactoryBluetoothSettings.select(context, FactoryBluetoothSettings.Choice.H52)
+        DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "H52 phone")
+        assertFalse(FactoryBluetoothSettings.select(context, FactoryBluetoothSettings.Choice.H52))
+        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(context))
+    }
+
+    @Test fun overlayUpdateHonorsPreviouslySavedVendorSelection() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear()
+            .putBoolean("factory_bluetooth_enabled", true)
+            .putString("factory_bluetooth_backend", "H52_ANW").commit()
+        DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "Saved phone")
+        E01Settings.setEnabled(context, false)
+        assertEquals(FactoryBluetoothSettings.Choice.H52, FactoryBluetoothSettings.choice(context))
+        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(context))
+    }
+
     @Test fun optOutIsPersistedAndDoesNotChangeTheSavedPhone() {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear().commit()
