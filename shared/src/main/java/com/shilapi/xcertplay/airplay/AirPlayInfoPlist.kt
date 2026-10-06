@@ -54,6 +54,7 @@ object AirPlayInfoPlist {
                 config.entertainmentSampleRate,
                 config.microphone,
                 config.opusOutputSupported,
+                config.mainBufferedAudio,
             )
         }
         info["extendedFeatures"] = listOf("vocoderInfo", "enhancedRequestCarUI")
@@ -77,6 +78,8 @@ object AirPlayInfoPlist {
             }
         }
         if (config.hevc) info["hevcInfo"] = emptyMap<String, Any?>()
+        // With the mainBuffered session feature the iPhone requires this key; an empty dictionary is accepted.
+        if (config.bufferedAudioOutputEnabled) info["mainBufferedInfo"] = emptyMap<String, Any?>()
         if (config.videoInCar) {
             // The iPhone tears down a session that enables videoPlayback without this key.
             val legacy = features(config)
@@ -124,6 +127,7 @@ object AirPlayInfoPlist {
         entertainmentRate: Int,
         microphone: Boolean,
         opusOutputSupported: Boolean,
+        mainBuffered: Boolean = false,
     ): List<Map<String, Any?>> {
         fun format(type: Int, audioType: String, outputFormats: Int, inputFormats: Int? = null): Map<String, Any?> {
             val entry = linkedMapOf<String, Any?>(
@@ -155,7 +159,10 @@ object AirPlayInfoPlist {
             format(100, "speechRecognition", pcmMono or opusOutput, wirelessInput),
             format(101, "default", pcm or opusOutput),
             format(102, "media", aacLc),
-        )
+        ) + if (mainBuffered) {
+            // The buffered music stream; the iPhone (iOS 27) opened it only with AAC-LC, not PCM or ALAC.
+            listOf(format(BufferedAudioStream.STREAM_TYPE, "media", aacLc))
+        } else emptyList()
     }
 
     /**
