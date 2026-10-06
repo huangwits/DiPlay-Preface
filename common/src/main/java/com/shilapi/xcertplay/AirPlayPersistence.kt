@@ -66,6 +66,7 @@ object AirPlayPersistence {
     private const val KEY_AMBIENT_LUX_THRESHOLD = "ambient_lux_threshold"
     private const val KEY_FPS = "display_fps"
     private const val KEY_MEDIA_BUFFER_MS = "media_buffer_ms"
+    private const val KEY_MAIN_BUFFERED_AUDIO = "main_buffered_audio"
     private const val KEY_CLUSTER_MAP = "cluster_map_enabled"
     private const val KEY_GEELY_HUD_ENABLED = "geely_hud_enabled"
     private const val KEY_GEELY_HUD_DISPLAY_ID = "geely_hud_display_id"
@@ -329,7 +330,7 @@ object AirPlayPersistence {
         val mode = WirelessHotspotMode.entries.firstOrNull { it.name == stored }
             ?: WirelessHotspotMode.AUTOMATIC
         val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT ||
-            (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && mode == WirelessHotspotMode.WIFI_P2P)
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.P && mode == WirelessHotspotMode.WIFI_P2P)
         ) WirelessHotspotMode.AUTOMATIC else mode
         if (stored != supported.name) saveWirelessHotspotMode(context, supported)
         return supported
@@ -527,6 +528,14 @@ object AirPlayPersistence {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_MEDIA_BUFFER_MS, com.shilapi.xcertplay.media.MediaAudioBuffer.DEFAULT_MILLIS),
     )
+
+    /** CarPlay's buffered music (Apple Music sends ahead over TCP); off by default, applies at reconnect. */
+    fun loadMainBufferedAudio(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MAIN_BUFFERED_AUDIO, false)
+
+    fun saveMainBufferedAudio(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_MAIN_BUFFERED_AUDIO, enabled).apply()
+    }
 
     fun saveMediaBufferMillis(context: Context, millis: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
