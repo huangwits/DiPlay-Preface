@@ -76,6 +76,22 @@ class WirelessStartupRecoveryTest {
         assertEquals(View.VISIBLE, retry.visibility)
     }
 
+    @Test fun bootstrapTimeoutUsesBoundedRecoveryAndLeavesTheReasonVisible() {
+        val stage = android.widget.TextView(activity)
+        ReflectionHelpers.setField(activity, "stageStatusView", stage)
+        repeat(6) { generation ->
+            ReflectionHelpers.setField(activity, "restartGeneration", generation)
+            ReflectionHelpers.setField(activity, "reconnectScheduled", false)
+            report(generation, CarPlayStatus.Failed("Wireless CarPlay iAP2 control timed out",
+                startupFailure = WirelessStartupFailure.IAP2_TIMEOUT))
+        }
+        assertEquals(5, budget().retries)
+        assertTrue(ReflectionHelpers.getField(activity, "startupRetryStopped"))
+        assertEquals(View.VISIBLE, retry.visibility)
+        assertTrue(stage.text.toString().contains(activity.getString(com.shilapi.xcertplay.host.R.string.wireless_iap2_timeout)))
+        assertTrue(stage.text.toString().contains(activity.getString(com.shilapi.xcertplay.host.R.string.wireless_startup_retries_exhausted)))
+    }
+
     @Test fun staleGenerationUserDisconnectMenuAndDifferentOwnerCannotSchedule() {
         report(1)
         assertEquals(0, budget().retries)

@@ -26,11 +26,12 @@ import java.util.concurrent.atomic.AtomicInteger
 @LooperMode(LooperMode.Mode.PAUSED)
 class WirelessStartupControllerTest {
     private val statuses = mutableListOf<CarPlayStatus>()
-    private fun controller() = CarPlayController(object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+    private fun controller(factory: Boolean = false) = CarPlayController(object : ContextWrapper(RuntimeEnvironment.getApplication()) {
         override fun getApplicationContext(): Context = this
         override fun bindService(service: Intent, conn: ServiceConnection, flags: Int): Boolean = false
     },
         CarPlayRuntimeConfig(mfiTarget = MfiTarget.LOCAL, transport = CarPlayTransport.WIRELESS,
+            factoryBluetoothEnabled = factory,
             identification = Iap2IdentificationConfig(name = "test", modelIdentifier = "test", manufacturer = "test",
                 serialNumber = "test", firmwareVersion = "1", hardwareVersion = "1", carPlayUsbInterfaceNumber = 3)),
         AirPlayConfig("test", "test", "", "1", AirPlayDisplayConfig(800, 480)),
@@ -40,6 +41,56 @@ class WirelessStartupControllerTest {
     private fun fail(controller: CarPlayController, generation: Int, error: Throwable) {
         controller.javaClass.getDeclaredMethod("fail", Throwable::class.java, Int::class.javaObjectType)
             .apply { isAccessible = true }.invoke(controller, error, generation)
+    }
+
+    private fun bootstrapTimeout(controller: CarPlayController, generation: Int = 0) {
+        val phase = controller.javaClass.getDeclaredField("phase").apply { isAccessible = true }
+        phase.set(controller, phase.type.enumConstants.first { it.toString() == "WIRELESS" })
+        controller.javaClass.getDeclaredMethod("handleWirelessBootstrapTimeout", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }.invoke(controller, generation)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    @Test fun incompleteAndroidBootstrapTimesOutOnceAndReleasesResourcesForRecovery() {
+        val controller = controller()
+        var closed = 0
+        val hotspot = object : WirelessHotspotManager {
+            override fun start(timeoutMillis: Long): WirelessHotspotInfo = error("Not started")
+            override fun close() { closed++ }
+        }
+        try {
+            ReflectionHelpers.setField(controller, "hotspot", hotspot)
+            bootstrapTimeout(controller)
+            bootstrapTimeout(controller)
+            assertEquals(1, closed)
+            assertNull(ReflectionHelpers.getField(controller, "hotspot"))
+            assertEquals(WirelessStartupFailure.IAP2_TIMEOUT, (statuses.single() as CarPlayStatus.Failed).startupFailure)
+        } finally { controller.close(); assertTrue(controller.awaitClosed(2_000)) }
+    }
+
+    @Test fun completedHandoffAndOldBootstrapTimeoutDoNotCloseTheLiveConnection() {
+        val controller = controller()
+        var closed = 0
+        try {
+            ReflectionHelpers.setField(controller, "hotspot", object : WirelessHotspotManager {
+                override fun start(timeoutMillis: Long): WirelessHotspotInfo = error("Not started")
+                override fun close() { closed++ }
+            })
+            ReflectionHelpers.getField<AtomicInteger>(controller, "wirelessGeneration").set(1)
+            bootstrapTimeout(controller, 0)
+            ReflectionHelpers.getField<java.util.concurrent.atomic.AtomicBoolean>(controller, "wirelessActiveReported").set(true)
+            bootstrapTimeout(controller, 1)
+            assertTrue(statuses.isEmpty())
+            assertEquals(0, closed)
+        } finally { controller.close(); assertTrue(controller.awaitClosed(2_000)) }
+    }
+
+    @Test fun factoryBootstrapTimeoutRetainsItsActionableErrorCode() {
+        val controller = controller(factory = true)
+        try {
+            bootstrapTimeout(controller)
+            assertTrue((statuses.single() as CarPlayStatus.Failed).message.contains("E01-F08"))
+        } finally { controller.close(); assertTrue(controller.awaitClosed(2_000)) }
     }
 
     @Test fun timeoutAndCleanupExceptionProduceOnlyOneTypedFailure() {
