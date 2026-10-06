@@ -53,6 +53,7 @@ BYD DiLink 4.0 / Android 10 clean-install validation result.
 
 - Install and connect
 - Compatibility and troubleshooting
+- Smooth wireless CarPlay
 - Privacy and diagnostic reports
 - Build from source
 - Validation
