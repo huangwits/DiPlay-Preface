@@ -71,63 +71,8 @@ If the car rejects the channel or creates a different one, DiPlay reports an
 error. Choose Auto or another channel and reconnect. Switching to the built-in
 hotspot preserves this choice without applying it to the car hotspot.
 
-OPTIONAL: DIPLAY BYD FEATURES REQUIRING ADB
-Settings → BYD features · needs ADB appears only when BYD navigation services or
-the factory BYD car settings app are present, and traditional network ADB is
-reachable at 127.0.0.1:5555. The hotspot check also covers older QUALCOMM/qti
-head units without the supported navigation services; it does not enable
-navigation-output features on those units.
-An unapproved ADB key still shows the setup entry; TLS pairing is not supported.
-The initial check never requests approval or reads vehicle data.
 
-The BYD ADB section contains battery reporting (with charging connectors and
-low-charge warning), wheel speed for tunnels, video while parked, and the
-dashboard song. These use autoservice through ADB, not the AMap navigation
-receiver. Check ADB access and Apply and reconnect are in this section too.
-The cluster-map stream switch retains its existing display and firmware checks.
-Navigation arrows, HUD, and map-display settings keep their existing capability
-checks in BYD navigation. Saved choices and vehicle-reading behavior are unchanged.
 
-Automatically turn on the car hotspot appears as one switch and description in
-the same section only when Built-in car hotspot is selected. Wi-Fi Direct hides
-it without changing the saved choice or the other BYD ADB options.
-The switch is off by default. Turning it on automatically requests missing
-WRITE_SETTINGS through ADB, without a separate setup button or DiPlay confirmation.
-Approve the car's system ADB prompt if needed. The switch is enabled only after
-the required permissions are verified; a failed grant leaves it off and shows a message.
-After the grant, firmware that allows the app's direct hotspot request can turn
-on the saved hotspot without ADB. Firmware that blocks that request needs an
-already-authorized, reachable traditional network ADB connection at each startup
-or connection attempt. The fallback uses only a saved-hotspot start command
-advertised by that firmware's service help, checks its result, and waits for an
-observed AP enabled state. These commands are not standard Android commands;
-this does not establish support for every DiLink version. If neither path is
-supported, use the car's own hotspot settings.
-Turning ADB off hides this setting but preserves the choice; enable ADB again
-to change it. USB, Wi-Fi Direct,
-disconnecting, exiting, and turning this option off do not stop the hotspot.
-Unsupported firmware, missing permission, and startup failures are reported;
-the car's own hotspot settings remain available for manual setup.
+## 吉利星瑞 / Geely Preface
 
-For startup after boot, also enable Open after the car starts. When both options
-are selected, the switch being enabled also requests missing SYSTEM_ALERT_WINDOW
-for boot launch. This does not enable a floating map or turn on the boot option
-automatically. The head unit may also require its own auto-start permission.
-Connect when DiPlay opens remains a separate choice: the app can start the hotspot
-without connecting to an iPhone.
-
-OPTIONAL: DIPLAY AUTOMATIC INSTRUMENT MAP
-On the supported DiLink 5.1 firmware, open Settings → BYD navigation →
-Automatic map setup · ADB. Follow the displayed one-time computer setup,
-then tap Check and enable. Open the cluster's map card or select Map theme.
-This permission is for automatic cluster theme/card detection, not hotspot
-connection. The guide explains the exact command for the installed app.
-
-WHAT TO TEST / REPORT
-Check first connection, reconnect after restarting the app/car, maps,
-music/audio, and any instrument-map features supported by your car.
-If something fails, note the time and steps, car model, DiLink/Android
-version, phone model/OS, and which app you used. Export a diagnostic report
-from Settings → Diagnostics → Save diagnostic report. Reports are saved
-under Downloads/DiAuto or Downloads/DiPlay. Share the report with your test
-feedback; do not include your hotspot password.
+连接设置中选择系统蓝牙（默认）、E01 ECARX 或 H52 ANW。车机接口需先在原厂电话应用配对，切换接口后重新选择 iPhone。原 BYD 专用设置已移除，详见 [功能范围](GEELY-PREFACE-SCOPE.md)。

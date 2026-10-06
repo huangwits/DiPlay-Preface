@@ -24,10 +24,10 @@ class ClusterSafeAreaPersistenceTest {
         assertEquals(main, AirPlayPersistence.loadSafeAreaRect(context, 1920, 720))
     }
 
-    @Test fun mapWithBuiltInTurnCardDefaultsButSavedChoicesRemain() {
+    @Test fun oldAdbClusterPreferenceDoesNotChangeTheLauncherMap() {
         val context = RuntimeEnvironment.getApplication()
         AirPlayPersistence.saveAdbClusterEnabled(context, true)
-        assertEquals(com.shilapi.xcertplay.airplay.CarPlayClusterDisplay.Content.INSTRUMENTS,
+        assertEquals(com.shilapi.xcertplay.airplay.CarPlayClusterDisplay.Content.MAP,
             AirPlayPersistence.loadClusterContent(context))
         AirPlayPersistence.saveClusterContent(context, com.shilapi.xcertplay.airplay.CarPlayClusterDisplay.Content.MAP)
         assertEquals(com.shilapi.xcertplay.airplay.CarPlayClusterDisplay.Content.MAP,
