@@ -1,5 +1,8 @@
 # Unreleased
 
+- E01.10：恢复系统蓝牙默认路径；保留明确选择的 ECARX / H52 原厂接口及 E01.9 状态/超时修正。实际连接待复测。
+- E01.10: restore system Bluetooth by default, preserving explicit vendor choices and E01.9 status/timeout fixes. Actual connectivity remains unverified.
+
 - E01.7: merge original main through e6477e1 while retaining API 22, upgrade identity and the E01.6 factory Bluetooth experiment.
 
 - E01.4: rebuild the maintenance line on original DiPlay 0.2.12, retain selected Geely integrations and E01 fixes, and remove API 18-only compatibility. Original-author updates are the default; Geely changes are reviewed individually.

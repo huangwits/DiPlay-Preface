@@ -25,7 +25,7 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 38
+        versionCode = 39
         versionName = "0.2.12"
 
     }
@@ -59,12 +59,13 @@ android {
         create("e01") {
             initWith(getByName("release"))
             applicationIdSuffix = ".e01legacy"
-            versionNameSuffix = "-e01.9-connection-android51"
+            versionNameSuffix = "-e01.10-systembt-android51"
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             matchingFallbacks += listOf("release")
             resValue("bool", "config_e01_default", "true")
-            resValue("bool", "config_factory_bluetooth_default", "true")
+            // Keep the upstream Android Bluetooth path unless the user selects a vendor backend.
+            resValue("bool", "config_factory_bluetooth_default", "false")
             resValue("string", "app_name", "DiPlay E01 Legacy")
             ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
         }

@@ -6,6 +6,8 @@
 
 ## 中文
 
+本地候选 [E01.10](docs/releases/PREFACE-0.2.12-E01.10-SYSTEMBT.md) 恢复系统蓝牙默认路径；原厂 ECARX / H52 改为手动启用，保留已保存的选择。手机与实车连接待复测，尚未发布到下载链接。
+
 ### 项目与维护
 
 以原作者 [DiPlay](https://github.com/shihabal3amri/DiPlay) 为代码基线，持续跟进原作者更新；按需引入 [carlito 吉利版](https://github.com/carlito12345/DiPlay) 的车型适配，维护 Android 5.1 / API 22 和 E01 车机兼容性。
@@ -39,6 +41,8 @@ A CarPlay receiver adaptation for the **2020 Geely Preface / GKUI / ECARX E01 / 
 [Download the E01.8 factory Bluetooth experimental full APK](https://github.com/huangwits/DiPlay-Preface/releases/download/v0.2.12-preface-e01.8-factorybt/DiPlay-Preface-0.2.12-E01.8-FactoryBT-Android51-full.apk) · [Release notes](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.12-preface-e01.8-factorybt) · [Release history](https://github.com/huangwits/DiPlay-Preface/releases)
 
 ### Project and maintenance
+
+Local candidate [E01.10](docs/releases/PREFACE-0.2.12-E01.10-SYSTEMBT.md) restores Android Bluetooth by default and keeps ECARX / H52 as explicit options, preserving saved choices. Phone and vehicle connectivity remain unverified; the download links still point to the published release.
 
 Based directly on the original [DiPlay project](https://github.com/shihabal3amri/DiPlay), this project follows original-author updates and selectively imports vehicle adaptations from [carlito’s Geely fork](https://github.com/carlito12345/DiPlay), maintaining Android 5.1 / API 22 and E01 compatibility.
 
