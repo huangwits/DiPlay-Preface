@@ -22,8 +22,7 @@ class FactoryBluetoothSettingsTest {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear().commit()
         DiPlayPreferences.saveAutoConnect(context, true)
-        for (choice in listOf(FactoryBluetoothSettings.Choice.H52,
-            FactoryBluetoothSettings.Choice.E01, FactoryBluetoothSettings.Choice.SYSTEM)) {
+        for (choice in listOf(FactoryBluetoothSettings.Choice.E01, FactoryBluetoothSettings.Choice.SYSTEM)) {
             DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "Previous interface phone")
             assertTrue(FactoryBluetoothSettings.select(context, choice))
             assertEquals(choice, FactoryBluetoothSettings.choice(context))
@@ -37,21 +36,22 @@ class FactoryBluetoothSettingsTest {
     @Test fun selectingTheCurrentInterfaceKeepsItsPairedPhone() {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear().commit()
-        FactoryBluetoothSettings.select(context, FactoryBluetoothSettings.Choice.H52)
-        DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "H52 phone")
-        assertFalse(FactoryBluetoothSettings.select(context, FactoryBluetoothSettings.Choice.H52))
+        FactoryBluetoothSettings.select(context, FactoryBluetoothSettings.Choice.E01)
+        DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "E01 phone")
+        assertFalse(FactoryBluetoothSettings.select(context, FactoryBluetoothSettings.Choice.E01))
         assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(context))
     }
 
-    @Test fun overlayUpdateHonorsPreviouslySavedVendorSelection() {
+    @Test fun overlayUpdateDropsRemovedH52SelectionAndPhone() {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear()
             .putBoolean("factory_bluetooth_enabled", true)
             .putString("factory_bluetooth_backend", "H52_ANW").commit()
         DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "Saved phone")
         E01Settings.setEnabled(context, false)
-        assertEquals(FactoryBluetoothSettings.Choice.H52, FactoryBluetoothSettings.choice(context))
-        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(context))
+        assertEquals(FactoryBluetoothSettings.Choice.SYSTEM, FactoryBluetoothSettings.choice(context))
+        assertNull(DiPlayPreferences.phoneAddress(context))
+        assertFalse(FactoryBluetoothSettings.enabled(context))
     }
 
     @Test fun optOutIsPersistedAndDoesNotChangeTheSavedPhone() {
@@ -73,25 +73,13 @@ class FactoryBluetoothSettingsTest {
         assertNull(FactoryBluetoothSettings.failureCopy(context, "Generic Bluetooth failure"))
     }
 
-    @Test fun choosingAnotherBackendClearsOnlyThePreviousPhoneSelection() {
+    @Test fun overlayUpdateRetainsE01SelectionAndPhone() {
         val context = RuntimeEnvironment.getApplication()
-        val prefs = context.getSharedPreferences("diplay", android.content.Context.MODE_PRIVATE)
-        prefs.edit().clear().apply()
-        DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "Phone")
-        DiPlayPreferences.saveAutoConnect(context, true)
-        assertEquals(com.shilapi.xcertplay.transport.FactoryBluetoothBackend.ECARX, FactoryBluetoothSettings.backend(context))
-        FactoryBluetoothSettings.setBackend(context, com.shilapi.xcertplay.transport.FactoryBluetoothBackend.H52_ANW)
-        assertNull(DiPlayPreferences.phoneAddress(context))
-        assertTrue(DiPlayPreferences.autoConnect(context))
-        assertEquals(com.shilapi.xcertplay.transport.FactoryBluetoothBackend.H52_ANW, FactoryBluetoothSettings.backend(context))
-        DiPlayPreferences.savePhone(context, "22:33:44:55:66:77", "Factory phone")
-        FactoryBluetoothSettings.setBackend(context, com.shilapi.xcertplay.transport.FactoryBluetoothBackend.H52_ANW)
-        assertEquals("22:33:44:55:66:77", DiPlayPreferences.phoneAddress(context))
-    }
-
-    @Test @Config(qualifiers = "zh-rCN") fun missingAnwServiceKeepsItsOwnErrorCode() {
-        val text = FactoryBluetoothSettings.failureCopy(RuntimeEnvironment.getApplication(), "[E01-H01] Wrong descriptor")!!
-        assertTrue(text.contains("E01-H01"))
-        assertTrue(text.contains("ANW"))
+        context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear()
+            .putBoolean("factory_bluetooth_enabled", true)
+            .putString("factory_bluetooth_backend", "ECARX").commit()
+        DiPlayPreferences.savePhone(context, "11:22:33:44:55:66", "Saved phone")
+        assertEquals(FactoryBluetoothSettings.Choice.E01, FactoryBluetoothSettings.choice(context))
+        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(context))
     }
 }

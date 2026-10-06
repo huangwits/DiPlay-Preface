@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal object FactoryBluetoothSettings {
     enum class Choice(val backend: FactoryBluetoothBackend?) {
-        SYSTEM(null), E01(FactoryBluetoothBackend.ECARX), H52(FactoryBluetoothBackend.H52_ANW),
+        SYSTEM(null), E01(FactoryBluetoothBackend.ECARX),
     }
 
     fun choice(context: Context): Choice = if (!enabled(context)) Choice.SYSTEM else
@@ -40,8 +40,15 @@ internal object FactoryBluetoothSettings {
             .remove("phone_address").remove("phone_name").apply()
     }
 
-    fun enabled(context: Context): Boolean = context.getSharedPreferences("diplay", Context.MODE_PRIVATE)
-        .getBoolean("factory_bluetooth_enabled", context.resources.getBoolean(R.bool.config_factory_bluetooth_default))
+    fun enabled(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("diplay", Context.MODE_PRIVATE)
+        if (prefs.getString("factory_bluetooth_backend", null) == "H52_ANW") {
+            prefs.edit().putBoolean("factory_bluetooth_enabled", false)
+                .remove("factory_bluetooth_backend").remove("phone_address").remove("phone_name").apply()
+            return false
+        }
+        return prefs.getBoolean("factory_bluetooth_enabled", context.resources.getBoolean(R.bool.config_factory_bluetooth_default))
+    }
 
     fun setEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit()
@@ -62,15 +69,6 @@ internal object FactoryBluetoothSettings {
     }
 
     fun failureCopy(context: Context, message: String): String? {
-        val anwCode = Regex("E01-H0[1-3]").find(message)?.value
-        if (anwCode != null) {
-            val resource = when (anwCode) {
-                "E01-H01" -> R.string.factory_anw_unavailable
-                "E01-H02" -> R.string.factory_anw_phone
-                else -> R.string.factory_anw_connection
-            }
-            return "[$anwCode] ${context.getString(resource)}"
-        }
         val code = Regex("E01-F0[1-9]").find(message)?.value ?: return null
         val resource = when (code) {
             "E01-F01" -> R.string.factory_bt_error_sdk

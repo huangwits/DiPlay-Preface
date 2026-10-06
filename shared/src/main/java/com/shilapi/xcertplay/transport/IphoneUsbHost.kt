@@ -98,30 +98,10 @@ class IphoneUsbHost(
     fun discover(): List<UsbDevice> =
         usbManager.deviceList.values.filter { matcher.matches(it.vendorId, it.productId) }
 
-    /**
-     * Checks the active CarPlay configuration on every supported API. Android 4.3 has no typed
-     * UsbConfiguration API, so its result comes from UsbDeviceLayoutReader and raw descriptors.
-     */
+    /** API 22+ descriptors are available without opening or claiming the USB device. */
     fun hasCarPlayConfiguration(device: UsbDevice): Boolean {
         requireConfiguredDevice(device)
-        if (!usbManager.hasPermission(device)) return false
-        val connection = usbManager.openDevice(device) ?: return false
-        return try {
-            val layout = IphoneCarPlayConfiguration.readLayout(device, connection)
-            val available = run {
-                IphoneCarPlayConfiguration.find(device) != null
-            }
-            Log.i(
-                IphoneCarPlayConfiguration.TAG,
-                "carplay configuration available=$available ${layout.describe()} api=${Build.VERSION.SDK_INT}",
-            )
-            available
-        } catch (error: RuntimeException) {
-            Log.w(IphoneCarPlayConfiguration.TAG, "carplay configuration descriptor read failed", error)
-            false
-        } finally {
-            connection.close()
-        }
+        return IphoneCarPlayConfiguration.find(device) != null
     }
 
     @Throws(IphoneUsbException::class)

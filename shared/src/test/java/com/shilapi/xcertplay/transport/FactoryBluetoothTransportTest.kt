@@ -1,7 +1,5 @@
 package com.shilapi.xcertplay.transport
 
-import android.os.Binder
-import android.os.Parcel
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,19 +13,6 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23], manifest = Config.NONE)
 class FactoryBluetoothTransportTest {
-    @Test fun mismatchedServiceNeverReceivesVendorTransactions() {
-        val calls = AtomicInteger()
-        val binder = object : Binder() {
-            init { attachInterface(null, "some.other.bluetooth.Service") }
-            override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-                calls.incrementAndGet()
-                return false
-            }
-        }
-        try { AnwSppProtocol(binder).power(); fail("Expected rejection") } catch (_: IOException) { }
-        assertEquals(0, calls.get())
-    }
-
     @Test fun closingDuringConnectionReleasesLateResultAndNeverPublishesIt() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
