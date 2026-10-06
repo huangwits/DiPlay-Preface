@@ -404,7 +404,7 @@
     <string name="wireless_carplay">无线 CarPlay</string>
     <string name="wireless_carplay_2">无线 CarPlay</string>
     <string name="wireless_carplay_active">无线 CarPlay 已启用</string>
-    <string name="wireless_carplay_control_running">无线 CarPlay 控制通道运行中</string>
+    <string name="wireless_carplay_control_running">蓝牙已连接，正在完成 CarPlay 握手…</string>
     <string name="wireless_carplay_transport">无线 CarPlay 连接</string>
     <string name="wireless_connection_help">无线连接帮助</string>
     <string name="wireless_hotspot_off">无线热点：关闭</string>
@@ -790,6 +790,7 @@
     <string name="song_on_hud_description">无导航指引时显示手机提供的曲名或歌词，导航方向和道路名称优先。</string>
     <string name="hotspot_network_not_ready">热点网络未就绪</string>
     <string name="first_tcp_timeout">等待 iPhone 接入 CarPlay 超时</string>
+    <string name="wireless_iap2_timeout">蓝牙已连接，但 CarPlay 握手超时。请检查 iPhone 上的 CarPlay 提示。</string>
     <string name="wireless_startup_retries_exhausted">自动重试已停止，请检查连接后手动重试。</string>
     <string name="retry_carplay_connection">重新连接</string>
     <string name="carplay_dock">CarPlay 程序栏</string>

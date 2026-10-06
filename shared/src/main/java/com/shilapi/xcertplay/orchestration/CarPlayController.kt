@@ -1528,13 +1528,7 @@ class CarPlayController(
                         )
                     }
                 }
-                Iap2WirelessControlTerminal.TIMED_OUT ->
-                    if (!wirelessActiveReported.get()) {
-                        if (factory != null) throw com.shilapi.xcertplay.transport.FactoryBluetoothException(
-                            "E01-F08", "Factory SPP opened but CarPlay iAP2 control timed out",
-                        )
-                        onStatus(CarPlayStatus.ControlEnded)
-                    }
+                Iap2WirelessControlTerminal.TIMED_OUT -> handleWirelessBootstrapTimeout(generation)
             }
         } catch (error: Throwable) {
             if (isStaleWirelessRun(generation)) {
@@ -1554,6 +1548,23 @@ class CarPlayController(
                 closeWirelessStack(generation = generation)
             }
         }
+    }
+
+    private fun handleWirelessBootstrapTimeout(generation: Int) = synchronized(wirelessResourceLock) {
+        if (isStaleWirelessRun(generation) || wirelessActiveReported.get() || wirelessFailureReported.get()) {
+            return@synchronized
+        }
+        // A completed bootstrap may stop normally after handoff. An incomplete one must
+        // release its resources and enter recovery; ControlEnded alone left the host idle.
+        val error = if (config.factoryBluetoothEnabled) {
+            com.shilapi.xcertplay.transport.FactoryBluetoothException(
+                "E01-F08", "Factory SPP opened but CarPlay iAP2 control timed out",
+            )
+        } else {
+            WirelessStartupException(WirelessStartupFailure.IAP2_TIMEOUT, "Wireless CarPlay iAP2 control timed out")
+        }
+        fail(error, generation)
+        closeWirelessStack(generation = generation)
     }
 
     private fun startWirelessTunnelControl(stream: BlockingDuplexByteStream): Boolean {

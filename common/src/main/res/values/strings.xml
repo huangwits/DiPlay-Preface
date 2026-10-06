@@ -405,7 +405,7 @@
     <string name="wireless_carplay">WIRELESS CARPLAY</string>
     <string name="wireless_carplay_2">Wireless CarPlay</string>
     <string name="wireless_carplay_active">Wireless CarPlay active</string>
-    <string name="wireless_carplay_control_running">Wireless CarPlay control running</string>
+    <string name="wireless_carplay_control_running">Bluetooth connected; completing the CarPlay handshake…</string>
     <string name="wireless_carplay_transport">Wireless CarPlay transport</string>
     <string name="wireless_connection_help">Wireless connection help</string>
     <string name="wireless_hotspot_off">Wireless hotspot: off</string>
@@ -790,6 +790,7 @@
     <string name="song_on_hud_description">Show the title or lyrics supplied by the phone while no navigation guidance is active. Navigation directions and road names take priority.</string>
     <string name="hotspot_network_not_ready">Hotspot network is not ready</string>
     <string name="first_tcp_timeout">The iPhone did not connect to CarPlay in time</string>
+    <string name="wireless_iap2_timeout">Bluetooth connected, but the CarPlay handshake timed out. Check the CarPlay prompt on your iPhone.</string>
     <string name="wireless_startup_retries_exhausted">Automatic retries stopped. Check the connection and retry manually.</string>
     <string name="retry_carplay_connection">Retry connection</string>
     <string name="carplay_dock">CarPlay dock</string>
