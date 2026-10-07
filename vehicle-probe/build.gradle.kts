@@ -8,11 +8,14 @@ android {
     // The matching .aidl remains the protocol source alongside this client.
     buildFeatures { aidl = false }
     defaultConfig {
-        minSdk = 28
+        minSdk = 22
         consumerProguardFiles("consumer-rules.pro")
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
 }
+
+dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5") }

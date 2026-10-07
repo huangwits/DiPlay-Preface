@@ -1,5 +1,8 @@
 package com.shilapi.xcertplay
 
+import android.os.Build
+
+import com.shilapi.xcertplay.compat.systemService
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -279,7 +282,7 @@ internal object CarPlayMediaKeys {
         return status.getInt("schema") == 1 && (!status.getBoolean("supported") || status.getBoolean("menuAllowsZoom"))
     }
     private fun bridgeZoomRoute(): Any? {
-        val mode = appContext?.getSystemService(AudioManager::class.java)?.mode
+        val mode = appContext?.systemService(AudioManager::class.java, "audio")?.mode
         return if (learning == null && mode !in listOf(AudioManager.MODE_IN_CALL, AudioManager.MODE_IN_COMMUNICATION) &&
             menuAllowsBridgeZoom()) controller?.dashboardMapRoute() else null
     }
@@ -369,7 +372,7 @@ internal object CarPlayMediaKeys {
     }
 
     fun steeringDiagnostics(): String = synchronized(this) {
-        val permitted = appContext?.checkSelfPermission(android.Manifest.permission.READ_LOGS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val permitted = appContext?.checkCallingOrSelfPermission(android.Manifest.permission.READ_LOGS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         "systemLogAccess=$permitted\n" + SteeringLogAccess.diagnostics() + "\n" +
             (bridgeInput?.diagnostics() ?: "last: $lastGeelyInputDiagnostics") + "\n" +
             (keyLogMonitor?.diagnostics() ?: "last: $lastKeyLogDiagnostics") + "\n" + observedKeys.joinToString("\n")
@@ -445,10 +448,19 @@ internal object CarPlayMediaKeys {
     // Another car app (its own Spotify, the radio) took audio focus and with it the steering-wheel
     // keys. When CarPlay starts playing again it becomes the car's media source again, as any player
     // would; only the start counts, so a car source picked while the iPhone plays on is not undone.
+    private val legacyFocusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        if (change == AudioManager.AUDIOFOCUS_LOSS) synchronized(this) { focusHeld = false }
+    }
+
     private fun regainFocusLocked() {
+        if (Build.VERSION.SDK_INT < 26) {
+            if (!focusHeld && manageAudioFocus) focusHeld = appContext?.systemService(AudioManager::class.java, "audio")
+                ?.requestAudioFocus(legacyFocusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            return
+        }
         val request = focusRequest ?: return
         if (focusHeld) return
-        val audio = appContext?.getSystemService(AudioManager::class.java) ?: return
+        val audio = appContext?.systemService(AudioManager::class.java, "audio") ?: return
         focusHeld = audio.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         Log.i(TAG, "audio focus regained=$focusHeld")
     }
@@ -462,8 +474,8 @@ internal object CarPlayMediaKeys {
     }
 
     private fun start(context: Context) {
-        val audio = context.getSystemService(AudioManager::class.java)
-        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        val audio = context.systemService(AudioManager::class.java, "audio")
+        val request = if (Build.VERSION.SDK_INT >= 26) AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -475,8 +487,9 @@ internal object CarPlayMediaKeys {
                 // Only a permanent loss moves the car's media keys elsewhere; transient losses come back.
                 if (change == AudioManager.AUDIOFOCUS_LOSS) synchronized(this) { focusHeld = false }
             }, mainHandler)
-            .build()
-        val granted = manageAudioFocus && audio?.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            .build() else null
+        val granted = manageAudioFocus && (if (Build.VERSION.SDK_INT >= 26 && request != null) audio?.requestAudioFocus(request)
+            else audio?.requestAudioFocus(legacyFocusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         focusRequest = request.takeIf { manageAudioFocus }
         focusHeld = granted
         session = MediaSession(context, "DiPlay CarPlay").apply {
@@ -508,7 +521,8 @@ internal object CarPlayMediaKeys {
         nowPlaying = CarPlayNowPlaying()
         artwork = null
         artworkCache.clear()
-        focusRequest?.let { request -> appContext?.getSystemService(AudioManager::class.java)?.abandonAudioFocusRequest(request) }
+        if (Build.VERSION.SDK_INT >= 26) focusRequest?.let { request -> appContext?.systemService(AudioManager::class.java, "audio")?.abandonAudioFocusRequest(request) }
+        else if (manageAudioFocus) appContext?.systemService(AudioManager::class.java, "audio")?.abandonAudioFocus(legacyFocusListener)
         focusRequest = null
         focusHeld = false
         if (learning != null) syncGeelyInputLocked()
@@ -556,7 +570,6 @@ internal object CarPlayMediaKeys {
     private val callback = CarPlayMediaCallback(
         send = ::send,
         consumesKey = ::consumesHardwareKey,
-        experimentalDiLink3Keys = { appContext?.let(BydOutputSettings::carPlayCallControls) == true },
     )
 
     /** Whether [next] changes what the media session's metadata shows; position and play state do not. */
@@ -636,17 +649,9 @@ internal object CarPlayMediaKeys {
  * media controllers (not hardware keys) call [onPlay] and [onPause] with an explicit intent.
  */
 internal class CarPlayMediaCallback(
-    private val consumesKey: (Int) -> Boolean = { false },
     private val send: (index: Int, source: String) -> Unit,
     private val consumesKey: (Int) -> Boolean = { false },
-    private val experimentalDiLink3Keys: () -> Boolean = { false },
 ) : MediaSession.Callback() {
-    constructor(send: (index: Int, source: String) -> Unit) : this(send, { false }, { false })
-
-    // carlito: Preserve upstream's named opt-in with a trailing send callback.
-    constructor(experimentalDiLink3Keys: () -> Boolean, send: (index: Int, source: String) -> Unit) :
-        this(send = send, consumesKey = { false }, experimentalDiLink3Keys = experimentalDiLink3Keys)
-
     override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
         @Suppress("DEPRECATION")
         val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false

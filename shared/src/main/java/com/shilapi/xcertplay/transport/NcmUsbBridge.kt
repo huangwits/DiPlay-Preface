@@ -1,5 +1,7 @@
 package com.shilapi.xcertplay.transport
 
+import android.os.Build
+
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
@@ -65,7 +67,7 @@ class NcmUsbBridge internal constructor(
             this.sequence.also { this.sequence = (this.sequence + 1) and 0xffff }
         }
         val block = Ntb16Codec.build(frame, sequence)
-        val transferred = connection.bulkTransfer(outEndpoint, block, block.size, timeoutMillis)
+        val transferred = if (LegacyUsbTransfer.chunkedWritesRequired) LegacyUsbTransfer.writeAll(LegacyUsbTransfer.endpointWriter(connection, outEndpoint, block, 0), 0, block.size, android.os.SystemClock.elapsedRealtime() * 1_000_000L + timeoutMillis * 1_000_000L) else connection.bulkTransfer(outEndpoint, block, block.size, timeoutMillis)
         // Before StartCarPlaySession the phone keeps the NCM data path NAKed. Android reports the
         // resulting timeout as -1; it is not a detach and later packets must be allowed to retry.
         if (transferred <= 0) {
@@ -217,7 +219,23 @@ class NcmUsbBridge internal constructor(
         return frame
     }
 
+    private fun readChunkSynchronously(timeoutMillis: Long): Int? {
+        checkOpen()
+        val timeout = timeoutMillis.coerceAtMost(Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
+        val transferred = LegacyUsbTransfer.readOnce(
+            LegacyUsbTransfer.endpointReader(connection, inEndpoint, readBuffer, 0),
+            readBuffer,
+            0,
+            readBuffer.size,
+            timeout,
+        )
+        checkOpen()
+        return transferred.takeIf { it > 0 }
+    }
+
+
     private fun readChunk(timeoutMillis: Long): Int? {
+        if (Build.VERSION.SDK_INT < 26) return readChunkSynchronously(timeoutMillis)
         checkOpen()
         val request = try {
             // Publish and queue atomically with close(), so detach cannot miss a new request.

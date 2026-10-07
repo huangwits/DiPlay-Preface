@@ -1,11 +1,13 @@
 // carlito | One focus owner for media, guidance, calls and Siri, including microphone-only phases.
 package com.shilapi.xcertplay.media
 
+import com.shilapi.xcertplay.compat.systemService
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import java.io.Closeable
@@ -18,10 +20,12 @@ internal class AudioFocusCoordinator(
     private val onOwnershipChanged: (Boolean) -> Unit = {},
 ) : Closeable {
     private data class Entry(val channel: AudioChannel, val attributes: AudioAttributes)
-    private val manager = context?.getSystemService(AudioManager::class.java)
+    private val manager = context?.systemService(AudioManager::class.java, "audio")
     private val active = LinkedHashMap<AudioTrack, Entry>()
     private val captures = LinkedHashMap<AudioChannel, Entry>()
     private var request: AudioFocusRequest? = null
+    private var legacyListener: AudioManager.OnAudioFocusChangeListener? = null
+    private var legacyGain = AudioManager.AUDIOFOCUS_GAIN
     private var requestedChannel: AudioChannel? = null
     private var requestGeneration = 0
     private var focusHeld = false
@@ -106,7 +110,8 @@ internal class AudioFocusCoordinator(
 
     private fun abandonRequest() {
         requestGeneration++
-        request?.let { runCatching { manager?.abandonAudioFocusRequest(it) } }
+        if (Build.VERSION.SDK_INT >= 26) request?.let { runCatching { manager?.abandonAudioFocusRequest(it) } }
+        legacyListener?.let { runCatching { manager?.abandonAudioFocus(it) } }; legacyListener = null
         request = null; requestedChannel = null; focusHeld = false; focusVolume = 0f
     }
 
@@ -119,7 +124,7 @@ internal class AudioFocusCoordinator(
             ?: mediaAttributes?.takeIf { !mediaSuppressed && mediaPlaying != false }?.let { Entry(AudioChannel.MEDIA, it) }
             ?: active.values.firstOrNull { it.channel == AudioChannel.NAVIGATION }
         if (primary == null) { abandonRequest(); applyVolumes(); return }
-        if (request != null && requestedChannel == primary.channel) { applyVolumes(); return }
+        if ((request != null || legacyListener != null) && requestedChannel == primary.channel) { applyVolumes(); return }
         abandonRequest()
         val generation = ++requestGeneration
         val gain = when (primary.channel) {
@@ -129,16 +134,19 @@ internal class AudioFocusCoordinator(
             AudioChannel.NAVIGATION -> if (factoryRouting) AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
                 else AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
         }
-        request = AudioFocusRequest.Builder(gain).setAudioAttributes(primary.attributes)
+        if (Build.VERSION.SDK_INT >= 26) request = AudioFocusRequest.Builder(gain).setAudioAttributes(primary.attributes)
             .setOnAudioFocusChangeListener({ change -> onFocusChanged(generation, change) }, Handler(Looper.getMainLooper())).build()
+        else { legacyGain = gain; legacyListener = AudioManager.OnAudioFocusChangeListener { change -> onFocusChanged(generation, change) } }
         requestedChannel = primary.channel
         requestCurrentFocus()
     }
 
     private fun requestCurrentFocus() {
         if (externalCall || closed) return
-        val current = request ?: return
-        val result = runCatching { manager?.requestAudioFocus(current) }.getOrDefault(AudioManager.AUDIOFOCUS_REQUEST_FAILED)
+        val result = runCatching {
+            if (Build.VERSION.SDK_INT >= 26) manager?.requestAudioFocus(request ?: return)
+            else manager?.requestAudioFocus(legacyListener ?: return, AudioManager.STREAM_MUSIC, legacyGain)
+        }.getOrDefault(AudioManager.AUDIOFOCUS_REQUEST_FAILED)
         focusHeld = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         focusVolume = if (focusHeld) 1f else 0f
         applyVolumes()

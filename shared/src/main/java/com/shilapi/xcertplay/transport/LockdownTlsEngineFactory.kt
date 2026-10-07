@@ -48,7 +48,7 @@ object LockdownTlsEngineFactory {
             }
             return context.createSSLEngine(PEER_HOST, PEER_PORT).apply {
                 useClientMode = true
-                sslParameters = sslParameters.apply { endpointIdentificationAlgorithm = null }
+                sslParameters = sslParameters.apply { if (android.os.Build.VERSION.SDK_INT >= 24) endpointIdentificationAlgorithm = null }
             }
         } finally {
             password.fill('\u0000')

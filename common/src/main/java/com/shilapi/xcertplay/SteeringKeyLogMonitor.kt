@@ -7,7 +7,7 @@ import android.content.IntentFilter
 import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
-import androidx.core.content.ContextCompat
+import com.shilapi.xcertplay.compat.ContextCompat
 import java.util.concurrent.ConcurrentHashMap
 
 internal data class SteeringObservedKey(
@@ -92,7 +92,8 @@ internal class SteeringKeyLogMonitor(
             }
         }
         try {
-            ContextCompat.registerReceiver(app, receiver, IntentFilter(action), ContextCompat.RECEIVER_EXPORTED)
+            if (android.os.Build.VERSION.SDK_INT >= 33) app.registerReceiver(receiver, IntentFilter(action), Context.RECEIVER_EXPORTED)
+            else app.registerReceiver(receiver, IntentFilter(action))
             receivers[action] = receiver
             if (discovering) onKey(SteeringObservedKey(0, -1, "broadcast", broadcastAction = action))
         } catch (error: Exception) { Log.w("DiPlay-KeyLogs", "System key broadcast registration unavailable", error) }

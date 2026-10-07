@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.compat.systemService
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
@@ -71,7 +72,7 @@ internal class HomeScreenMonitor(context: Context, private val onChange: (Boolea
 
     private fun poll() {
         val now = System.currentTimeMillis()
-        val events = runCatching { context.getSystemService(UsageStatsManager::class.java).queryEvents(since, now) }
+        val events = runCatching { context.systemService(UsageStatsManager::class.java, "usagestats")?.queryEvents(since, now) }
             .getOrNull() ?: return
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {

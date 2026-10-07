@@ -1,6 +1,7 @@
 // carlito | Peer-scoped A2DP sink handoff; restores only an app-disconnected, still-bonded peer.
 package com.shilapi.xcertplay.vehicle
 
+import com.shilapi.xcertplay.compat.systemService
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
@@ -21,7 +22,7 @@ import java.util.Locale
 @SuppressLint("MissingPermission")
 internal class BluetoothAudioHandoff(context: Context, address: String, private val report: (String) -> Unit) : Closeable {
     private val app = context.applicationContext
-    private val adapter = app.getSystemService(BluetoothManager::class.java)?.adapter
+    private val adapter = app.systemService(BluetoothManager::class.java, "bluetooth")?.adapter
     private val peer = address.uppercase(Locale.US)
     private val main = Handler(Looper.getMainLooper())
     private var proxy: BluetoothProfile? = null
@@ -51,7 +52,7 @@ internal class BluetoothAudioHandoff(context: Context, address: String, private 
 
     @Synchronized fun start() {
         if (closed || held) return
-        if (Build.VERSION.SDK_INT >= 31 && app.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+        if (Build.VERSION.SDK_INT >= 31 && app.checkCallingOrSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             report("Audio: Bluetooth music handoff unavailable: connection permission"); return
         }
         try {

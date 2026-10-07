@@ -86,12 +86,12 @@ internal class MicrophoneUplink(
             var record: AudioRecord? = null
             var stage = MicrophoneFailureStage.RECORDER_CREATION
             try {
-                val built = AudioRecord.Builder().setAudioSource(candidate)
+                val built = if (android.os.Build.VERSION.SDK_INT >= 23) AudioRecord.Builder().setAudioSource(candidate)
                     .setAudioFormat(AndroidAudioFormat.Builder()
                         .setEncoding(AndroidAudioFormat.ENCODING_PCM_16BIT)
                         .setSampleRate(config.sampleRate)
                         .setChannelMask(channelMask).build())
-                    .setBufferSizeInBytes(bufferSize).build()
+                    .setBufferSizeInBytes(bufferSize).build() else AudioRecord(candidate, config.sampleRate, channelMask, AndroidAudioFormat.ENCODING_PCM_16BIT, bufferSize)
                 record = built
                 stage = MicrophoneFailureStage.RECORDER_INITIALIZATION
                 if (built.state != AudioRecord.STATE_INITIALIZED) {
@@ -205,7 +205,7 @@ internal class MicrophoneUplink(
         try {
             while (running.get()) {
                 stats.reading()
-                val count = recorder.read(readBuffer, 0, readBuffer.size, AudioRecord.READ_BLOCKING)
+                val count = recorder.read(readBuffer, 0, readBuffer.size)
                 stats.read(count)
                 if (count < 0) {
                     if (running.get()) {
@@ -282,11 +282,12 @@ internal class MicrophoneUplink(
         }
     }
 
-    private fun routeType(recorder: AudioRecord): Int? = runCatching { recorder.routedDevice?.type }.getOrNull()
+    private fun routeType(recorder: AudioRecord): Int? = if (android.os.Build.VERSION.SDK_INT < 23) null else runCatching { recorder.routedDevice?.type }.getOrNull()
 
     fun refreshInputDevice() { recorder?.let(::applyInputDevice) }
 
     private fun applyInputDevice(record: AudioRecord) {
+        if (android.os.Build.VERSION.SDK_INT < 23) return
         runCatching {
             val device = preferredInput?.resolveInput(audioManager)
             val accepted = record.setPreferredDevice(device)

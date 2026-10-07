@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.compat.systemService
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -22,7 +23,7 @@ import kotlin.math.sin
 /** Plays one short tone through the same legacy stream route used by CarPlay audio. */
 internal class AudioChannelPreview(context: Context? = null, private val onUnavailable: (Int) -> Unit) : Closeable {
     private val factoryAudio = context?.applicationContext?.let(GeelyFactoryCarPlay::load)
-    private val audioManager = context?.getSystemService(AudioManager::class.java)
+    private val audioManager = context?.systemService(AudioManager::class.java, "audio")
     private val focusEnabled = context?.let(AirPlayPersistence::loadAudioFocusEnabled) == true
     private val mainHandler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { task ->
@@ -59,7 +60,7 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
                 if (attributes.usage != usage) {
                     attributes = AudioAttributes.Builder().setUsage(standardUsage).setContentType(contentType).build()
                 }
-                val built = if (channel == 0) {
+                val built = if (channel == 0 && Build.VERSION.SDK_INT >= 23) {
                     AudioTrack.Builder()
                         .setAudioAttributes(attributes)
                         .setAudioFormat(
@@ -75,18 +76,18 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
                 } else {
                     // Match playback and let the head unit handle vendor-specific stream types.
                     @Suppress("DEPRECATION")
-                    AudioTrack(channel, SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO,
+                    AudioTrack(if (channel == 0) AudioManager.STREAM_MUSIC else channel, SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO,
                         AudioFormat.ENCODING_PCM_16BIT, bufferBytes, AudioTrack.MODE_STREAM)
                 }
                 track = built
                 check(built.state == AudioTrack.STATE_INITIALIZED) { "Audio output did not initialize" }
-                if (output != null) {
+                if (output != null && Build.VERSION.SDK_INT >= 23) {
                     val device = checkNotNull(output.resolve(audioManager)) { "Output device unavailable" }
                     check(built.setPreferredDevice(device)) { "Output preference rejected" }
                 }
                 if (closed || generation.get() != request) return@submit
                 activeTrack.set(built)
-                if (focusEnabled && audioManager != null) {
+                if (focusEnabled && audioManager != null && Build.VERSION.SDK_INT >= 26) {
                     val focusAttributes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) built.audioAttributes
                         else attributes
                     val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
@@ -97,13 +98,15 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
                         "Preview audio focus unavailable"
                     }
                 }
+                if (focusEnabled && audioManager != null && Build.VERSION.SDK_INT < 26) {
+                    check(audioManager.requestAudioFocus(null, if (channel == 0) AudioManager.STREAM_MUSIC else channel,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                }
                 built.setVolume(0.6f)
                 built.play()
                 var written = 0
                 while (written < pcm.size && !closed && generation.get() == request) {
-                    val count = built.write(
-                        pcm, written, minOf(4096, pcm.size - written), AudioTrack.WRITE_BLOCKING,
-                    )
+                    val count = built.write(pcm, written, minOf(4096, pcm.size - written))
                     check(count > 0) { "Could not write preview tone" }
                     written += count
                 }
@@ -121,7 +124,8 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
             } finally {
                 activeTrack.compareAndSet(track, null)
                 track?.let { runCatching { it.stop() }; runCatching { it.release() } }
-                focusRequest?.let { runCatching { audioManager?.abandonAudioFocusRequest(it) } }
+                if (Build.VERSION.SDK_INT >= 26) focusRequest?.let { runCatching { audioManager?.abandonAudioFocusRequest(it) } }
+                else if (focusEnabled) runCatching { audioManager?.abandonAudioFocus(null) }
             }
         }
     }

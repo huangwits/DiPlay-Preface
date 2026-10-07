@@ -130,6 +130,7 @@ class AutomaticHotspotManager(
             )
         }
         val local = Attempt(WirelessHotspotBackend.LOCAL_ONLY_HOTSPOT, LOCAL_HOTSPOT_MILLIS) {
+            if (Build.VERSION.SDK_INT < 26) throw UnsupportedOperationException("Android 5.1 请使用车机热点")
             LocalOnlyHotspotManager(appContext, onDiagnostic)
         }
         val generated = mutableListOf(local)
