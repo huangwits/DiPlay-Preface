@@ -39,6 +39,11 @@ release-signing.properties
 *.key
 *.apk
 *.aab
+
+# Host-side validation bytecode is not source.
+__pycache__/
+*.pyc
+*.pyo
 # Private administration and local maintenance files
 /.github/workflows/android51.yml
 /.github/workflows/sync-upstream.yml
