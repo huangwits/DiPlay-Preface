@@ -39,3 +39,8 @@ release-signing.properties
 *.key
 *.apk
 *.aab
+
+# Host-side validation bytecode is not source.
+__pycache__/
+*.pyc
+*.pyo
