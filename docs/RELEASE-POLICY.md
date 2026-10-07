@@ -18,7 +18,9 @@
 
 先确定最终文件名，再生成 `SHA256SUMS.txt`，其中只列安装包、源码包和安装说明的当前名称与哈希。安装说明及 Release 正文使用相同名称，不引用未公开的验证附件。正文继续中文在前、英文在后，使用简洁的功能标题。
 
-按所有者于 2026-10-07 的要求，公开版本、APK 的 versionName 和 versionCode 与 Geely 上游保持一致，不追加星瑞版序号或版本后缀。当前版本为 `0.2.13.2` / `36`，标题 `preface v.0.2.13.2`，APK `DiPlay-Preface-v0.2.13.2.apk`。这是新包名的首次发布，旧 `.e01legacy` 的 versionCode 不约束它。历史 tag、源码和附件保持不变；此规则不授权改写既有 tag 或自动删除历史发布。
+按所有者于 2026-10-07 的最新要求，GitHub 可以在上游基线版本后追加维护修订号。本次公开修订为 `0.2.13.2.1`，tag 为 `v.0.2.13.2.1`，标题为 `preface v.0.2.13.2.1`，APK 文件为 `DiPlay-Preface-v0.2.13.2.1.apk`。APK 内部仍保持所选 Geely 基线的 versionName `0.2.13.2`、versionCode `36`；末尾 `.1` 只区分本次 GitHub 修订。安装说明和正文必须明确这一区别。
+
+新修订使用新 tag，源码包对应新 tag 的完整源码。保留既有 `v0.2.13.2` 的 tag、源码和附件，不覆盖历史发布。
 
 已发布附件改名或修正文档前，备份当前发布信息、附件及引用；保持 APK、源码包与原发布源码对应。新增维护文档可提交到 main，不以此替换旧 tag 的源码包。
 
@@ -26,6 +28,6 @@
 
 Use the owner's confirmed format: title `preface v.<version>` and exactly four uploaded assets: `DiPlay-Preface-v<version>.apk`, `DiPlay-Preface-source.zip`, `INSTALL-README.md`, and `SHA256SUMS.txt`. Keep detailed validation records locally.
 
-The short APK name still denotes a fully provisioned, validated standalone package. Use `com.shihab.diplay.preface` and the existing signer. It installs separately from `.e01legacy`, with no automatic migration of settings or permissions. Match Geely's versionName and versionCode without a custom suffix, and use that version in the title and APK filename (currently `0.2.13.2` / `36`). Checksums cover the other three assets under their final names. Release notes and installation instructions must match those names and must not refer to unpublished attachments. Keep Chinese first, followed by English.
+The short APK name still denotes a fully provisioned, validated standalone package. Use `com.shihab.diplay.preface` and the existing signer. It installs separately from `.e01legacy`, with no automatic migration of settings or permissions. The owner authorized a separate GitHub maintenance revision on 2026-10-07: tag `v.0.2.13.2.1`, title `preface v.0.2.13.2.1`, APK `DiPlay-Preface-v0.2.13.2.1.apk`. APK metadata remains Geely `0.2.13.2` / `36`; the final `.1` identifies the public revision only. State both versions in the release and installation guide. Create a new tag and matching source archive; retain the existing `v0.2.13.2` release. Checksums cover the other three assets under their final names. Release notes and installation instructions must match those names and must not refer to unpublished attachments. Keep Chinese first, followed by English.
 
 Preserve existing tags and their matching source archives. This naming convention does not authorize history deletion or tag rewriting. Back up release metadata, assets and refs before changing published attachments. The historical `0.2.13` tag and its APK internal version remain unchanged.

@@ -1,9 +1,10 @@
-# Preface 0.2.13.2
+# Preface 0.2.13.2.1
 
 ## 基底与版本
 
 - Geely 基底：`586b39368b0bf7e3e9cb50a0b7838db083b382e1`，版本 0.2.13.2。
-- 公开版本及 APK versionName：`0.2.13.2`，versionCode `36`，均与 Geely 上游一致。
+- GitHub 修订：`v.0.2.13.2.1`；APK 文件：`DiPlay-Preface-v0.2.13.2.1.apk`。
+- APK 内部 versionName：`0.2.13.2`，versionCode `36`，与所选 Geely 基线一致；末尾 `.1` 为公开维护修订号。
 - 包名：`com.shihab.diplay.preface`；最低 API 22，保留既有签名。
 - 版本信息于 2026-10-07 从 Geely `03af895e36c6970b64ae48f31595d32f60bd1ffb` 核对；本适配的源码基底仍为上述 `586b3936`。
 
@@ -13,11 +14,15 @@ E01 默认启用低负载配置：H.264、最高 960×540、30 帧、关闭额�
 
 ## 安装与使用
 
-安装完整 `DiPlay-Preface-v0.2.13.2.apk`。新包名 `.preface` 会与旧 `.e01legacy` 分开安装，旧设置、权限及本机 ADB 授权不会自动迁移，需要在新应用中重新设置。测试时只运行一个 CarPlay 应用。源码包和源码 CI APK 不包含独立使用所需的认证输入，不作为车机安装包交付。
+安装完整 `DiPlay-Preface-v0.2.13.2.1.apk`。已安装同签名 `.preface` 的用户可覆盖安装以保留设置。新包名 `.preface` 会与旧 `.e01legacy` 分开安装，旧设置、权限及本机 ADB 授权不会自动迁移，需要在新应用中重新设置。测试时只运行一个 CarPlay 应用。源码包和源码 CI APK 不包含独立使用所需的认证输入，不作为车机安装包交付。
 
 蓝牙入口：“连接 → 打开蓝牙切换工具”。按“检查连接 → 尝试切换”操作；需要系统授权时允许本机调试。默认端口为 5555，也可填车机实际端口。工具会检测 uid=0，不具备 root/ADB 管理员能力时不会切换服务。
 
-切换仅支持已分析的 E01 / MT6735 固件 `SWFS11G1105H5182.00305` 或 `SWFS11G1115H7007.00018`，同时检查服务和设备节点状态。临时停止原厂蓝牙电话、音乐；不修改系统或固件分区。测试完点“恢复原厂”，恢复未确认时重启并检查原厂功能。遇到问题可“复制结果”。日志保存在本机，不自动上传。
+切换仅支持已分析的 E01 / MT6735 固件 `SWFS11G1105H5182.00305` 或 `SWFS11G1115H7007.00018`，同时检查服务和设备节点状态。临时停止原厂蓝牙电话、音乐；不修改系统或固件分区。测试完点“恢复原厂”，恢复未确认时重启并检查原厂功能。遇到问题可“复制日志”。日志保存在本机，不自动上传。
+
+## 连接与蓝牙日志界面
+
+横屏时，连接等待页和蓝牙工具都采用左侧操作、右侧日志。右侧可复制日志或跟随最新输出，向上翻阅时暂停自动跟随；窄屏改为上下排列，两栏可分别滚动。连接失败原因在下一次等待时保留。屏幕日志有容量上限，完整连接报告沿用原有保存路径。此项为界面和诊断展示调整，不代表 USB 或蓝牙实车故障已经修复。
 
 ## 验证范围
 
@@ -27,8 +32,11 @@ Android 5.1 使用默认音频设备；网页视频需要 Android 6+，外部桌
 
 ## English
 
-Public version and APK versionName are `0.2.13.2`, version code 36, matching Geely's metadata verified at `03af895e` on 2026-10-07. The adaptation's code baseline remains `586b3936`. The package is `com.shihab.diplay.preface`, minimum API 22, using the existing signer. It installs separately from `.e01legacy`; configure its settings, permissions and local ADB authorization again. Run only one CarPlay app at a time.
+The GitHub revision is `v.0.2.13.2.1`, with APK filename `DiPlay-Preface-v0.2.13.2.1.apk`. The APK versionName remains `0.2.13.2`, version code 36, matching the selected Geely metadata verified at `03af895e` on 2026-10-07. The final `.1` identifies the public maintenance revision only. Install over an existing same-signer `.preface` app to retain its settings. The adaptation's code baseline remains `586b3936`. The package is `com.shihab.diplay.preface`, minimum API 22, using the existing signer. It installs separately from `.e01legacy`; configure its settings, permissions and local ADB authorization again. Run only one CarPlay app at a time.
 
 It retains the selected Geely connection baseline, adds required legacy API branches, removes BYD-specific integrations and adds an explicit E01 Bluetooth switching tool. The previous fork's private ECARX/H52 RFCOMM backends are not imported. Switch and restore require verified privileged access and run only on the documented E01 firmware, with CarPlay stopped beforehand. Factory calls/music are interrupted during switching. Restore after testing or restart if recovery cannot be confirmed.
 
 The E01 profile limits video workload while preserving saved preferences. Geely bridge, projection and learned keys remain hardware-dependent. All local gates, including the two actual-APK bootstrap tests with zero skips, must pass before delivery. No physical vehicle/iPhone validation is claimed.
+
+
+Connection waiting and Bluetooth tools share a split layout with controls on the left and live logs on the right. Narrow windows stack the panels. Copy and follow-latest actions are available; reading older lines pauses automatic following. The last failure remains visible during retry. These changes improve diagnostics and do not claim to fix vehicle connectivity.

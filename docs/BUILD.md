@@ -53,8 +53,7 @@ Require both tests to pass with **zero skipped tests**. They load the production
 from the actual APK's assets, test a fresh install and an overlay update after the source-only
 failure, and perform local signing. Robolectric uses API 23 with the API 22 code branch selected;
 this does not replace an actual vehicle/iPhone test. Verify the requested APK package, Geely-matching
-versionName/versionCode, signing certificate and file hash before publishing. A higher version code
-is required for upgrades within the same package; the first `.preface` build is a new installation.
+versionName/versionCode, signing certificate and file hash before publishing. The owner-selected GitHub maintenance revision is separate from APK metadata: `v.0.2.13.2.1` retains versionName `0.2.13.2` and versionCode `36`. Preserve the existing signer and do not decrease versionCode. The first `.preface` build is a separate installation from `.e01legacy`.
 Only the full APK belongs in the
 user's transfer directory; preserve old source-only artifacts outside it.
 

@@ -45,7 +45,7 @@ class E01BluetoothSwitchUiTest {
             try {
                 val labels = views(host.get().window.decorView).filterIsInstance<TextView>()
                     .map { it.text.toString() }.toList()
-                for (label in listOf("检查连接", "尝试切换", "恢复原厂", "复制结果")) {
+                for (label in listOf("检查连接", "尝试切换", "恢复原厂", "复制日志")) {
                     assertTrue(label, labels.contains(label))
                 }
                 for (asset in listOf("switch.sh", "restore.sh")) {

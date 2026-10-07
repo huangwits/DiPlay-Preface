@@ -2,13 +2,17 @@
 
 适用于吉利星瑞 E01（MT6735）的 Android 5.1 / API 22 CarPlay 适配版，界面为简体中文。安装到车机上，包名为 `com.shihab.diplay.preface`。
 
-## 0.2.13.2
+## 0.2.13.2.1
+
+[下载 v.0.2.13.2.1](https://github.com/huangwits/DiPlay-Preface/releases/tag/v.0.2.13.2.1)。本次维护将连接等待页和蓝牙工具改为左侧操作、右侧日志，支持复制、跟随最新、翻阅时暂停跟随，以及重试时保留最近失败原因；窄屏上下排列，两栏可分别滚动。
+
+GitHub 修订号为 `0.2.13.2.1`；APK 内部仍为 Geely `0.2.13.2` / `36`，包名和签名保持一致。
 
 本版从 [carlito12345/DiPlay 0.2.13.2](https://github.com/carlito12345/DiPlay/commit/586b39368b0bf7e3e9cb50a0b7838db083b382e1) 重新适配，保留它选择的连接基线。它并不包含原作者此后所有更新。
 
 - 适配 Android 5.1 的权限、系统服务、USB、蓝牙、热点及音频接口。
 - 移除 BYD/DiLink 专属车辆输出、固定方向盘键码和旋转屏方形画布。保留 Geely 投影、车辆桥接及手动按键学习；这些功能仍需相应硬件和权限。
-- 在“连接”设置中加入“E01 蓝牙检查与切换”，提供检查、尝试切换、恢复原厂、蓝牙设置和复制结果，无需手动输入命令。
+- 在“连接”设置中加入“E01 蓝牙检查与切换”，提供检查、尝试切换、恢复原厂、蓝牙设置和复制日志，无需手动输入命令。
 - E01 低负载模式使用 H.264、最高 960×540 / 30 帧和单视频流；关闭后恢复已保存的画质设置。
 - 包名改为 `.preface`，与旧 `.e01legacy` 分开安装，需要重新设置权限、连接选项及本机 ADB 授权；安装签名保持一致。Android 5.1 使用系统默认音频设备；网页视频播放需要 Android 6+，桌面嵌入地图需要 Android 11+。
 
@@ -34,7 +38,9 @@
 
 DiPlay Preface targets Geely E01 / MT6735 head units running Android 5.1 (API 22), with a Simplified Chinese interface and application ID `com.shihab.diplay.preface`.
 
-Version 0.2.13.2 is based on Carlito's Geely 0.2.13.2 commit `586b3936`, preserving its selected connection baseline. It does not merge all later original-author updates. It adapts system services, permissions, audio, USB and networking for API 22, removes BYD-specific integrations and fixed key assignments, and retains compatible Geely projection and learned steering controls.
+GitHub revision [v.0.2.13.2.1](https://github.com/huangwits/DiPlay-Preface/releases/tag/v.0.2.13.2.1) adds controls on the left and live logs on the right to the connection waiting screen and Bluetooth tool. Logs can be copied or followed; scrolling back pauses following and the latest failure remains visible during retry. Narrow windows stack independently scrollable panels. APK metadata remains `0.2.13.2` / `36`, with the same package and signer.
+
+This adaptation uses Carlito's Geely 0.2.13.2 commit `586b3936`, preserving its selected connection baseline. It does not merge all later original-author updates. It adapts system services, permissions, audio, USB and networking for API 22, removes BYD-specific integrations and fixed key assignments, and retains compatible Geely projection and learned steering controls.
 
 The connection page includes an explicit E01 Bluetooth Check/Switch/Restore tool. It requires existing root or authorized local ADB, waits for CarPlay teardown, and temporarily interrupts factory Bluetooth calls/music. Switching is limited to the two documented E01 firmware builds. It does not flash firmware. Restore factory Bluetooth after testing; restart the head unit if recovery fails.
 
