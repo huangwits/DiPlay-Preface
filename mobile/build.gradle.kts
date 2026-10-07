@@ -25,7 +25,7 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 44
+        versionCode = 36
         versionName = "0.2.13.2"
 
     }
@@ -60,8 +60,7 @@ android {
         }
         create("e01") {
             initWith(getByName("release"))
-            applicationIdSuffix = ".e01legacy"
-            versionNameSuffix = "-preface.15-android51"
+            applicationIdSuffix = ".preface"
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             matchingFallbacks += listOf("release")
