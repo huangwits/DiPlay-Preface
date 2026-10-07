@@ -133,6 +133,7 @@ class CarPlayHostActivity : ComponentActivity() {
     )
 
     private var connectionPanel: View? = null
+    private var connectionWaitingView: ConnectionWaitingView? = null
     private var wifiRecoveryButton: View? = null
     private var reconnectAttempts = 0
     private val startupRetryBudget = WirelessStartupRetryBudget()
@@ -287,8 +288,6 @@ class CarPlayHostActivity : ComponentActivity() {
     private var remoteMfiTokenInput: EditText? = null
     private var settingsBaseline: SettingsBaseline? = null
     private var locationReportingSwitch: Switch? = null
-    private var statusView: TextView? = null
-    private var statusScrollView: ScrollView? = null
     private var stageStatusView: TextView? = null
     private var resolutionValueView: TextView? = null
     private var resolutionPreviewView: TextView? = null
@@ -425,7 +424,12 @@ class CarPlayHostActivity : ComponentActivity() {
     private val teardownExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val airPlayCommandExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val logLines = ArrayDeque<LogEntry>()
-    private val expireOldLogLines = Runnable { refreshLogView(System.currentTimeMillis()) }
+    private var screenLogChars = 0
+    private var logRefreshPending = false
+    private val refreshScreenLogs = Runnable {
+        logRefreshPending = false
+        refreshLogView()
+    }
     // Some head units (e.g. BYD DiLink) update resources.configuration for day/night
     // without delivering onConfigurationChanged, so poll while the activity is visible.
     private val pollConfiguration = object : Runnable {
@@ -904,7 +908,6 @@ class CarPlayHostActivity : ComponentActivity() {
         super.onConfigurationChanged(newConfig)
         refreshConfiguration(newConfig, ThemeModeDiagnostics.Source.CALLBACK)
         applyFullscreenMode()
-        stageStatusView?.maxWidth = (resources.displayMetrics.widthPixels * 0.78f).toInt()
         scrollLogsToBottom()
         videoView?.post {
             val view = videoView ?: return@post
@@ -938,7 +941,7 @@ class CarPlayHostActivity : ComponentActivity() {
         controller?.setHudNavigationListener(null)
         GeelyHudProjection.detach(this)
         mainHandler.removeCallbacks(applyDisplaySize)
-        mainHandler.removeCallbacks(expireOldLogLines)
+        mainHandler.removeCallbacks(refreshScreenLogs)
         mainHandler.removeCallbacks(pollConfiguration)
         currentSurface?.let { surface ->
             sink?.clearSurface(SCREEN_TYPE_MAIN, surface)
@@ -966,146 +969,33 @@ class CarPlayHostActivity : ComponentActivity() {
         }
         root.addView(video, FrameLayout.LayoutParams(-1, -1))
         root.addView(gestureLayer, FrameLayout.LayoutParams(-1, -1))
-        // Measure the preparation content naturally, then fit it inside the safe viewport.
-        val viewport = object : FrameLayout(this) {
-            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-                getChildAt(0)?.measure(
-                    View.MeasureSpec.makeMeasureSpec((measuredWidth - paddingLeft - paddingRight).coerceAtLeast(0), View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-                )
-            }
-        }.apply {
-            isClickable = true
+        val viewport = ConnectionWaitingView(this)
+        viewport.instructions.text = if (wirelessEnabled)
+            getString(R.string.keep_your_iphone_nearby_with_bluetooth_and_wi_fi_on_allow)
+        else getString(R.string.use_a_usb_data_cable_and_unlock_your_iphone_allow_trust_an)
+        viewport.gestureHint.text = getString(R.string.open_diplay_settings_hint, gestureFingerCount)
+        viewport.recovery.setOnClickListener { showDiPlayHome("wireless-recovery") }
+        viewport.retry.setOnClickListener {
+            if (!CarPlayBackgroundSession.isOwner(this) || shuttingDown.get() ||
+                menuOpen || handshakeResetInProgress) return@setOnClickListener
+            startupRetryBudget.manualRetry()
+            startupRetryStopped = false
+            reconnectAttempts = 0
+            restartCarPlay(getString(R.string.connecting_to_your_iphone))
         }
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-        }
-        val icon = ImageView(this).apply {
-            setImageResource(R.drawable.ic_carplay)
-            contentDescription = getString(R.string.carplay)
-        }
-        panel.addView(icon, LinearLayout.LayoutParams(dp(88), dp(88)))
-        val title = TextView(this).apply {
-            text = getString(R.string.diplay)
-            gravity = Gravity.CENTER
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        }
-        panel.addView(title)
-        val stage = TextView(this).apply {
-            text = getString(R.string.getting_carplay_ready)
-            gravity = Gravity.CENTER
-        }
-        panel.addView(stage)
-        val instructions = TextView(this).apply {
-            text = if (wirelessEnabled) getString(R.string.keep_your_iphone_nearby_with_bluetooth_and_wi_fi_on_allow)
-                else getString(R.string.use_a_usb_data_cable_and_unlock_your_iphone_allow_trust_an)
-            gravity = Gravity.CENTER
-        }
-        panel.addView(instructions)
-        val recovery = Button(this).apply {
-            text = getString(R.string.reset_carplay_wi_fi)
-            isAllCaps = false
-            visibility = View.GONE
-            setOnClickListener { showDiPlayHome("wireless-recovery") }
-            wifiRecoveryButton = this
-        }
-        panel.addView(recovery, LinearLayout.LayoutParams(dp(300), dp(64)).apply { bottomMargin = dp(12) })
-        val retry = Button(this).apply {
-            text = getString(R.string.retry_carplay_connection)
-            isAllCaps = false
-            visibility = View.GONE
-            setOnClickListener {
-                if (!CarPlayBackgroundSession.isOwner(this@CarPlayHostActivity) ||
-                    shuttingDown.get() || menuOpen || handshakeResetInProgress) return@setOnClickListener
-                startupRetryBudget.manualRetry()
-                startupRetryStopped = false
-                reconnectAttempts = 0
-                visibility = View.GONE
-                restartCarPlay(getString(R.string.connecting_to_your_iphone))
-            }
-            startupRetryButton = this
-        }
-        panel.addView(retry, LinearLayout.LayoutParams(dp(300), dp(64)).apply { bottomMargin = dp(12) })
-        val back = Button(this).apply {
-            text = getString(R.string.back_to_diplay)
-            isAllCaps = false
-            setTextColor(Color.rgb(12, 17, 27))
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(166, 200, 255))
-                cornerRadius = dp(20).toFloat()
-            }
-            setOnClickListener { showDiPlayHome() }
-        }
-        panel.addView(back, LinearLayout.LayoutParams(dp(300), dp(64)))
-        val gestureHint = TextView(this).apply {
-            text = getString(R.string.open_diplay_settings_hint, gestureFingerCount)
-            gravity = Gravity.CENTER
-        }
-        panel.addView(gestureHint)
-        paintWaitingScreen = {
-            val colors = WaitingScreenColors.of(darkMode)
-            viewport.setBackgroundColor(colors.background)
-            title.setTextColor(colors.text)
-            stage.setTextColor(colors.text)
-            instructions.setTextColor(colors.secondary)
-            gestureHint.setTextColor(colors.secondary)
-        }
+        viewport.settings.setOnClickListener { openSettingsMenu() }
+        viewport.back.setOnClickListener { showDiPlayHome() }
+        wifiRecoveryButton = viewport.recovery
+        startupRetryButton = viewport.retry
+        connectionWaitingView = viewport
+        paintWaitingScreen = { viewport.applyTheme(darkMode) }
         paintWaitingScreen()
-        viewport.addView(panel, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
         root.addView(viewport, FrameLayout.LayoutParams(-1, -1))
         // Above the video and gesture layer, below the menus.
         sidePanel = buildSidePanel().also { root.addView(it, FrameLayout.LayoutParams(0, 0)) }
-        var preparationHeight = -1
-        fun updatePreparationLayout() {
-            val height = viewport.height - viewport.paddingTop - viewport.paddingBottom
-            if (height <= 0) return
-            // Interpolate within the short viewport range; keep regular screens at their existing size.
-            val fraction = ((height.toFloat() / resources.displayMetrics.density - 240f) / 240f).coerceIn(0f, 1f)
-            fun size(short: Float, regular: Float) = short + (regular - short) * fraction
-            fun spacing(short: Float, regular: Float) = dp(size(short, regular).toInt())
-            val availableWidth = viewport.width - viewport.paddingLeft - viewport.paddingRight - dp(48)
-            val buttonWidth = minOf(dp(300), availableWidth.coerceAtLeast(dp(48)))
-            for (button in listOf(back, recovery, retry)) {
-                if (button.layoutParams.width != buttonWidth) {
-                    button.layoutParams = button.layoutParams.apply { width = buttonWidth }
-                }
-            }
-            if (preparationHeight == height) return
-            preparationHeight = height
-            panel.setPadding(dp(24), spacing(16f, 32f), dp(24), spacing(16f, 32f))
-            val iconSize = spacing(54f, 88f)
-            icon.layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
-            title.textSize = size(26f, 34f)
-            title.setPadding(0, spacing(8f, 18f), 0, spacing(6f, 14f))
-            stage.textSize = size(19f, 22f)
-            instructions.textSize = size(15f, 17f)
-            instructions.setPadding(0, spacing(8f, 14f), 0, spacing(12f, 24f))
-            for (button in listOf(back, recovery, retry)) {
-                button.textSize = size(17f, 18f)
-                button.layoutParams = button.layoutParams.apply { this.height = spacing(50f, 64f) }
-            }
-            gestureHint.textSize = size(12.5f, 13f)
-            gestureHint.setPadding(0, spacing(10f, 20f), 0, 0)
-        }
-        fun fitPreparationContent() {
-            val availableHeight = viewport.height - viewport.paddingTop - viewport.paddingBottom
-            if (panel.height <= 0 || availableHeight <= 0) return
-            val landscape = viewport.width - viewport.paddingLeft - viewport.paddingRight > availableHeight
-            val scale = if (landscape) minOf(1f, availableHeight.toFloat() / panel.height) else 1f
-            panel.scaleX = scale
-            panel.scaleY = scale
-        }
-        panel.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitPreparationContent() }
-        viewport.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            updatePreparationLayout()
-            fitPreparationContent()
-        }
         ViewCompat.setOnApplyWindowInsetsListener(viewport) { _, insets ->
             val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             viewport.setPadding(safe.left, safe.top, safe.right, safe.bottom)
-            viewport.post { updatePreparationLayout() }
             insets
         }
         ViewCompat.requestApplyInsets(viewport)
@@ -1115,8 +1005,8 @@ class CarPlayHostActivity : ComponentActivity() {
         root.addView(safeAreaEditor, FrameLayout.LayoutParams(-1, -1))
         videoView = video
         gestureOverlay = gestureLayer
-        settingsGestureHint = gestureHint
-        stageStatusView = stage
+        settingsGestureHint = viewport.gestureHint
+        stageStatusView = viewport.stage
         connectionPanel = viewport
         updateDebugOverlays()
         return root
@@ -3453,6 +3343,11 @@ class CarPlayHostActivity : ComponentActivity() {
                 if (message.startsWith(CarPlayController.CONNECTION_DIAGNOSTIC_PREFIX + " ")) {
                     // Retain old-controller teardown evidence without accepting its UI/session state.
                     AsyncDiagnosticLog.append(diagnosticLog, message)
+                    if (controllerGeneration == restartGeneration) {
+                        val safe = DiagnosticRedactor.redact(message) ?: return
+                        val now = System.currentTimeMillis()
+                        appendScreenLog(formattedLogLine(safe, now), now)
+                    }
                     return
                 }
                 runOnUiThread {
@@ -3481,6 +3376,20 @@ class CarPlayHostActivity : ComponentActivity() {
         updateHotspotStatus(status)
         val description = status.describe()
         setConnectionStage(description)
+        appendLog("阶段：$description")
+        when (status) {
+            is CarPlayStatus.Failed -> DiagnosticRedactor.redact(status.message)?.let {
+                connectionWaitingView?.showFailure(it)
+            }
+            CarPlayStatus.MfiReady, CarPlayStatus.RunningControl,
+            CarPlayStatus.RunningWireless, CarPlayStatus.WirelessActive -> {
+                connectionWaitingView?.confirmed?.apply {
+                    text = "最近确认节点：$description"
+                    visibility = View.VISIBLE
+                }
+            }
+            else -> Unit
+        }
         when (status) {
             is CarPlayStatus.Failed -> if (status.wifiResetRequired) {
                 wifiRecoveryButton?.visibility = View.VISIBLE
@@ -4088,7 +3997,6 @@ class CarPlayHostActivity : ComponentActivity() {
         gestureOverlay?.visibility = View.VISIBLE
         settingsGestureHint?.text = getString(R.string.open_diplay_settings_hint, gestureFingerCount)
         updateDebugOverlays()
-        logLines.clear()
         appendLog(
             "$prefix; resolution " +
                 "${displayScalePercent}% with " +
@@ -4293,39 +4201,40 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun setConnectionStage(message: String) {
-        latestStage = message
-        stageStatusView?.text = friendlyStage(message)
+        val safe = DiagnosticRedactor.redact(message) ?: return
+        latestStage = safe
+        stageStatusView?.text = safe
         updateDebugOverlays()
     }
 
     private fun updateDebugOverlays() {
-        statusScrollView?.visibility = View.GONE
-        connectionPanel?.visibility = if (activeScreenStreamTypes.isEmpty()) View.VISIBLE else View.GONE
-    }
-
-    private fun friendlyStage(message: String): String = when {
-        message == getString(R.string.waiting_for_mfi_coprocessor) ||
-            message == getString(R.string.requesting_mfi_usb_permission) -> message
-        message.contains("Turn on Wi-Fi", true) -> getString(R.string.turn_on_wi_fi_in_the_head_unit_s_settings_to_connect)
-        message.contains("Allow precise Location", true) -> getString(R.string.allow_precise_location_for_diplay_in_the_head_unit_s_app_p)
-        message.contains("Allow Nearby devices", true) -> getString(R.string.allow_nearby_devices_for_diplay_in_the_head_unit_s_app_per)
-        message.contains("createGroup failed", true) -> getString(R.string.the_head_unit_couldn_t_start_carplay_wi_fi_check_wi_fi_and)
-        message.contains("needs a reset", true) -> getString(R.string.a_previous_wi_fi_direct_connection_is_still_running_reset)
-        message.contains("socket", true) || message.contains("RFCOMM", true) -> getString(R.string.your_iphone_isn_t_available_unlock_it_and_check_bluetooth)
-        message.contains("unsupported", true) || message.contains("not supported", true) -> getString(R.string.this_head_unit_may_not_support_wireless_carplay_try_a_usb)
-        message.contains("denied", true) || message.contains("permission", true) -> getString(R.string.allow_the_connection_permission_to_continue)
-        message.contains("Failed", true) || message.contains("error", true) -> getString(R.string.connection_interrupted_retrying)
-        message.contains("Waiting for iPhone", true) || message.contains("Discovering iPhone", true) -> getString(R.string.connect_your_iphone_with_a_usb_cable)
-        message.contains("paired", true) -> getString(R.string.looking_for_your_paired_iphone)
-        message.contains("Bluetooth", true) -> getString(R.string.connecting_to_your_iphone)
-        message.contains("reconnect", true) || message.contains("ended", true) -> getString(R.string.reconnecting_to_your_iphone)
-        message.contains("active", true) || message.contains("running", true) -> getString(R.string.opening_carplay)
-        else -> getString(R.string.getting_carplay_ready)
+        val waiting = activeScreenStreamTypes.isEmpty()
+        connectionPanel?.visibility = if (waiting) View.VISIBLE else View.GONE
+        if (waiting) refreshLogView()
     }
 
     private fun appendLog(message: String) {
         val safe = DiagnosticRedactor.redact(message) ?: return
-        sessionLog?.append(formattedLogLine(safe, System.currentTimeMillis()))
+        val now = System.currentTimeMillis()
+        val line = formattedLogLine(safe, now)
+        sessionLog?.append(line)
+        appendScreenLog(line, now)
+    }
+
+    private fun appendScreenLog(line: String, now: Long) {
+        runOnUiThread {
+            if (isDestroyed) return@runOnUiThread
+            val bounded = line.take(4096)
+            logLines.addLast(LogEntry(now, bounded))
+            screenLogChars += bounded.length
+            while (logLines.size > 300 || screenLogChars > 64 * 1024) {
+                screenLogChars -= logLines.removeFirst().text.length
+            }
+            if (!logRefreshPending) {
+                logRefreshPending = true
+                mainHandler.postDelayed(refreshScreenLogs, 150L)
+            }
+        }
     }
 
     private fun appendFileLog(message: String) {
@@ -4348,26 +4257,13 @@ class CarPlayHostActivity : ComponentActivity() {
         sessionLog = activeLog
     }
 
-    private fun refreshLogView(nowMillis: Long) {
-        val cutoff = nowMillis - LOG_RETENTION_MILLIS
-        while (logLines.firstOrNull()?.timestampMillis?.let { it <= cutoff } == true) {
-            logLines.removeFirst()
-        }
-        statusView?.text = logLines.joinToString("\n") { it.text }
-        scrollLogsToBottom()
-
-        mainHandler.removeCallbacks(expireOldLogLines)
-        logLines.firstOrNull()?.let { oldest ->
-            val delay = (oldest.timestampMillis + LOG_RETENTION_MILLIS - nowMillis + 1L)
-                .coerceAtLeast(1L)
-            mainHandler.postDelayed(expireOldLogLines, delay)
-        }
+    private fun refreshLogView() {
+        if (connectionPanel?.visibility != View.VISIBLE) return
+        connectionWaitingView?.showLogs(logLines.joinToString("\n") { it.text })
     }
 
     private fun scrollLogsToBottom() {
-        statusScrollView?.post {
-            statusScrollView?.fullScroll(View.FOCUS_DOWN)
-        }
+        connectionWaitingView?.scrollToLatest()
     }
 
     private fun applyFullscreenMode() {
@@ -4428,7 +4324,6 @@ class CarPlayHostActivity : ComponentActivity() {
         const val SCREEN_TYPE_MAIN = 110
         const val SCREEN_TYPE_ALT = 111
         private const val CENTER_MAP_IDLE_MILLIS = 3_000L // a reconnect is quicker; a session end is not
-        const val LOG_RETENTION_MILLIS = 5 * 60_000L
         const val DISPLAY_CHANGE_DEBOUNCE_MILLIS = 500L
         const val CONFIGURATION_POLL_INTERVAL_MILLIS = 2_000L
         const val RECONNECT_DELAY_MILLIS = 2_000L
