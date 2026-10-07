@@ -1,5 +1,9 @@
 # 0.2.13.2 connection baseline
 
+This document records the Geely source baseline. For the current Android 5.1
+Preface adaptation, package identity and validation requirements, see
+[Preface 0.2.15](PREFACE-0.2.15.md).
+
 Source baseline: `8f53b27b3168aedb661e9f9bb7122ea344b75ada`.
 Feature source: `29b3cb3248a70c6eece3688f1805873f8e2fa076`.
 App version: `0.2.13.2`, upgrade code `36`.

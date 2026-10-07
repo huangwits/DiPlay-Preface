@@ -6,16 +6,17 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        minSdk = 28
+        minSdk = 22
         targetSdk = 37
 
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            // Keep emulator ABIs for development; E01 packages filter to ARMv7/ARM64.
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
         }
 
         externalNativeBuild {
             ndkBuild {
-                arguments 'APP_PLATFORM=android-28'
+                arguments 'APP_PLATFORM=android-22'
             }
         }
 
@@ -28,15 +29,18 @@ android {
         }
     }
     compileOptions {
+        coreLibraryDesugaringEnabled true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
 }
 dependencies {
-    implementation libs.androidx.app
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
+    compileOnly libs.androidx.annotation
     implementation libs.bouncycastle
     implementation libs.concentus
-    implementation libs.jmdns
+    // Vendored JmDNS 3.6.3 with the Android multicast-socket ordering and API 22 Java compatibility fixes.
+    api project(':jmdns')
     testImplementation libs.junit
     testImplementation 'org.robolectric:robolectric:4.17'
 }

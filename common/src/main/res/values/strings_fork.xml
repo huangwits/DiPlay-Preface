@@ -1,10 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="connection_notification_channel">CarPlay connection</string>
-    <string name="connection_notification_running">CarPlay connection running</string>
-    <string name="connection_notification_disconnect">Disconnect</string>
-    <string name="ui_project_source">Project source</string>
-    <string name="ui_carlito_modification_credit">This version was modified by carlito and is based on the upstream DiPlay project.</string>
-    <string name="ui_open_upstream_source">Open upstream source</string>
-    <string name="ui_open_carlito_fork">Open carlito fork source</string>
-    <string name="ui_project_link_failed">Could not open the project link</string>
+    <string name="connection_notification_channel">CarPlay 连接</string>
+    <string name="connection_notification_running">CarPlay 连接正在运行</string>
+    <string name="connection_notification_disconnect">断开连接</string>
+    <string name="ui_project_source">项目源码</string>
+    <string name="ui_carlito_modification_credit">本版本由 carlito 修改，基于上游 DiPlay 项目。</string>
+    <string name="ui_open_upstream_source">查看上游开源地址</string>
+    <string name="ui_open_carlito_fork">查看 carlito 修改版源码</string>
+    <string name="ui_project_link_failed">无法打开项目链接</string>
 </resources>

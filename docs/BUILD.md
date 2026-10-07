@@ -37,3 +37,31 @@ source/CI build when the explicit asset input is absent; do not install that out
 standalone car-test package. Before delivery, verify both `assets/offline-mfi/identity.pk8`
 and `assets/offline-mfi/certificate.p7b` in the APK against the selected local inputs.
 Update the existing test app without uninstalling it to preserve its settings.
+
+## E01 full car-test release gate
+
+Do not hand `assembleE01` / source-only CI APKs to users for standalone installation.
+Set `DIPLAY_AUTH_ASSETS_DIR` to the approved local runtime-asset directory and run
+`:mobile:assembleStandaloneE01`. It verifies a matching P-256 certificate/key pair and checks
+the packaged files. No credential data is printed or committed.
+
+After building, set `DIPLAY_VALIDATION_APK` to the **absolute path of that APK** and run
+`:common:testDebugUnitTest --tests '*StandaloneApkBootstrapTest'`.
+Require both tests to pass with **zero skipped tests**. They load the production bootstrap
+from the actual APK's assets, test a fresh install and an overlay update after the source-only
+failure, and perform local signing. Robolectric uses API 23 with the API 22 code branch selected;
+this does not replace an actual vehicle/iPhone test. Verify the APK package, higher version code,
+same signing certificate and file hash before publishing. Only the full APK belongs in the
+user's transfer directory; preserve old source-only artifacts outside it.
+
+
+## Windows unit-test shell
+
+The USB permission command tests execute POSIX shell fixtures. On Windows, set
+`DIPLAY_TEST_SH` to an existing Git for Windows `bin/sh.exe` before running Gradle.
+Scripts are passed through files to preserve their quoting across Windows process creation.
+Linux CI defaults to `sh`. No host shell is required by the Android application.
+
+## Public Release format
+
+Follow [RELEASE-POLICY.md](RELEASE-POLICY.md) after all standalone/authentication/signature gates pass. Publish `DiPlay-Preface-v<version>.apk`, `DiPlay-Preface-source.zip`, `INSTALL-README.md`, and `SHA256SUMS.txt`. The APK filename has no `-full` suffix; its contents must still be the validated full standalone build. Keep validation JSON, logs and intermediate APKs in the local audit directory. Generate SHA-256 lines after choosing the final asset names, covering the APK, source ZIP and install guide.

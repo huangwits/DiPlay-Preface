@@ -1,6 +1,7 @@
 // carlito | Model-independent full-map output; closed vehicle mode control is an optional bridge lease.
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.compat.systemService
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -142,10 +143,10 @@ internal object VehicleMapProjection {
         val screen = GeelyHudProjection.availableDisplays(context).firstOrNull {
             it.id == selection.screen.id && it.name == selection.screen.name
         }
-        val display = screen?.let { context.getSystemService(DisplayManager::class.java)?.getDisplay(it.id) }
+        val display = screen?.let { context.systemService(DisplayManager::class.java, "display")?.getDisplay(it.id) }
         val available = screen != null && screen.width > 0 && screen.height > 0 && display != null
         val wanted = VehicleMapSettings.enabled(context) && !hidden && !suppressed && available &&
-            Settings.canDrawOverlays(context) && nextPhone != null && (route || manual)
+            com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context) && nextPhone != null && (route || manual)
         if (!wanted) { hide(); if (!available) stage = "DISPLAY_UNAVAILABLE"; return }
         if (root != null && attachedScreen != screen) {
             // Keep the negotiated phone canvas but refit its visible area to the resized screen.
@@ -182,7 +183,7 @@ internal object VehicleMapProjection {
 
     private fun createWindow(context: Context, display: Display, screen: GeelyHudDisplay, selection: VehicleMapPlan): Boolean {
         val displayContext = context.createDisplayContext(display)
-        val wm = displayContext.getSystemService(WindowManager::class.java) ?: return false
+        val wm = displayContext.systemService(WindowManager::class.java, "window") ?: return false
         val container = FrameLayout(displayContext).apply { setBackgroundColor(Color.TRANSPARENT) }
         val viewport = FrameLayout(displayContext).apply { clipChildren = true; clipToPadding = true }
         // carlito | Fit both axes with one scale: full-height automatic output fills a matching

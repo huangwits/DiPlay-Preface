@@ -33,3 +33,6 @@ include(":maphost")
 project(":maphost").projectDir = file("samples/maphost")
 include(":home")
 project(":home").projectDir = file("samples/home")
+
+include(":jmdns")
+project(":jmdns").projectDir = file("vendor/jmdns")

@@ -152,6 +152,7 @@ object AirPlayPersistence {
     }
 
     fun loadHevcEnabled(context: Context): Boolean =
+        !E01Settings.enabled(context) &&
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_HEVC_ENABLED, false)
 
@@ -172,6 +173,7 @@ object AirPlayPersistence {
     }
 
     fun loadHevcSoftwareDecoderEnabled(context: Context): Boolean =
+        !E01Settings.enabled(context) &&
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_HEVC_SOFTWARE_DECODER, false)
 
@@ -500,7 +502,7 @@ object AirPlayPersistence {
             .putString(KEY_CARPLAY_NIGHT_MODE, mode.key).apply()
     }
 
-    fun loadFps(context: Context): Int = AirPlayDisplaySettings.sanitizeFps(
+    fun loadFps(context: Context): Int = if (E01Settings.enabled(context)) 30 else AirPlayDisplaySettings.sanitizeFps(
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_FPS, 30),
     )
@@ -577,6 +579,7 @@ object AirPlayPersistence {
     }
 
     fun loadClusterMapEnabled(context: Context): Boolean =
+        !E01Settings.enabled(context) &&
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CLUSTER_MAP, false)
 
     fun loadAdbClusterEnabled(context: Context): Boolean = loadClusterMapEnabled(context) &&

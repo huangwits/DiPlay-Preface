@@ -76,11 +76,11 @@ object SettingsWidgets {
             isEnabled = enabled
             if (theme.isOverlay) {
                 showText = false
-                thumbTintList = ColorStateList(
+                if (android.os.Build.VERSION.SDK_INT >= 23) thumbTintList = ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
                     intArrayOf(theme.accent, theme.textSecondary),
                 )
-                trackTintList = ColorStateList(
+                if (android.os.Build.VERSION.SDK_INT >= 23) trackTintList = ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
                     intArrayOf(theme.accentTrack, theme.trackOff),
                 )
@@ -247,7 +247,7 @@ object SettingsWidgets {
             progress = initial - CarPlayDisplayScale.MIN_PERCENT
             splitTrack = false
             progressTintList = ColorStateList.valueOf(theme.accent)
-            thumbTintList = ColorStateList.valueOf(theme.accent)
+            if (android.os.Build.VERSION.SDK_INT >= 23) thumbTintList = ColorStateList.valueOf(theme.accent)
             setOnSeekBarChangeListener(
                 object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {

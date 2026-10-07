@@ -1,5 +1,0 @@
-<resources>
-    <string name="geely_hotspot_permissions">车机热点权限</string>
-    <string name="geely_launcher_map">桌面导航地图</string>
-    <string name="geely_launcher_map_description">向支持的桌面或悬浮卡片提供 CarPlay 地图，不控制原厂仪表。</string>
-</resources>

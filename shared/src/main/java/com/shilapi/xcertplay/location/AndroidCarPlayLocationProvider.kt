@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay.location
 
+import com.shilapi.xcertplay.compat.systemService
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
@@ -24,7 +25,7 @@ class AndroidCarPlayLocationProvider(
     private val preferredLocationAgeMillis: Long = DEFAULT_PREFERRED_LOCATION_AGE_MILLIS,
 ) : Iap2LocationProvider {
     private val locationManager =
-        context.applicationContext.getSystemService(LocationManager::class.java)
+        checkNotNull(context.applicationContext.systemService(LocationManager::class.java, "location"))
     private val stateLock = Any()
     private val preferredProviders = buildList {
         add(LocationManager.GPS_PROVIDER)

@@ -342,7 +342,7 @@ class Iap2UsbSession internal constructor(
         checkOpen()
         require(timeoutMillis > 0) { "timeoutMillis must be positive" }
         if (data.isEmpty()) return@synchronized
-        val transferred = connection.bulkTransfer(outEndpoint, data, data.size, timeoutMillis)
+        val transferred = if (LegacyUsbTransfer.chunkedWritesRequired) LegacyUsbTransfer.writeAll(LegacyUsbTransfer.endpointWriter(connection, outEndpoint, data, 0), 0, data.size, android.os.SystemClock.elapsedRealtime() * 1_000_000L + timeoutMillis * 1_000_000L) else connection.bulkTransfer(outEndpoint, data, data.size, timeoutMillis)
         if (transferred != data.size) {
             throw IphoneUsbException.DeviceUnavailable(
                 "USBMUX write transferred $transferred of ${data.size} bytes",
@@ -354,6 +354,7 @@ class Iap2UsbSession internal constructor(
     fun read(timeoutMillis: Long): ByteArray? = synchronized(readLock) {
         checkOpen()
         require(timeoutMillis > 0) { "timeoutMillis must be positive" }
+        if (Build.VERSION.SDK_INT < 26) return@synchronized readSynchronously(timeoutMillis)
         val request = UsbRequest()
         var initialized = false
         try {
@@ -421,6 +422,24 @@ class Iap2UsbSession internal constructor(
         if (closed) throw IphoneUsbException.DeviceUnavailable("USBMUX session is closed")
     }
 
+    private fun readSynchronously(timeoutMillis: Long): ByteArray? {
+        val budget = timeoutMillis.coerceAtMost(Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
+        val target = ByteArray(USBMUX_READ_CHUNK_BYTES)
+        val read = LegacyUsbTransfer.readOnce(
+            LegacyUsbTransfer.endpointReader(connection, inEndpoint, target, 0),
+            target,
+            0,
+            target.size,
+            budget,
+        )
+        checkOpen()
+        if (read <= 0) return null
+        return target.copyOf(read)
+    }
+
+    @androidx.annotation.RequiresApi(26)
+
+    @android.annotation.TargetApi(26)
     private fun drainCancelledRead(request: UsbRequest) {
         if (!request.cancel()) {
             throw failSession("Android could not cancel timed out USBMUX read request")

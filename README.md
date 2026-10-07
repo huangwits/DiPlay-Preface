@@ -1,75 +1,43 @@
-# DiPlay
+# DiPlay 星瑞 / Preface
 
-**CarPlay for compatible Android head units.** Wired and wireless, with the familiar DiAuto interface. Independent app: `com.shihab.diplay`.
+适用于吉利星瑞 E01（MT6735）的 Android 5.1 / API 22 CarPlay 适配版，界面为简体中文。安装到车机上，包名保持 `com.shihab.diplay.e01legacy`。
 
-This fork adds generic audio coordination and map projection, plus Geely vehicle integration through a separately installed GD vehicle bridge. Compatibility depends on the head unit's interfaces and permissions. Android 9 or later is required.
+## 0.2.15
 
-[Download v0.2.13.1](https://github.com/carlito12345/DiPlay/releases/tag/v0.2.13.1) · [Update notes](docs/UPDATE-NOTES-0.2.13.1.md) · [Report a problem](https://github.com/carlito12345/DiPlay/issues)
+本版从 [carlito12345/DiPlay 0.2.13.2](https://github.com/carlito12345/DiPlay/commit/586b39368b0bf7e3e9cb50a0b7838db083b382e1) 重新适配，保留它选择的连接基线。它并不包含原作者此后所有更新。
 
-## 0.2.13.1
+- 适配 Android 5.1 的权限、系统服务、USB、蓝牙、热点及音频接口。
+- 移除 BYD/DiLink 专属车辆输出、固定方向盘键码和旋转屏方形画布。保留 Geely 投影、车辆桥接及手动按键学习；这些功能仍需相应硬件和权限。
+- 在“连接”设置中加入“E01 蓝牙检查与切换”，提供检查、尝试切换、恢复原厂、蓝牙设置和复制结果，无需手动输入命令。
+- E01 低负载模式使用 H.264、最高 960×540 / 30 帧和单视频流；关闭后恢复已保存的画质设置。
+- 保留原包名及安装签名，完整包可覆盖升级。Android 5.1 使用系统默认音频设备；网页视频播放需要 Android 6+，桌面嵌入地图需要 Android 11+。
 
-Bluetooth music handoff and restoration, shared audio focus for navigation/calls/Siri, independent output and microphone selection, and device reconnect recovery. Full map projection supports compatible secondary displays, automatic dimensions, three-finger switching and volume-button/rotary zoom. Install the separate GD bridge for supported vehicle properties, buttons and native instrument modes. Physical vehicle validation remains necessary.
+## 蓝牙工具
 
-See [audio coordination](docs/AUDIO-COORDINATION.md) and [map projection](docs/VEHICLE_MAP_PROJECTION.md). The upstream 0.2.13 information below is retained for reference.
+停车后进入“连接 → 打开蓝牙切换工具”，先检查连接，再尝试切换。工具使用已有 root 或已获授权的本机 ADB 通道；没有相应权限会停止并提示原因。正常 CarPlay 连接沿用 Geely 的 Android 蓝牙路径，工具不会自动参与启动。
 
-![DiPlay home](site/assets/home.png)
+切换前会等待 CarPlay 断开，切换期间原厂蓝牙电话和音乐会停用。工具只对已分析的 E01 / MT6735 固件 `SWFS11G1105H5182.00305`、`SWFS11G1115H7007.00018` 尝试临时服务与设备节点切换，不刷写固件。测试结束点“恢复原厂”；不能恢复或操作中断时重启车机并检查原厂电话和音乐。
 
-## 0.2.13 — public preview
+代码检查、桌面测试和打包校验不能证明实车蓝牙、通话、Siri 或 CarPlay 连接成功。本版仍需实车验证。
 
-Install on the **car**, not the iPhone. No jailbreak, dongle, Mac, account or authentication server is required for use. Core CarPlay does not require ADB; optional dashboard, battery, wheel-speed and parked-video features do. Your head unit must permit APK installation. The APK supports Android 9+ (API 28); wireless supports Wi-Fi Direct, the car’s existing hotspot or Existing Wi-Fi / Same LAN. Android 9 Wi-Fi Direct uses a firmware-dependent legacy path with generated group credentials and unverified requested frequency; see [Android 9 Wi-Fi Direct](docs/ANDROID9_WIFI_DIRECT.md). Android 10+ verifies its negotiated group frequency.
+## 构建与来源
 
-- Wired USB and wireless CarPlay with local authentication.
-- BYD HUD navigation with arrows, distance and street names on verified firmware.
-- Car hotspot support, improved audio buffering and saved receive diagnostics.
-- Automatic address discovery, fixed-channel Wi-Fi fallbacks and successful-configuration memory.
-- Icon/text size, resolution and frame rate; applying a display change reconnects CarPlay.
-- Local diagnostic export. Reports are sent only if you choose to share them.
-- Separate installation alongside DiAuto. Run one projection app at a time.
+使用 [完整包构建与验证步骤](docs/BUILD.md)。源码/CI 包不带运行认证文件，不能作为独立车机安装包交付；完整包从本地显式输入认证文件，并验证证书匹配、APK 内容与升级签名。认证文件和安装签名私钥不进入 Git 或源码压缩包。
 
-This is **not an Apple-certified product**. The APK bundles an experimental accessory identity recovered from public Carlinkit firmware, not a newly provisioned MFi identity for DiPlay. A bundled private key is extractable. Acceptance after future iOS updates, reliability across head units and suitability of that identity for general distribution are unresolved. This release invites community testing; it is not a guarantee of universal compatibility.
+[本版说明](docs/PREFACE-0.2.15.md) · [Geely 连接基线](docs/CONNECTION-BASELINE.md) · [发布格式](docs/RELEASE-POLICY.md) · [第三方声明](docs/THIRD_PARTY_NOTICES.md)
 
-Earlier releases were tested on the development DiLink5.1 car: live windshield guidance and street names work, Car hotspot now starts CarPlay, and Wi-Fi Direct performance is substantially improved. Occasional audio cutouts remain and are deferred to a later update. The floating-map test build was installed on the development DiLink 5.1 car; feedback led to the pinch corrections in 0.2.9. Earlier wheel-speed and video contributions were tested on a BYD Tang with DiLink 5.0 and an iPhone 15 Pro on iOS 27; wheel-speed dead reckoning in tunnels remains unverified. Broader head-unit and iOS compatibility is not guaranteed. The HUD firmware scope and cleanup limits are documented in [BYD navigation](docs/BYD_NAVIGATION.md).
+基于 [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) 和原作者 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)。项目继承 [xcertplay](https://github.com/shilapi/xcertplay)（GPL-3.0）及 [DiAuto](https://github.com/shihabal3amri/DiAuto)（AGPL-3.0）的代码和界面；保留原作者署名与许可证。CarPlay 及图标属于 Apple。本项目没有 Apple 或车厂认证。
 
-## What’s new in 0.2.13
+完整 APK 使用上游说明的实验性配件身份，不是为本项目签发的 MFi 身份；打入 APK 的身份材料可被提取，未来 iOS 是否继续接受仍未确定。相关来源及限制见第三方声明。
 
-- Android 9 Wi-Fi Direct, IPv4-first hotspot endpoints, safer Auto channel ordering and wireless startup without unused NSD/USB services.
-- Guarded rendered-video handoff fallback, safe wireless-to-USB switching and checked, cancellable permission setup.
-- Narrow USBMUX trailer recovery that preserves valid payload replies.
-- Optional live dock/split-screen areas and square-canvas rotation, plus the selected-decoder capability check and default-off experimental side panel.
-- DiLink 4 casting/calibration and live cluster picture controls; checked DiLink 3 projection entry with compensation.
-- Recent turn-card retention across wireless replacement, a finer dashboard map choice, battery-protocol fallback and eligible wheel-service recovery.
-- The observed Siri microphone timestamp correction and TCP_NODELAY touch events, with device-specific performance limits.
-- **Off by default:** independent experimental DiLink 3 call keys/dashboard calls and AAC-LC buffered music. Read their firmware/audio/restoration limits before opting in. Eligible hotspot join repair is a separately confirmed Check/Apply/Restore action.
-- Clearer settings, saved-menu behavior, car-button customization and day/night-aware waiting screens.
-- Traditional Chinese (Taiwan), bringing both the app and release website to seven languages.
+## English
 
-See [0.2.13 release notes](docs/RELEASE-NOTES-0.2.13.md) and [validation](docs/VALIDATION.md) for all reviewed contributions, hardware evidence and remaining physical tests. Higher resolution and large square canvases cost more decoder/GPU work. General stutter, calls/Siri, decoder, old-iOS startup and model-specific reports remain under investigation. [0.2.12 notes](docs/RELEASE-NOTES-0.2.12.md) remain available as historical guidance.
+DiPlay Preface targets Geely E01 / MT6735 head units running Android 5.1 (API 22), with a Simplified Chinese interface and application ID `com.shihab.diplay.e01legacy`.
 
-If a problem remains, reproduce it on **0.2.13**, then use **Settings → Diagnostics → Save diagnostic report**. Android 10+ normally saves to **Downloads/DiPlay**; Android 9 uses the document picker. If unavailable, use **View report** or **Share** from the confirmation, which identifies external/private fallback storage. Review the `.txt` and add it to a matching [existing issue](https://github.com/shihabal3amri/DiPlay/issues), or [create one](https://github.com/shihabal3amri/DiPlay/issues/new/choose). Include vehicle/head-unit model, exact firmware and Android/DiLink, phone/iOS, connection backend, relevant settings, steps and failure time. Reports are shared only when you choose; never post your hotspot password.
+Version 0.2.15 is based on Carlito's Geely 0.2.13.2 commit `586b3936`, preserving its selected connection baseline. It does not merge all later original-author updates. It adapts system services, permissions, audio, USB and networking for API 22, removes BYD-specific integrations and fixed key assignments, and retains compatible Geely projection and learned steering controls.
 
-## Documentation
+The connection page includes an explicit E01 Bluetooth Check/Switch/Restore tool. It requires existing root or authorized local ADB, waits for CarPlay teardown, and temporarily interrupts factory Bluetooth calls/music. Switching is limited to the two documented E01 firmware builds. It does not flash firmware. Restore factory Bluetooth after testing; restart the head unit if recovery fails.
 
-[Existing Wi-Fi / Same LAN](docs/EXISTING_WIFI.md) keeps the iPhone and head unit
-on an external router. See the guide for setup, build requirements and the
-BYD DiLink 4.0 / Android 10 clean-install validation result.
+The optional E01 performance profile caps H.264 at 960×540 and 30 fps with one video stream while retaining saved quality preferences. API 22 uses default audio devices; web video requires Android 6+, and launcher map embedding requires Android 11+.
 
-- [Install and connect](docs/INSTALL.md)
-- [Compatibility and troubleshooting](docs/COMPATIBILITY.md)
-- [Smooth wireless CarPlay](docs/SMOOTH_WIRELESS.md)
-- [Privacy and diagnostic reports](docs/PRIVACY.md)
-- [Build from source](docs/BUILD.md)
-- [Validation](docs/VALIDATION.md)
-- [Release notes](CHANGELOG.md)
-- [Credits and licenses](docs/THIRD_PARTY_NOTICES.md)
-
-The app and release website are available in English, Arabic, Russian, Ukrainian, Spanish, Simplified Chinese and Traditional Chinese (Taiwan). Traditional Chinese uses Taiwan wording; the app also recognizes Hong Kong/Macao and explicit Hant selections without claiming separate regional translations. Choose the app language in Settings; on Android 13+, it stays synchronized with Android’s per-app language setting.
-
-## Source and credits
-
-Based on [xcertplay](https://github.com/shilapi/xcertplay), GPL-3.0. The home/settings UI and website adapt [DiAuto](https://github.com/shihabal3amri/DiAuto), AGPL-3.0; that license is included in `docs/licenses`. Preserve those notices when distributing modifications. CarPlay and its icon belong to Apple Inc.; no Apple or BYD affiliation or endorsement is implied.
-
-This repository starts with a clean public source snapshot. Local research, tester reports and release-signing secrets are excluded. The complete source corresponding to the APK is provided with every release; experimental runtime identity assets are described separately in the build instructions and notices.
-
-## Local release packaging
-
-The release APK intentionally contains the experimental accessory identity. The Git repository and source archive exclude all accessory and Android signing keys; tests generate synthetic identities at runtime. Source/CI builds omit runtime identity assets by default. Local release builds explicitly select an external asset directory. Publishing the APK makes its bundled identity extractable; building locally does not preserve that identity's confidentiality.
+Only a validated standalone package with the existing signer is suitable for installation. Source builds exclude runtime identities. Desktop checks do not establish real-vehicle compatibility. Preserve all upstream attribution and licenses; the experimental identity and lack of Apple certification remain as documented above.

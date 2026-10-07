@@ -140,7 +140,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private var startupRetryButton: View? = null
     private var startupFailureGeneration = -1
     private lateinit var airPlayIdentity: AirPlayIdentity
-    private var languagePreferenceAtCreate = AppLocale.SYSTEM
+    private var languagePreferenceAtCreate = "zh-CN"
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -489,7 +489,7 @@ class CarPlayHostActivity : ComponentActivity() {
         CenterMapOverlay.requestShow = ::showCenterMap
         MapMirrors.sink = mirrorSink
         MapMirrors.onChanged = mirrorsChanged
-        languagePreferenceAtCreate = AppLocale.preference(this)
+        languagePreferenceAtCreate = "zh-CN"
         if (isIphoneUsbAttachment(intent)) {
             AirPlayPersistence.saveWirelessEnabled(this, false)
         }
@@ -531,7 +531,7 @@ class CarPlayHostActivity : ComponentActivity() {
         )
         val reusedBackgroundSession = adoptBackgroundSession()
         microphoneAvailable =
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            checkCallingOrSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         microphonePermissionResolved = microphoneAvailable
         if (reusedBackgroundSession) {
             updateDebugOverlays()
@@ -634,7 +634,7 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun hasFineLocationPermission(): Boolean =
-        checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+        checkCallingOrSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
     private fun requestVpnConsent() {
@@ -652,7 +652,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private fun requestWirelessPermissions() {
         val permissions = requiredWirelessPermissions()
-        if (permissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
+        if (permissions.all { checkCallingOrSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
             wirelessPermissionsReady = true
             updateHotspotStatusBlock()
             maybeStartCarPlay()
@@ -666,7 +666,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private fun hasRequiredWirelessPermissions(): Boolean =
         requiredWirelessPermissions().all {
-            checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+            checkCallingOrSelfPermission(it) == PackageManager.PERMISSION_GRANTED
         }
 
     private fun requiredWirelessPermissions(): List<String> = when {
@@ -708,7 +708,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private fun isIphoneUsbAttachment(intent: Intent): Boolean {
         if (intent.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return false
-        val device = androidx.core.content.IntentCompat.getParcelableExtra(intent, UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
         return device?.vendorId == IphoneUsbMatcher.APPLE_VENDOR_ID
     }
 
@@ -745,7 +745,7 @@ class CarPlayHostActivity : ComponentActivity() {
             intent.removeExtra("picture_controls")
             openPicturePanel()
         }
-        val languagePreference = AppLocale.preference(this)
+        val languagePreference = "zh-CN"
         if (Build.VERSION.SDK_INT < 33 && languagePreference != languagePreferenceAtCreate) {
             languagePreferenceAtCreate = languagePreference
             recreate()
@@ -1613,11 +1613,6 @@ class CarPlayHostActivity : ComponentActivity() {
             ).apply { topMargin = dp(12) },
         )
 
-        content.addView(Button(this).apply {
-            text = getString(R.string.language_app_language)
-            isAllCaps = false
-            setOnClickListener { AppLocale.showPicker(this@CarPlayHostActivity) }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
 
         val gestureButton = Button(this).apply {
             isAllCaps = false
@@ -1728,11 +1723,13 @@ class CarPlayHostActivity : ComponentActivity() {
         AirPlayPersistence.saveAdvancedAudioChannelMapping(this, advancedAudioChannelMapping)
         AirPlayPersistence.saveDisplayScaleTenths(this, displayScaleTenths)
         AirPlayPersistence.saveDisplayScalePercent(this, displayScalePercent)
-        AirPlayPersistence.saveFps(this, fps)
+        if (!E01Settings.enabled(this)) AirPlayPersistence.saveFps(this, fps)
         AirPlayPersistence.saveWidthPhysicalMm(this, widthPhysicalMm)
         AirPlayPersistence.savePhysicalSizeBasis(this, physicalSizeBasis)
-        AirPlayPersistence.saveHevcEnabled(this, hevcEnabled)
-        AirPlayPersistence.saveHevcSoftwareDecoderEnabled(this, hevcSoftwareDecoderEnabled)
+        if (!E01Settings.enabled(this)) {
+            AirPlayPersistence.saveHevcEnabled(this, hevcEnabled)
+            AirPlayPersistence.saveHevcSoftwareDecoderEnabled(this, hevcSoftwareDecoderEnabled)
+        }
         AirPlayPersistence.saveManufacturer(this, manufacturer)
         AirPlayPersistence.saveModel(this, model)
         AirPlayPersistence.saveOemLabel(this, oemLabel)
@@ -2008,11 +2005,11 @@ class CarPlayHostActivity : ComponentActivity() {
                 isChecked = locationReportingEnabled
                 contentDescription = getString(R.string.report_android_location_to_the_iphone)
                 showText = false
-                thumbTintList = ColorStateList(
+                if (android.os.Build.VERSION.SDK_INT >= 23) thumbTintList = ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
                     intArrayOf(MENU_ACCENT, MENU_SECONDARY),
                 )
-                trackTintList = ColorStateList(
+                if (android.os.Build.VERSION.SDK_INT >= 23) trackTintList = ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
                     intArrayOf(MENU_ACCENT_TRACK, MENU_TRACK_OFF),
                 )
@@ -2113,7 +2110,7 @@ class CarPlayHostActivity : ComponentActivity() {
             progress = selectedIndex
             splitTrack = false
             progressTintList = ColorStateList.valueOf(MENU_ACCENT)
-            thumbTintList = ColorStateList.valueOf(MENU_ACCENT)
+            if (android.os.Build.VERSION.SDK_INT >= 23) thumbTintList = ColorStateList.valueOf(MENU_ACCENT)
             setOnSeekBarChangeListener(
                 object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -3023,6 +3020,12 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun createAirPlayConfig(size: DisplaySize): AirPlayConfig {
+        val e01 = E01Settings.enabled(this)
+        if (e01) {
+            fps = com.shilapi.xcertplay.airplay.E01Performance.FPS
+            hevcEnabled = false
+            hevcSoftwareDecoderEnabled = false
+        }
         // The home settings page can change the name while this host stays alive.
         if (!menuOpen) oemLabel = AirPlayPersistence.loadOemLabel(this)
         val safeWidth = (size.width / 2 * 2).coerceAtLeast(2)
@@ -3047,14 +3050,15 @@ class CarPlayHostActivity : ComponentActivity() {
         )
         val requestedResolutionPercent = displayScalePercent
         val requestedResolutionDisplay = CarPlayDisplayScale.applyPercent(baseDisplay, requestedResolutionPercent)
-        var resolutionDisplay = requestedResolutionDisplay
+        var resolutionDisplay = if (e01) com.shilapi.xcertplay.airplay.E01Performance.display(requestedResolutionDisplay) else requestedResolutionDisplay
         val requestedPercent = uiScalePercent
-        var scaledDisplay = CarPlayUiScale.apply(resolutionDisplay, uiScalePercent)
+        var scaledDisplay = if (e01) resolutionDisplay else CarPlayUiScale.apply(resolutionDisplay, uiScalePercent)
         val candidate = scaledDisplay
         val candidatePlayback = compatibleVideoDisplay(scaledDisplay)
         // Gate an enlarged canvas at the selected frame rate; adjust playback only after sizing.
         var effectiveHevc = candidatePlayback.second
         var support = when {
+            e01 -> CanvasSupport(true, "e01_pixel_budget", "E01: H.264 <=960x540 at 30 fps, single screen")
             uiScalePercent < CarPlayUiScale.DEFAULT && candidate === resolutionDisplay ->
                 CanvasSupport(false, "canvas_4k_limit", "Decoder capability check skipped: canvas exceeds enlargement limit")
             uiScalePercent < CarPlayUiScale.DEFAULT || scaledDisplay.widthPixels > baseDisplay.widthPixels ||
@@ -3146,7 +3150,7 @@ class CarPlayHostActivity : ComponentActivity() {
             btMac = DiPlayBluetooth.localAddress(this) ?: DiPlayBootstrap.deviceId(airPlayIdentity),
             sourceVersion = "950.7.1",
             main = declared,
-            cluster = clusterDisplayConfig(effectiveHevc),
+            cluster = clusterDisplayConfig(),
             rightHandDrive = rightHandDrive,
             hevc = effectiveHevc,
             opusOutputSupported = supportsOpusOutput(),
@@ -3652,7 +3656,8 @@ class CarPlayHostActivity : ComponentActivity() {
         }
         VehicleMapProjection.attach(this, next, renderer, vehicleMapPlan)
         try {
-            startForegroundService(Intent(this, DiPlaySessionService::class.java))
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, DiPlaySessionService::class.java))
+            else startService(Intent(this, DiPlaySessionService::class.java))
             next.start()
         } catch (error: RuntimeException) {
             appendLog("Connection could not start: ${error.javaClass.simpleName}")

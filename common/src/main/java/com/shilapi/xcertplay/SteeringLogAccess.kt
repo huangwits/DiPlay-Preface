@@ -13,7 +13,7 @@ internal object SteeringLogAccess {
 
     fun diagnostics(): String = "keyLogAuthorization=$lastAttempt"
 
-    fun granted(context: Context) = context.checkSelfPermission(Manifest.permission.READ_LOGS) == PackageManager.PERMISSION_GRANTED
+    fun granted(context: Context) = context.checkCallingOrSelfPermission(Manifest.permission.READ_LOGS) == PackageManager.PERMISSION_GRANTED
 
     /** Blocking; called only after the user chooses to allow button access. */
     fun request(context: Context): Result {

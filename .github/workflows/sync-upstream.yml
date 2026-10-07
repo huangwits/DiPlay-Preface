@@ -1,69 +1,75 @@
-name: Sync upstream
-
+name: Review upstream updates
 on:
-  push:
-    branches: [main]
-  schedule:
-    - cron: '17 * * * *'
   workflow_dispatch:
-
+    inputs:
+      source:
+        description: Carlito main or one reviewed original-author commit
+        type: choice
+        options: [geely, original]
+        default: geely
+      commit:
+        description: Full non-merge commit SHA (required for original)
+        type: string
+        required: false
 permissions:
   contents: write
+  pull-requests: write
   actions: write
-
 concurrency:
-  group: sync-upstream-main
+  group: sync-upstream-api22
   cancel-in-progress: false
-
 jobs:
-  sync:
+  propose:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-      - name: Configure sync commit identity
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-      - name: Fetch upstream main
-        run: |
-          git remote add upstream https://github.com/shihabal3amri/DiPlay.git
-          git fetch upstream main
-      - name: Merge upstream changes
-        id: merge
+      - name: Prepare review candidate
+        id: candidate
+        env:
+          UPDATE_SOURCE: ${{ inputs.source }}
+          UPDATE_COMMIT: ${{ inputs.commit }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -f docs/CONNECTION-BASELINE.md ]]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Stable connection baseline: upstream changes require selective integration."
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/shihabal3amri/DiPlay.git
+          git remote add geely https://github.com/carlito12345/DiPlay.git
+          git fetch upstream main
+          git fetch geely main
+          python3 scripts/prepare_upstream_update.py --source "$UPDATE_SOURCE" --commit "$UPDATE_COMMIT"
+          branch="$(git branch --show-current)"
+          if [[ "$branch" == main ]]; then
+            echo 'Selected update is already integrated.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          upstream_sha="$(git rev-parse upstream/main)"
-          if git merge-base --is-ancestor "$upstream_sha" HEAD; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No new upstream commits."
-            exit 0
-          fi
-          if git merge-base --is-ancestor HEAD "$upstream_sha"; then
-            git merge --ff-only "$upstream_sha"
+          # Reuse a previously pushed candidate; never overwrite it after main advances.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "Existing candidate: $branch. Review its current checks." >> "$GITHUB_STEP_SUMMARY"
           else
-            git merge --no-edit "$upstream_sha"
+            git push origin "HEAD:refs/heads/$branch"
           fi
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-      - name: Push updated main
-        if: steps.merge.outputs.changed == 'true'
-        run: git push origin HEAD:main
-      - name: Build after upstream update
-        if: steps.merge.outputs.changed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'android.yml',
-              ref: 'main',
-            });
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Open draft and run API 22 checks
+        if: steps.candidate.outputs.branch != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: ${{ steps.candidate.outputs.branch }}
+          UPDATE_SOURCE: ${{ inputs.source }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run android51.yml --ref "$UPDATE_BRANCH"
+          cat > "$RUNNER_TEMP/update-body.md" <<'EOF'
+          更新候选：保留 Android 5.1 / API 22 与 E01 适配。carlito 主线为默认更新来源；原作者更新仅引入指定提交。请核对差异、API 检查和实车影响后合并。
+
+          Update candidate preserving Android 5.1 / API 22 and E01 support. Carlito updates follow main; direct original-author updates select one explicit commit. Review the diff, compatibility checks and vehicle impact before merging.
+          EOF
+          if [[ "$(gh pr list --base main --head "$UPDATE_BRANCH" --state open --json number --jq 'length')" == 0 ]]; then
+            gh pr create --base main --head "$UPDATE_BRANCH" --draft \
+              --title "Review $UPDATE_SOURCE updates for Android 5.1 E01" --body-file "$RUNNER_TEMP/update-body.md"
+          fi

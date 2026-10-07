@@ -1,7 +1,7 @@
 # DiPlay Preface maintenance
 
 - Follow carlito12345/DiPlay as the code baseline and default update source, as requested by the owner on 2026-10-06. Keep original-author attribution; import direct shihabal3amri changes only as explicitly reviewed commits.
-- Default to Android system Bluetooth. Offer E01 ECARX as an explicit manual choice, independently of the E01 performance profile. H52 ANW transport, diagnostics and audio routing were removed at the owner's request on 2026-10-06; do not reintroduce them.
+- The owner selected Geely 0.2.13.2's connection baseline on 2026-10-07. Retain its Android Bluetooth path; do not import the previous fork's private ECARX/H52 RFCOMM transports. E01 Bluetooth switching is an explicit Check/Switch/Restore tool outside ordinary connection startup, independent of the E01 performance profile. H52 ANW transport, diagnostics and audio routing remain removed.
 - Ship a Simplified-Chinese-only app: Chinese default resources, no language picker or foreign translations. Preserve language migration and APK locale filtering when syncing upstream.
 - Focus on Geely Preface: no BYD/DiLink vehicle services, fixed key codes, rotating-screen canvas or vendor instrument UI. Retain shared protocols and historical attribution.
 - Target Android 5.1 / API 22 and E01. Retain necessary API 23+ fallbacks, low-load settings and validated fixes; do not reintroduce API 18-only compatibility.

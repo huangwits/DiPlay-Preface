@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.host.R
 import android.app.AlertDialog
 import android.os.Looper
 import android.widget.Button
@@ -52,11 +53,11 @@ class ExistingWifiSettingsTest {
 
     @Test fun cancellingSetupPreservesModeAndSavingValidCredentialsSelectsLan() {
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.WIFI_P2P)
-        controls().filterIsInstance<Button>().first { it.text.contains("Same LAN") }.performClick()
+        controls().filterIsInstance<Button>().first { it.text.contains(activity.getString(R.string.existing_wifi_title)) }.performClick()
         shadowOf(Looper.getMainLooper()).idle()
         ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
         assertEquals(WirelessHotspotMode.WIFI_P2P, AirPlayPersistence.loadWirelessHotspotMode(app))
-        controls().filterIsInstance<Button>().first { it.text.contains("Same LAN") }.performClick()
+        controls().filterIsInstance<Button>().first { it.text.contains(activity.getString(R.string.existing_wifi_title)) }.performClick()
         shadowOf(Looper.getMainLooper()).idle()
         val dialog = ShadowAlertDialog.getLatestAlertDialog()
         val fields = descendants(dialog.window!!.decorView).filterIsInstance<EditText>().toList()

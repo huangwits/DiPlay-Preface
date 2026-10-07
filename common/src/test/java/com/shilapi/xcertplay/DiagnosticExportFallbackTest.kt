@@ -129,6 +129,9 @@ class DiagnosticExportFallbackTest {
         val authority = "${context.packageName}.diagnostic-reports"
         val info = context.packageManager.resolveContentProvider(authority, PackageManager.GET_META_DATA)!!
         // Robolectric gives each test a new filesDir; refresh FileProvider's static path cache.
+        // Core 1.6 attachInfo does not invalidate cached roots as newer Core versions do.
+        FileProvider::class.java.getDeclaredField("sCache").apply { isAccessible = true }
+            .let { (it.get(null) as MutableMap<*, *>).clear() }
         val provider = DiagnosticReportProvider().also { it.attachInfo(context, info) }
         ShadowContentResolver.registerProviderInternal(authority, provider)
     }

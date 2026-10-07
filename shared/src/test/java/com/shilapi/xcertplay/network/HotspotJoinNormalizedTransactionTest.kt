@@ -10,7 +10,7 @@ import java.io.File
 import java.nio.file.Files
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33], manifest = Config.NONE)
+@Config(sdk = [33], manifest = Config.NONE, shadows = [PosixAtomicFileShadow::class])
 class HotspotJoinNormalizedTransactionTest {
     class NormalizingWifiService(var config: SoftApConfiguration) {
         var writes = 0

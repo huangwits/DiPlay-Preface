@@ -39,6 +39,19 @@ class UsbPermissionSetupTest {
         assertTrue(UsbPermissionSetup.Permission.ACCESSIBILITY.granted(context))
     }
 
+    @Test @Config(sdk = [23]) fun api22OverlayUsesTheDeclaredPermissionInsteadOfTheNewSettingsApi() {
+        val version = android.os.Build.VERSION.SDK_INT
+        org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION::class.java, "SDK_INT", 22)
+        try {
+            shadowOf(context).denyPermissions(android.Manifest.permission.SYSTEM_ALERT_WINDOW)
+            assertFalse(UsbPermissionSetup.Permission.OVERLAY.granted(context))
+            shadowOf(context).grantPermissions(android.Manifest.permission.SYSTEM_ALERT_WINDOW)
+            assertTrue(UsbPermissionSetup.Permission.OVERLAY.granted(context))
+        } finally {
+            org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION::class.java, "SDK_INT", version)
+        }
+    }
+
     @Test fun unapprovedConnectionDoesNotRunAnyGrant() {
         val client = FakeClient().apply { access = LocalAdb.Access.NOT_APPROVED }
         val result = operation(client).run()
@@ -193,9 +206,18 @@ class UsbPermissionSetupTest {
     )
 
     private fun runShell(script: String): String {
-        val process = ProcessBuilder("sh", "-c", script).redirectErrorStream(true).start()
-        assertTrue(process.waitFor(3, TimeUnit.SECONDS))
-        return process.inputStream.bufferedReader().readText()
+        val shell = System.getenv("DIPLAY_TEST_SH") ?: "sh"
+        // A file preserves the exact shell program through Windows CreateProcess quoting too.
+        val file = java.io.File.createTempFile("diplay-permission-", ".sh")
+        try {
+            file.writeText(script)
+            val process = ProcessBuilder(shell, file.absolutePath.replace('\\', '/'))
+                .redirectErrorStream(true).start()
+            try {
+                assertTrue(process.waitFor(3, TimeUnit.SECONDS))
+                return process.inputStream.bufferedReader().use { it.readText() }
+            } finally { process.destroyForcibly() }
+        } finally { file.delete() }
     }
 
     private class FakeClient : UsbPermissionSetup.Client {

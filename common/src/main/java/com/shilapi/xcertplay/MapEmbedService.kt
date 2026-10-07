@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.compat.systemService
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -42,6 +43,7 @@ class MapEmbedService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        if (Build.VERSION.SDK_INT < 30) return
         stopObservingSharing = AirPlayPersistence.observeLauncherMapSharing(this) { enabled ->
             if (!enabled) {
                 if (Looper.myLooper() == main.looper) revokeSharing()
@@ -53,6 +55,7 @@ class MapEmbedService : Service() {
     override fun onBind(intent: Intent): IBinder = messenger.binder
 
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT < 30) { super.onDestroy(); return }
         destroyed = true
         stopObservingSharing?.invoke()
         stopObservingSharing = null
@@ -62,6 +65,7 @@ class MapEmbedService : Service() {
     }
 
     private fun revokeSharing() {
+        if (Build.VERSION.SDK_INT < 30) return
         if (destroyed) return
         val attached = embeds.values.toList()
         embeds.clear()
@@ -71,6 +75,10 @@ class MapEmbedService : Service() {
     private fun handle(message: Message) {
         val client = message.replyTo ?: return
         val caller = packageManager.getNameForUid(message.sendingUid) ?: "uid ${message.sendingUid}"
+        if (Build.VERSION.SDK_INT < 30) {
+            refuse(client, caller, ERROR_UNSUPPORTED)
+            return
+        }
         when (message.what) {
             MSG_ATTACH -> attach(client, caller, message.data)
             MSG_RESIZE -> embeds[client.binder]?.resize(message.data.getInt(KEY_WIDTH), message.data.getInt(KEY_HEIGHT))
@@ -79,7 +87,7 @@ class MapEmbedService : Service() {
     }
 
     private fun attach(client: Messenger, caller: String, data: Bundle) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT < 30) {
             refuse(client, caller, ERROR_UNSUPPORTED)
             return
         }
@@ -93,7 +101,7 @@ class MapEmbedService : Service() {
             return
         }
         embeds.remove(client.binder)?.release()
-        val display = getSystemService(DisplayManager::class.java)?.getDisplay(data.getInt(KEY_DISPLAY_ID))
+        val display = systemService(DisplayManager::class.java, "display")?.getDisplay(data.getInt(KEY_DISPLAY_ID))
         if (display == null) {
             send(client, MSG_ERROR, Bundle().apply { putString(KEY_ERROR, ERROR_BAD_REQUEST) })
             return
@@ -120,7 +128,7 @@ class MapEmbedService : Service() {
         try {
             client.send(Message.obtain(null, what).apply { this.data = data })
         } catch (_: RemoteException) {
-            embeds.remove(client.binder)?.release()
+            if (Build.VERSION.SDK_INT >= 30) embeds.remove(client.binder)?.release()
         }
     }
 

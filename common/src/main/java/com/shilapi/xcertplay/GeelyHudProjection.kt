@@ -1,6 +1,7 @@
 // carlito | Navigation and calibrated vehicle cards share one secondary-display window.
 package com.shilapi.xcertplay
 
+import com.shilapi.xcertplay.compat.systemService
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -67,7 +68,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
                 stopVehicleReader()
                 displayManager?.unregisterDisplayListener(this)
                 activityRef = WeakReference(activity)
-                displayManager = activity.getSystemService(DisplayManager::class.java)
+                displayManager = activity.systemService(DisplayManager::class.java, "display")
                 displayManager?.registerDisplayListener(this, mainHandler)
             }
             refresh()
@@ -99,7 +100,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
 
     fun setEnabled(context: Context, enabled: Boolean) {
         AirPlayPersistence.saveGeelyHudEnabled(context, enabled)
-        if (enabled && context is Activity && !Settings.canDrawOverlays(context)) {
+        if (enabled && context is Activity && !com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context)) {
             runCatching {
                 context.startActivity(
                     Intent(
@@ -113,7 +114,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     }
 
     fun availableDisplays(context: Context): List<GeelyHudDisplay> =
-        context.getSystemService(DisplayManager::class.java)?.displays.orEmpty()
+        context.systemService(DisplayManager::class.java, "display")?.displays.orEmpty()
             .asSequence()
             .filter { it.displayId != Display.DEFAULT_DISPLAY && it.state != Display.STATE_OFF }
             .map {
@@ -170,7 +171,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     /** carlito | Switch only the guidance element; vehicle cards keep their own visibility. */
     fun flyNavigation(activity: Activity): Int {
         if (guidance == null) return com.shilapi.xcertplay.host.R.string.projection_no_guidance
-        if (!Settings.canDrawOverlays(activity)) return com.shilapi.xcertplay.host.R.string.projection_permission_required
+        if (!com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(activity)) return com.shilapi.xcertplay.host.R.string.projection_permission_required
         val selected = selectedDisplay(activity)
         if (selected == null) return com.shilapi.xcertplay.host.R.string.projection_select_display
         if (GeelyProjectionLayout.load(activity).none { it.field == ProjectionField.NAVIGATION && it.visible })
@@ -189,7 +190,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
         val displays = availableDisplays(context)
         return buildString {
             append("enabled=${AirPlayPersistence.loadGeelyHudEnabled(context)} ")
-            append("overlayPermission=${Settings.canDrawOverlays(context)} ")
+            append("overlayPermission=${com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context)} ")
             append("selectedId=$selectedId selectedName=${selectedName.ifBlank { "automatic" }} ")
             append("scale=${AirPlayPersistence.loadGeelyHudScalePercent(context)}% ")
             append("attachedId=$attachedDisplayId attachedSize=${attachedWidth}x$attachedHeight")
@@ -226,9 +227,9 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
                 vehicleFrame = value; hudView?.vehicle = value
             }
         } else stopVehicleReader()
-        if (!Settings.canDrawOverlays(activity) || visible.isEmpty() ||
+        if (!com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(activity) || visible.isEmpty() ||
             guidance == null && visible.all { it.field == ProjectionField.NAVIGATION }) {
-            windowStage = if (!Settings.canDrawOverlays(activity)) "OVERLAY_PERMISSION_REQUIRED" else "WAITING_FOR_CONTENT"
+            windowStage = if (!com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(activity)) "OVERLAY_PERMISSION_REQUIRED" else "WAITING_FOR_CONTENT"
             detachWindow()
             return
         }
@@ -246,7 +247,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
             attachedWidth != displayWidth || attachedHeight != displayHeight
         ) {
             detachWindow()
-            val manager = displayContext.getSystemService(WindowManager::class.java) ?: return
+            val manager = displayContext.systemService(WindowManager::class.java, "window") ?: return
             val view = GeelyProjectionView(displayContext)
             val params = WindowManager.LayoutParams(
                 displayWidth,
@@ -288,8 +289,8 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
 
     private fun displaySize(context: Context, display: Display): Pair<Int, Int> {
         val metrics = context.createDisplayContext(display).resources.displayMetrics
-        return (metrics.widthPixels.takeIf { it > 0 } ?: display.mode.physicalWidth) to
-            (metrics.heightPixels.takeIf { it > 0 } ?: display.mode.physicalHeight)
+        return (metrics.widthPixels.takeIf { it > 0 } ?: (if (android.os.Build.VERSION.SDK_INT >= 23) display.mode.physicalWidth else 1280)) to
+            (metrics.heightPixels.takeIf { it > 0 } ?: (if (android.os.Build.VERSION.SDK_INT >= 23) display.mode.physicalHeight else 720))
     }
 
     private fun detachWindow() {
