@@ -1,11 +1,11 @@
-# Preface 0.2.15
+# Preface 0.2.13.2
 
 ## 基底与版本
 
 - Geely 基底：`586b39368b0bf7e3e9cb50a0b7838db083b382e1`，版本 0.2.13.2。
-- 星瑞公开版本：0.2.15。
-- APK 内部版本：`0.2.13.2-preface.15-android51`，versionCode `44`。
-- 包名：`com.shihab.diplay.e01legacy`；最低 API 22，保留既有签名。
+- 公开版本及 APK versionName：`0.2.13.2`，versionCode `36`，均与 Geely 上游一致。
+- 包名：`com.shihab.diplay.preface`；最低 API 22，保留既有签名。
+- 版本信息于 2026-10-07 从 Geely `03af895e36c6970b64ae48f31595d32f60bd1ffb` 核对；本适配的源码基底仍为上述 `586b3936`。
 
 沿用 Geely 的 Android 蓝牙连接、RFCOMM、热点与会话管理基线。旧系统所需的系统服务获取、权限、USB 传输和音频接口提供版本分支。新的蓝牙切换工具只在用户按按钮时运行，切换前等待当前会话关闭。此前分支的私有 ECARX/H52 RFCOMM 通道没有迁入。
 
@@ -13,7 +13,7 @@ E01 默认启用低负载配置：H.264、最高 960×540、30 帧、关闭额�
 
 ## 安装与使用
 
-安装完整 `DiPlay-Preface-v0.2.15.apk` 覆盖旧星瑞版，保留设置。源码包和源码 CI APK 不包含独立使用所需的认证输入。不得将源码 CI APK 作为本版安装包。
+安装完整 `DiPlay-Preface-v0.2.13.2.apk`。新包名 `.preface` 会与旧 `.e01legacy` 分开安装，旧设置、权限及本机 ADB 授权不会自动迁移，需要在新应用中重新设置。测试时只运行一个 CarPlay 应用。源码包和源码 CI APK 不包含独立使用所需的认证输入，不作为车机安装包交付。
 
 蓝牙入口：“连接 → 打开蓝牙切换工具”。按“检查连接 → 尝试切换”操作；需要系统授权时允许本机调试。默认端口为 5555，也可填车机实际端口。工具会检测 uid=0，不具备 root/ADB 管理员能力时不会切换服务。
 
@@ -27,7 +27,7 @@ Android 5.1 使用默认音频设备；网页视频需要 Android 6+，外部桌
 
 ## English
 
-Public version 0.2.15 uses Geely 0.2.13.2 at `586b3936`. The APK reports `0.2.13.2-preface.15-android51`, version code 44, package `com.shihab.diplay.e01legacy`, minimum API 22. Its existing signer is retained for overlay upgrades.
+Public version and APK versionName are `0.2.13.2`, version code 36, matching Geely's metadata verified at `03af895e` on 2026-10-07. The adaptation's code baseline remains `586b3936`. The package is `com.shihab.diplay.preface`, minimum API 22, using the existing signer. It installs separately from `.e01legacy`; configure its settings, permissions and local ADB authorization again. Run only one CarPlay app at a time.
 
 It retains the selected Geely connection baseline, adds required legacy API branches, removes BYD-specific integrations and adds an explicit E01 Bluetooth switching tool. The previous fork's private ECARX/H52 RFCOMM backends are not imported. Switch and restore require verified privileged access and run only on the documented E01 firmware, with CarPlay stopped beforehand. Factory calls/music are interrupted during switching. Restore after testing or restart if recovery cannot be confirmed.
 

@@ -36,7 +36,9 @@ This task refuses missing or empty runtime inputs. `assembleDebug` remains an id
 source/CI build when the explicit asset input is absent; do not install that output as a
 standalone car-test package. Before delivery, verify both `assets/offline-mfi/identity.pk8`
 and `assets/offline-mfi/certificate.p7b` in the APK against the selected local inputs.
-Update the existing test app without uninstalling it to preserve its settings.
+For the same application ID and signer, update without uninstalling to preserve settings.
+The owner-selected production ID is now `com.shihab.diplay.preface`; it installs separately
+from `.e01legacy` and requires its own settings and permissions.
 
 ## E01 full car-test release gate
 
@@ -50,8 +52,10 @@ After building, set `DIPLAY_VALIDATION_APK` to the **absolute path of that APK**
 Require both tests to pass with **zero skipped tests**. They load the production bootstrap
 from the actual APK's assets, test a fresh install and an overlay update after the source-only
 failure, and perform local signing. Robolectric uses API 23 with the API 22 code branch selected;
-this does not replace an actual vehicle/iPhone test. Verify the APK package, higher version code,
-same signing certificate and file hash before publishing. Only the full APK belongs in the
+this does not replace an actual vehicle/iPhone test. Verify the requested APK package, Geely-matching
+versionName/versionCode, signing certificate and file hash before publishing. A higher version code
+is required for upgrades within the same package; the first `.preface` build is a new installation.
+Only the full APK belongs in the
 user's transfer directory; preserve old source-only artifacts outside it.
 
 
