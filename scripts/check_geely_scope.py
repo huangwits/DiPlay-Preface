@@ -8,7 +8,7 @@ for module in ('common', 'shared', 'mobile'):
     for path in (ROOT / module / 'src').rglob('*'):
         if not path.is_file() or '/test/' in path.as_posix():
             continue
-        assert not re.match(r'(Byd|DiLink\d|AdbCluster|WheelKeyService|CarPlayRotation)', path.name), path
+        assert not re.match(r'(Byd|DiLink\d|AdbCluster|CarPlayRotation)', path.name), path
         assert 'byd-hud-icons' not in path.as_posix(), path
         if path.suffix in ('.kt', '.java', '.xml'):
             text = path.read_text(encoding='utf-8-sig')
@@ -16,4 +16,6 @@ for module in ('common', 'shared', 'mobile'):
             if '/res/values' in path.as_posix():
                 assert not re.search(r'BYD|DiLink|比亚迪', text), path
 assert not (ROOT / 'common/src/main/res/raw/ic_car_home.png').exists()
+wheel = (ROOT / 'common/src/main/java/com/shilapi/xcertplay/WheelKeyService.kt').read_text(encoding='utf-8')
+assert 'simulate-keys' not in wheel and 'BYD_KEYS' not in wheel, 'Removed manufacturer key defaults returned'
 print('Geely scope: no removed vendor classes, service targets, UI strings or logo assets.')

@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay.network
 
+import com.shilapi.xcertplay.compat.systemService
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
@@ -17,13 +18,13 @@ internal class ManualHotspotInterfaces(
     private val context: Context,
     private val onDiagnostic: (String) -> Unit = {},
 ) : Closeable {
-    private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    private val connectivity = context.systemService(ConnectivityManager::class.java, "connectivity")
     private val publicTethering = if (Build.VERSION.SDK_INT >= 36) PublicTethering(context) else null
     private var lastLegacyDiagnostic: String? = null
 
     fun sample(): HotspotNetworkSnapshot {
-        val ap = publicTethering?.interfaces ?: legacyApInterfaces()
-        val before = runCatching { connectivity?.activeNetwork }
+        val ap = (if (Build.VERSION.SDK_INT >= 36) publicTethering?.interfaces else null) ?: legacyApInterfaces()
+        val before = runCatching { if (Build.VERSION.SDK_INT >= 23) connectivity?.activeNetwork else null }
         val upstreams = runCatching {
             checkNotNull(connectivity)
             connectivity.allNetworks.mapNotNull { network ->
@@ -45,7 +46,7 @@ internal class ManualHotspotInterfaces(
                 }.getOrNull()
             }
         }.getOrDefault(emptyList())
-        val after = runCatching { connectivity?.activeNetwork }
+        val after = runCatching { if (Build.VERSION.SDK_INT >= 23) connectivity?.activeNetwork else null }
         return HotspotNetworkSnapshot(
             interfaces, ap, upstreams, defaultName,
             consistent = before.isSuccess && after.isSuccess && before.getOrNull() == after.getOrNull(),
@@ -73,7 +74,7 @@ internal class ManualHotspotInterfaces(
         ap
     }.getOrNull()
 
-    override fun close() { publicTethering?.close() }
+    override fun close() { if (Build.VERSION.SDK_INT >= 36) publicTethering?.close() }
 
     @RequiresApi(36)
     private class PublicTethering(context: Context) : Closeable {

@@ -1,6 +1,7 @@
 // carlito | Owns only DiPlay's communication mode/device/SCO requests, with one process-wide lease.
 package com.shilapi.xcertplay.media
 
+import com.shilapi.xcertplay.compat.systemService
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -9,7 +10,7 @@ import android.os.SystemClock
 import java.io.Closeable
 
 internal class CommunicationAudioRoute(context: Context?, private val report: (String) -> Unit) : Closeable {
-    private val manager = context?.getSystemService(AudioManager::class.java)
+    private val manager = context?.systemService(AudioManager::class.java, "audio")
     private var output: AudioOutputDevice? = null
     private var input: AudioOutputDevice? = null
     private var selectedDevice: Int? = null
@@ -57,6 +58,7 @@ internal class CommunicationAudioRoute(context: Context?, private val report: (S
     }
 
     fun refreshDevices(retry: Boolean = false) {
+        if (Build.VERSION.SDK_INT < 23) return
         val audio = manager ?: return
         if (!held() || closed || externalCall()) return
         if (retry) scoFailed = false

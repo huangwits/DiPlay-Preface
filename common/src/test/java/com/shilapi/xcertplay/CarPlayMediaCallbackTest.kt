@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [29], manifest = Config.NONE)
 class CarPlayMediaCallbackTest {
     private val sent = mutableListOf<Int>()
-    private val callback = CarPlayMediaCallback { index, _ -> sent += index }
+    private val callback = CarPlayMediaCallback(send = { index, _ -> sent += index })
 
     @Test
     fun controllerPlayAndPauseAreExplicit() {

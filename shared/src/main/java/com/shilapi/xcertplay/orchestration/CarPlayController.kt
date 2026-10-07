@@ -195,9 +195,9 @@ class CarPlayController(
     @Volatile private var wirelessPeerBluetoothAddress: String? = null
     private val diagnosticAttempt = diagnosticAttempts.incrementAndGet()
     private val diagnosticRun = AtomicInteger()
-    private val usbManager = context.getSystemService(UsbManager::class.java)
+    private val usbManager = checkNotNull(context.systemService(UsbManager::class.java, "usb"))
     private val bluetoothAdapter =
-        appContext.getSystemService(BluetoothManager::class.java)?.adapter
+        appContext.systemService(BluetoothManager::class.java, "bluetooth")?.adapter
     private val iphoneHost = IphoneUsbHost(
         appContext,
         usbManager,
@@ -2222,7 +2222,7 @@ class CarPlayController(
             )
             WirelessHotspotMode.WIFI_P2P -> WifiP2pGroupManager(appContext, ::debugLog,
                 preferredChannel = config.wifiP2pPreferredChannel)
-            WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> LocalOnlyHotspotManager(appContext, ::debugLog)
+            WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> if (Build.VERSION.SDK_INT >= 26) LocalOnlyHotspotManager(appContext, ::debugLog) else throw IOException("Android 5.1 请使用车机热点或已有 Wi-Fi")
             WirelessHotspotMode.EXISTING_WIFI -> ExistingWifiManager(
                 appContext, config.existingWifiSsid, config.existingWifiPassphrase, ::debugLog,
                 onNetworkChanged = { if (!isStaleWirelessRun(generation)) restartWireless() },
@@ -2371,7 +2371,7 @@ class CarPlayController(
     private fun logBluetoothConnectionSnapshot(device: BluetoothDevice, point: String) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+                appContext.checkCallingOrSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
             ) {
                 connectionDiagnostic("Bluetooth snapshot point=$point unavailable reason=connect-permission")
                 return

@@ -93,7 +93,7 @@ class ProbeService : Service() {
                     if (!destroyed) {
                         state = if (completed == null) state.copy(loading = false, running = false, error = true, errorMessage = failure)
                             else ProbeState(loading = false, summary = completed.first, lastScan = completed.second)
-                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopForeground(true)
                         stopSelf()
                     }
                 }

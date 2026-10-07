@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay.network
 
+import com.shilapi.xcertplay.compat.systemService
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
@@ -167,7 +168,7 @@ class CarPlayBonjour(
             "connectProbe2xx=${successfulProbeCount.get()} lastProbe=${lastProbe.get()} " +
             "mdnsFamilies=$publishedFamilies"
     private val multicastLock = (context.applicationContext ?: context)
-        .getSystemService(WifiManager::class.java)
+        .systemService(WifiManager::class.java, "wifi")!!
         .createMulticastLock("carplay-bonjour").apply { setReferenceCounted(false) }
 
     private var started = false
