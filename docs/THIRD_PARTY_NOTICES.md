@@ -20,12 +20,15 @@ CarPlay and the CarPlay icon are Apple Inc. marks/assets. This asset is not cove
 
 ## Runtime dependencies
 
+- SpeexDSP 1.2.1 echo cancellation subset — Xiph.Org Foundation and contributors; BSD-style license in `shared/src/main/jni/speexdsp/COPYING`. The optional JNI integration is adapted from original-author changes f19a101a and 806bbf6f.
+
 - AndroidX and Jetpack Compose — Android Open Source Project; Apache License 2.0.
 - Kotlin standard library — JetBrains; Apache License 2.0.
 - Bouncy Castle 1.79 — The Legion of the Bouncy Castle Inc.; Bouncy Castle license (MIT-style).
 - Concentus 1.0.0 — Xiph.Org Foundation, Skype Limited, CSIRO, Microsoft Corporation, Logan Stromberg and other contributors; BSD 3-Clause license.
 - JmDNS 3.6.3 — JmDNS contributors; Apache License 2.0.
 - SLF4J — QOS.ch; MIT license.
+- ZXing Core 3.5.3 — ZXing authors; Apache License 2.0. Used to encode the existing offline device code as a locally rendered QR code. Source and license: https://github.com/zxing/zxing/tree/zxing-3.5.3.
 
 Gradle dependency declarations and version catalog accompany the source. License files available in the resolved artifacts are included under `docs/licenses/dependencies/`.
 

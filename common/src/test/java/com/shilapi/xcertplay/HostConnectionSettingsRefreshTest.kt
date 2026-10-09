@@ -5,6 +5,8 @@ import com.shilapi.xcertplay.airplay.AirPlayIdentity
 import com.shilapi.xcertplay.orchestration.CarPlayRuntimeConfig
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,6 +48,22 @@ class HostConnectionSettingsRefreshTest {
         assertEquals(WirelessHotspotMode.WIFI_P2P, config.wirelessHotspotMode)
         assertEquals("New car", config.manualHotspotSsid)
         assertEquals(149, config.wifiP2pPreferredChannel)
+    }
+
+    @Test fun usbLogsAreRemovedWhenTheExistingHostSwitchesToWirelessAndReturnForUsb() {
+        AirPlayPersistence.saveWirelessEnabled(app, false)
+        val host = Robolectric.buildActivity(CarPlayHostActivity::class.java).get()
+        val panel = ConnectionWaitingView(host, showLogPanel = true)
+        CarPlayHostActivity::class.java.getDeclaredField("connectionWaitingView").apply { isAccessible = true }.set(host, panel)
+        val load = CarPlayHostActivity::class.java.getDeclaredMethod("loadConnectionSettings").apply { isAccessible = true }
+        load.invoke(host)
+        assertNotNull(panel.logPanel.parent)
+        AirPlayPersistence.saveWirelessEnabled(app, true)
+        load.invoke(host)
+        assertNull(panel.logPanel.parent)
+        AirPlayPersistence.saveWirelessEnabled(app, false)
+        load.invoke(host)
+        assertNotNull(panel.logPanel.parent)
     }
 
     private fun runtimeConfig(host: CarPlayHostActivity): CarPlayRuntimeConfig {

@@ -13,7 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Robolectric
-import com.shilapi.xcertplay.e01switch.E01BluetoothSwitchActivity
+import com.shilapi.xcertplay.e01goc.E01GocActivity
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -24,6 +24,26 @@ import java.io.File
 @Config(sdk = [28], qualifiers = "zh-rCN-mdpi", manifest = Config.NONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PreparationLayoutTest {
+    @Test fun onlyUsbOptsIntoLogsAndChangingModeReclaimsTheWholeViewport() {
+        val panel = ConnectionWaitingView(RuntimeEnvironment.getApplication())
+        for ((width, height) in listOf(1280 to 480, 480 to 800)) {
+            layout(panel, width, height)
+            assertNull(panel.logPanel.parent)
+            assertEquals(width, panel.controlScroll.width)
+            panel.showLogs("wireless detail should stay hidden")
+            assertFalse(panel.logText.text.contains("wireless detail"))
+            panel.setLogPanelVisible(true)
+            panel.showLogs("USB permissions pending")
+            layout(panel, width, height)
+            assertNotNull(panel.logPanel.parent)
+            assertEquals("USB permissions pending", panel.logText.text.toString())
+            panel.setLogPanelVisible(false)
+            layout(panel, width, height)
+            assertNull(panel.logPanel.parent)
+            assertEquals(width, panel.controlScroll.width)
+            assertFalse(buttons(panel).any { "日志" in it.text })
+        }
+    }
     @Test fun landscapeKeepsControlsBesideLogsAndPortraitStacksWithoutClipping() {
         val panel = sample()
         for ((width, height) in listOf(1920 to 720, 960 to 360, 640 to 240, 360 to 640)) {
@@ -86,33 +106,29 @@ class PreparationLayoutTest {
     }
 
     @Test @Config(qualifiers = "zh-rCN-night-mdpi")
-    fun bluetoothToolSharesTheLayoutAndDisplaysResultsWithoutStartingACheck() {
-        val host = Robolectric.buildActivity(E01BluetoothSwitchActivity::class.java).setup()
+    fun factoryBluetoothUsesFullWidthControlsWithoutADiagnosticPanel() {
+        val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
-            val panel = E01BluetoothSwitchActivity::class.java.getDeclaredField("panel")
+            val panel = E01GocActivity::class.java.getDeclaredField("panel")
                 .apply { isAccessible = true }.get(host.get()) as ConnectionWaitingView
-            E01BluetoothSwitchActivity::class.java.getDeclaredMethod("say", String::class.java)
-                .apply { isAccessible = true }.invoke(host.get(), "示例：等待用户点击检查连接。\n尚未执行蓝牙切换。\ntoken=private-token")
-            layout(panel, 1280, 480)
-            assertTrue(panel.controlScroll.right < panel.logPanel.left)
-            assertTrue(panel.logText.text.contains("尚未执行蓝牙切换"))
-            assertTrue(panel.logText.text.contains("先点“检查连接”"))
-            assertFalse(panel.logText.text.contains("private-token"))
-            val labels = buttons(panel).map { it.text.toString() }
-            for (label in listOf("检查连接", "尝试切换", "恢复原厂", "蓝牙设置", "复制日志")) {
-                assertTrue(label, labels.contains(label))
+            for ((width, height) in listOf(1280 to 480, 480 to 800, 800 to 300)) {
+                layout(panel, width, height)
+                assertNull(panel.logPanel.parent)
+                assertEquals(panel.columns.width, panel.controlScroll.width)
+                assertEquals(panel.columns.height, panel.controlScroll.height)
+                assertFalse(buttons(panel).any { "日志" in it.text })
             }
-            assertFalse(host.get().getFileStreamPath("adb.private").exists())
-            System.getenv("DIPLAY_LAYOUT_PREVIEW_DIR")?.let { directory ->
-                val bitmap = Bitmap.createBitmap(1280, 480, Bitmap.Config.ARGB_8888)
-                panel.draw(Canvas(bitmap))
-                File(directory, "bluetooth-night.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                bitmap.recycle()
+            E01GocActivity::class.java.getDeclaredMethod("showStatus", String::class.java)
+                .apply { isAccessible = true }.invoke(host.get(), "选择手机后即可连接")
+            assertEquals("选择手机后即可连接", panel.confirmed.text.toString())
+            for (night in listOf(false, true)) {
+                panel.applyTheme(night)
+                assertEquals(WaitingScreenColors.of(night).text, panel.stage.currentTextColor)
             }
         } finally { host.pause().stop().destroy() }
     }
 
-    private fun sample() = ConnectionWaitingView(RuntimeEnvironment.getApplication()).apply {
+    private fun sample() = ConnectionWaitingView(RuntimeEnvironment.getApplication(), showLogPanel = true).apply {
         stage.text = "正在等待 USB 连接的 iPhone"
         instructions.text = "请用 USB 数据线连接并解锁 iPhone。"
         confirmed.text = "最近确认节点：MFi 认证已就绪"
