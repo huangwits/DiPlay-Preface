@@ -1,0 +1,2 @@
+# Point this domain's DNS to the deployment server before starting HTTPS.
+LICENSE_DOMAIN=license.example.com

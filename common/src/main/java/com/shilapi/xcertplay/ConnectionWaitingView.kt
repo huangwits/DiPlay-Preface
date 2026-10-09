@@ -11,8 +11,8 @@ import android.view.View
 import android.widget.*
 import kotlin.math.roundToInt
 
-/** The connection controls and their live evidence share one viewport. */
-internal class ConnectionWaitingView(context: Context) : FrameLayout(context) {
+/** Full-width connection controls; USB explicitly opts into the diagnostic panel. */
+internal class ConnectionWaitingView(context: Context, private var showLogPanel: Boolean = false) : FrameLayout(context) {
     val columns = LinearLayout(context)
     val controls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     val controlScroll = ScrollView(context).apply { isFillViewport = true; addView(controls) }
@@ -42,6 +42,10 @@ internal class ConnectionWaitingView(context: Context) : FrameLayout(context) {
     private val follow = action("跟随最新")
     private val copy = action("复制日志")
     private val header = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+    private val extraButtons = mutableListOf<Button>()
+    private val extraLabels = mutableListOf<TextView>()
+    private val extraInputs = mutableListOf<EditText>()
+    private var themedNight = false
     private var following = true
     private var positioning = false
     private var renderedLogs = ""
@@ -65,7 +69,7 @@ internal class ConnectionWaitingView(context: Context) : FrameLayout(context) {
         logPanel.addView(header, LinearLayout.LayoutParams(-1, -2))
         logPanel.addView(logScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         columns.addView(controlScroll)
-        columns.addView(logPanel)
+        if (showLogPanel) columns.addView(logPanel)
         addView(columns, LayoutParams(-1, -1))
         logScroll.setOnTouchListener { _, event ->
             if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
@@ -107,7 +111,9 @@ internal class ConnectionWaitingView(context: Context) : FrameLayout(context) {
         val leftWidth = (width * .34f).roundToInt().coerceIn(dp(240), dp(400))
         if (layoutWidth != width || layoutHeight != height) {
             layoutWidth = width; layoutHeight = height
-            if (landscape) {
+            if (!showLogPanel) {
+                controlScroll.layoutParams = LinearLayout.LayoutParams(-1, -1)
+            } else if (landscape) {
                 controlScroll.layoutParams = LinearLayout.LayoutParams(leftWidth, -1)
                 logPanel.layoutParams = LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(8) }
             } else {
@@ -119,10 +125,24 @@ internal class ConnectionWaitingView(context: Context) : FrameLayout(context) {
     }
 
     fun showLogs(value: String) {
+        if (!showLogPanel) return
         if (renderedLogs == value) return
         renderedLogs = value
         logText.text = value.ifEmpty { "等待连接日志…" }
         if (following) scrollToLatest()
+    }
+
+    fun setLogPanelVisible(visible: Boolean) {
+        if (showLogPanel == visible) return
+        showLogPanel = visible
+        if (visible) columns.addView(logPanel) else {
+            columns.removeView(logPanel)
+            renderedLogs = ""
+            logText.text = "等待连接日志…"
+        }
+        layoutWidth = -1
+        layoutHeight = -1
+        requestLayout()
     }
 
     fun scrollToLatest() {
@@ -138,16 +158,50 @@ internal class ConnectionWaitingView(context: Context) : FrameLayout(context) {
         retry.visibility = VISIBLE
     }
 
+    fun addControlAction(label: String): Button = action(label).also {
+        extraButtons += it
+        controls.addView(it, controls.indexOfChild(gestureHint), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        applyTheme(themedNight)
+    }
+
+    fun addControlText(label: String, size: Float = 13f): TextView = text(label, size).also {
+        extraLabels += it
+        controls.addView(it, controls.indexOfChild(gestureHint), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        applyTheme(themedNight)
+    }
+
+    fun addPortInput(label: String, value: String): EditText {
+        val row = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+        val caption = text(label, 14f)
+        extraLabels += caption
+        row.addView(caption, LinearLayout.LayoutParams(0, -2, 1f))
+        val input = EditText(context).apply {
+            setText(value); textSize = 14f; inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true); contentDescription = label; minHeight = dp(48)
+        }
+        extraInputs += input
+        row.addView(input, LinearLayout.LayoutParams(dp(96), -2))
+        controls.addView(row, controls.indexOfChild(retry), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        applyTheme(themedNight)
+        return input
+    }
+
     fun applyTheme(night: Boolean) {
+        themedNight = night
         val palette = WaitingScreenColors.of(night)
         setBackgroundColor(palette.background)
         listOf(title, stage, logTitle, logText).forEach { it.setTextColor(palette.text) }
-        listOf(statusLabel, instructions, gestureHint).forEach { it.setTextColor(palette.secondary) }
+        (listOf(statusLabel, instructions, gestureHint) + extraLabels).forEach { it.setTextColor(palette.secondary) }
         confirmed.setTextColor(if (night) Color.rgb(144, 220, 171) else Color.rgb(24, 113, 63))
         failure.setTextColor(if (night) Color.rgb(255, 205, 205) else Color.rgb(158, 25, 35))
         failure.background = rounded(if (night) Color.rgb(72, 28, 35) else Color.rgb(255, 230, 231))
+        extraInputs.forEach {
+            it.setTextColor(palette.text)
+            it.setHintTextColor(palette.secondary)
+            it.backgroundTintList = android.content.res.ColorStateList.valueOf(palette.secondary)
+        }
         logPanel.background = rounded(if (night) Color.rgb(19, 28, 42) else Color.WHITE)
-        listOf(retry, settings, recovery, back, copy, follow).forEach {
+        (listOf(retry, settings, recovery, back, copy, follow) + extraButtons).forEach {
             it.setTextColor(palette.text)
             it.backgroundTintList = android.content.res.ColorStateList.valueOf(
                 if (night) Color.rgb(42, 56, 77) else Color.rgb(213, 225, 243))

@@ -29,7 +29,28 @@ class DiagnosticExportFallbackTest {
     @Before fun cleanReports() {
         reports.deleteRecursively()
         privateReports.deleteRecursively()
+        File(context.getExternalFilesDir(null)!!, "vehicle-reports").deleteRecursively()
+        File(context.filesDir, "vehicle-reports").deleteRecursively()
         registerReportProvider()
+    }
+
+    @Test fun vehicleReportsCannotPruneConnectionReports() = checkSeparateRetention(context)
+
+    @Test fun privateVehicleReportsCannotPruneConnectionReports() = checkSeparateRetention(
+        object : ContextWrapper(context) {
+            override fun getExternalFilesDir(type: String?): File? = null
+        })
+
+    private fun checkSeparateRetention(destination: android.content.Context) {
+        val diagnostic = DiagnosticExportStore.saveWithoutPicker(destination, "DiPlay-20261008-120000-000.txt", "connection")
+        var scan: Uri? = null
+        repeat(10) {
+            scan = DiagnosticExportStore.saveWithoutPicker(destination, "DiPlay-Vehicle-20261008-120000-000.txt", "scan $it").uri
+        }
+        assertEquals("connection", read(diagnostic.uri))
+        assertEquals("scan 9", read(scan!!))
+        repeat(10) { DiagnosticExportStore.saveWithoutPicker(destination, "DiPlay-test.txt", "new connection $it") }
+        assertEquals("scan 9", read(scan!!))
     }
 
     @Test fun androidNineSavesUtf8WithoutAPickerOrStoragePermission() {

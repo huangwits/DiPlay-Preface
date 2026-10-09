@@ -1,0 +1,14 @@
+{
+  "name": "diplay-license",
+  "pages_build_output_dir": "./public",
+  "compatibility_date": "2026-10-08",
+  "vars": {
+    "APP_PACKAGE": "com.shihab.diplay.preface",
+    "APP_SIGNER": "db0dc2a34dc06f22db7a3d10103fa011167712ebe61985ca2103084ff542cb82"
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "diplay-license",
+    "database_id": "00000000-0000-0000-0000-000000000000"
+  }]
+}

@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- carlito | Direct report export on Android 9; newer versions use Downloads storage. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Independent system-log discovery uses the existing local connection to request access. -->
     <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions" />
@@ -21,6 +24,7 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <!-- The centre card also follows whichever launcher is the default home. -->
     <queries>
+        <package android:name="ecarx.bluetooth.service" />
         <package android:name="com.autolink.carplay" />
         <package android:name="com.autolink.carplay.app" />
         <package android:name="com.geely.service.oneosapi" />
@@ -29,11 +33,22 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.OPEN_DOCUMENT" />
+            <data android:mimeType="*/*" />
+        </intent>
     </queries>
     <application>
-        <activity android:name="com.shilapi.xcertplay.e01switch.E01BluetoothSwitchActivity"
-            android:exported="false" android:launchMode="singleTask"
-            android:configChanges="orientation|screenSize" android:theme="@style/Theme.Xcertplay" />
+        <activity android:name="com.shilapi.xcertplay.license.OfflineLicenseActivity"
+            android:enabled="@bool/config_offline_license"
+            android:exported="false" android:launchMode="singleTop"
+            android:theme="@style/Theme.Xcertplay" />
+        <activity android:name="com.shilapi.xcertplay.license.LicenseActivity"
+            android:exported="false" android:launchMode="singleTop"
+            android:theme="@style/Theme.Xcertplay" />
+        <activity android:name="com.shilapi.xcertplay.e01goc.E01GocActivity"
+            android:exported="false" android:theme="@style/Theme.Xcertplay"
+            android:configChanges="orientation|screenSize" />
         <!-- carlito | Generic instrument map viewport settings. -->
         <activity android:name="com.shilapi.xcertplay.VehicleMapProjectionActivity" android:exported="false"
             android:resizeableActivity="true" android:theme="@style/Theme.Xcertplay" />

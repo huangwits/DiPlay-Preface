@@ -1,4 +1,5 @@
-name: Publish download site
+name: Publish GitHub project site
+# Publishes the GitHub project site, not the Cloudflare licensing backend.
 on:
   push:
     branches: [main]
@@ -13,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
-    if: github.repository == 'shihabal3amri/DiPlay'
+    if: github.repository == 'huangwits/DiPlay-Preface'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -21,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/build_site.py
+      - run: python3 scripts/check_public_tree.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

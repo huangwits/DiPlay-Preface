@@ -1,0 +1,7 @@
+{$LICENSE_DOMAIN} {
+    encode gzip
+    request_body {
+        max_size 16KB
+    }
+    reverse_proxy api:8787
+}

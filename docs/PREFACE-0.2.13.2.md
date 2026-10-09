@@ -1,5 +1,7 @@
 # Preface 0.2.13.2.1
 
+> 历史版本记录：以下版本、低负载配置和 mtk-su 流程描述当时行为，不能用于当前构建。当前版本及安装说明见 [Preface 0.2.15.1](PREFACE-0.2.15.1.md)，编号规则见 [VERSIONING.md](VERSIONING.md)。Historical release record; use the linked current release notes for new builds.
+
 ## 基底与版本
 
 - Geely 基底：`586b39368b0bf7e3e9cb50a0b7838db083b382e1`，版本 0.2.13.2。
@@ -22,7 +24,27 @@ E01 默认启用低负载配置：H.264、最高 960×540、30 帧、关闭额�
 
 ## 连接与蓝牙日志界面
 
-横屏时，连接等待页和蓝牙工具都采用左侧操作、右侧日志。右侧可复制日志或跟随最新输出，向上翻阅时暂停自动跟随；窄屏改为上下排列，两栏可分别滚动。连接失败原因在下一次等待时保留。屏幕日志有容量上限，完整连接报告沿用原有保存路径。此项为界面和诊断展示调整，不代表 USB 或蓝牙实车故障已经修复。
+连接等待页仅在 USB 模式显示日志，支持复制、跟随和滚动；无线及原厂蓝牙工具不显示诊断日志。联网授权版的原厂蓝牙工具改为左侧操作、右侧授权与 QQ 群卡片，两侧分别滚动。连接失败原因在下一次等待时保留。屏幕日志有容量上限，完整连接报告沿用原有保存路径。此项为界面和诊断展示调整，不代表 USB 或蓝牙实车故障已经修复。
+
+连接等待页与蓝牙工具共用按钮、端口输入框和文字配色。蓝牙工具同步读取 CarPlay 的跟随系统、日间、夜间、光感设置，并在恢复页面与系统配置变化时刷新；暂停时停止光感监听。
+
+## E01 临时权限适配（本地内置测试包）
+
+内置用户提供并已校验的 AArch64 mtk-su（原作者 diplomatic@XDA）。无需在 /sdcard 放置文件。点击“尝试切换”或“恢复原厂”时，已有校验通过的可执行文件直接复用；否则通过已授权的本机 ADB SYNC 将内置文件准备到 /data/local/tmp/mtk-su，核验字节后设置 755。传输失败、目标异常、校验失败时不执行。源码普通构建不带该文件，仍可使用用户已有的 /sdcard 文件。
+
+兼容 E01 的完整 UID 输出。已有 su 或 root ADB 可以直接使用。mtk-su 与蓝牙脚本在同一次调用中运行，脚本读取 /proc/self/status 再次确认实际有效 UID 为 0。“检查连接”及普通 CarPlay 启动不释放文件或提权。操作前校验机型、平台和固件，不重挂载 /system，不增加常驻 root 服务。
+
+内置二进制通过外部构建输入提供，仅用于用户要求的本地个人测试包，未加入公开源码或发布到 GitHub；保留原作者信息，不声明额外分发授权。实际提权及蓝牙切换效果仍待实车验证。
+
+## Android 5.1 文件读取修复（本地测试）
+
+读取 mtk-su 改用 ADB `exec:` 原始通道，避免旧版 `shell:` 伪终端转换二进制换行而造成校验失败。不回退到 shell 读取二进制。机型、平台、固件、64 位执行环境、文件类型、读取权限和执行权限失败会分别记录实际条件；文件不一致时显示读取字节数和实际 SHA-256，ADB 连接异常也不再被吞掉。仍保留原文件校验，不把错误输出当成可执行文件。
+
+此修复基于 Android 5.1 ADB 源码及模拟传输验证。截图只能确认旧版未成功准备权限通道，不能单独证明实车失败一定由换行转换导致。
+
+## USB 打开失败恢复（本地测试）
+
+USB 控制请求执行前重新读取当前设备和权限，避免使用排队期间已失效的设备对象。打开失败会等待 500ms 后重新识别，最多执行两次配置请求；持续失败时日志保留设备是否仍存在、当前权限及配置数量。成功发送配置切换后，每 500ms 主动检查新设备或更新的 CarPlay 描述符，最多等待 15 秒，兼容系统漏发插入广播。切换连接关闭前不启动下一次 USB 操作；关闭或替换连接尝试会取消旧扫描。此项不修改 USB 节点权限，不代表线材、车机接口或实车连接已验证。
 
 ## 验证范围
 
@@ -40,3 +62,5 @@ The E01 profile limits video workload while preserving saved preferences. Geely 
 
 
 Connection waiting and Bluetooth tools share a split layout with controls on the left and live logs on the right. Narrow windows stack the panels. Copy and follow-latest actions are available; reading older lines pauses automatic following. The last failure remains visible during retry. These changes improve diagnostics and do not claim to fix vehicle connectivity.
+
+Local personal test build: includes the owner's verified AArch64 mtk-su, attributed to diplomatic@XDA. Explicit Switch/Restore actions reuse a verified executable or prepare the bundled bytes via authorized local ADB SYNC, read back via raw exec, then enable mode 755. No /sdcard file is required. Normal startup and Check Connection do not deploy or execute the helper. The same-process guarded script verifies its own effective UID. No /system remount or persistent root service is added. Binary input remains outside the public source tree; no additional redistribution license or vehicle success is claimed.

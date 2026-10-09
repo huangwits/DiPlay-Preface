@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-__SCRIPT_HASH__'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <title>DiPlay · 离线激活</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231b6556'/%3E%3Ctext x='6' y='23' fill='white' font-size='21'%3ED%3C/text%3E%3C/svg%3E">
+  <style>
+    :root{color-scheme:light;--ink:#182c28;--muted:#63746e;--green:#1b6556;--line:#dce5df;--soft:#edf4ef;--bg:#f5f7f3}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 "Segoe UI","Microsoft YaHei",sans-serif}
+    button,input,textarea{font:inherit}button{cursor:pointer;border:1px solid var(--line);border-radius:9px;background:white;padding:10px 18px;color:var(--ink);font-weight:600;transition:background .15s}
+    button:hover:enabled{background:var(--soft)}button:disabled{cursor:default;opacity:.45}button:focus-visible,textarea:focus-visible{outline:3px solid #abcdbd;outline-offset:3px}
+    .primary{background:var(--green);color:#fff;border-color:var(--green)}.primary:hover:enabled{background:#144d42}.quiet{font-size:13px;padding:6px 11px;background:transparent}
+    .shell{max-width:1080px;margin:auto;padding:26px 32px 30px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:36px}.brand{display:flex;align-items:center;gap:11px;font-size:18px;font-weight:700}.mark{background:var(--green);color:white;border-radius:10px;width:38px;height:38px;display:grid;place-items:center;font:700 19px Georgia,serif}.badge{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--green);border:1px solid #ccdcd1;background:#f0f6ef;padding:5px 12px;border-radius:99px}.dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+    h1{font-size:34px;letter-spacing:-1px;line-height:1.25;margin:0 0 12px;font-weight:650}h2{font-size:18px;line-height:1.5;margin:0;font-weight:650}p{margin:0}.intro{margin-bottom:28px}.intro p{color:var(--muted)}.layout{display:grid;grid-template-columns:304px 1fr;gap:20px;align-items:start}.card{border:1px solid var(--line);border-radius:14px;padding:24px;background:#fff}.heading{display:flex;align-items:center;gap:11px;margin-bottom:16px}.step{display:grid;place-items:center;flex:0 0 27px;height:27px;background:var(--soft);color:var(--green);border-radius:50%;font-size:12px;font-weight:700}.muted{color:var(--muted);font-size:13px}.keybox{margin-top:20px;padding:21px 14px;border:1px dashed #bed1c4;border-radius:10px;text-align:center;background:#f8faf7}.keybox button{width:100%}.key-icon{font-size:26px;line-height:1;margin-bottom:16px;color:var(--green)}.key-status{margin-top:13px;font-size:13px;overflow-wrap:anywhere}.key-status[data-state=error]{color:#a3382a}.key-status[data-state=ready]{color:var(--green)}.key-actions{margin-top:12px}.aside-note{margin-top:23px;padding-top:18px;border-top:1px solid var(--line)}.stack{display:grid;gap:20px}label{font-weight:600;display:block;margin-bottom:8px}.hint{font-size:12px;color:var(--muted);margin:7px 0 16px}textarea{width:100%;min-width:0;resize:vertical;border:1px solid #cfdad2;border-radius:9px;padding:12px;background:#fcfdfb;color:var(--ink);font-family:Consolas,"Microsoft YaHei",monospace;font-size:13px;line-height:1.65;overflow-wrap:anywhere}textarea::placeholder{color:#89988f}.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.result-card{background:#fcfefa}.result-card textarea{background:#f4f8f1;border-color:#dce6d6}.result-meta{font-size:12px;color:var(--muted);margin-left:auto}.notice{font-size:13px;color:var(--muted);margin:13px 0 0;min-height:23px;overflow-wrap:anywhere}.notice[data-state=error]{color:#a3382a}.notice[data-state=success]{color:var(--green)}footer{margin-top:28px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+    @media(max-width:760px){.shell{padding:20px 18px}.top{margin-bottom:28px}.layout{grid-template-columns:1fr}.card{padding:20px}h1{font-size:29px}.aside-note{margin-top:16px;padding-top:14px}.keybox{margin-top:16px}.key-icon{display:none}.result-meta{margin-left:0;flex-basis:100%}.badge{padding:4px 9px;font-size:11px}.brand{font-size:16px}}
+  </style>
+</head>
+<body>
+<main class="shell">
+  <header class="top"><div class="brand"><span class="mark">D</span>DiPlay <span class="muted">/ 授权管理</span></div><span class="badge"><span class="dot"></span>本地离线网页</span></header>
+  <section class="intro"><h1>离线激活</h1><p>用客户的设备码生成激活码，无需服务器或网络连接。</p></section>
+  <div class="layout">
+    <aside class="card">
+      <div class="heading"><span class="step">01</span><h2>选择签发凭据</h2></div>
+      <p class="muted">选择你保存的 <strong>issuer-private.pem</strong>。私钥仅在当前网页内使用。</p>
+      <div class="keybox"><div class="key-icon" aria-hidden="true">◇</div><button id="choose-key" type="button">选择签发私钥</button><input id="key-file" type="file" accept=".pem" hidden><p id="key-status" class="key-status" role="status">尚未选择私钥</p><div class="key-actions"><button id="clear-key" class="quiet" type="button" disabled>清除本次凭据</button></div></div>
+      <div class="aside-note muted">每次打开只需选择一次。刷新或关闭网页后需重新选择。<br><br>客户只需要 APK 和自己的激活码；签发私钥由你保管。</div>
+    </aside>
+    <div class="stack">
+      <section class="card">
+        <div class="heading"><span class="step">02</span><h2>输入客户设备码</h2></div>
+        <form id="issue-form" autocomplete="off">
+          <label for="device-code">设备码</label><textarea id="device-code" rows="3" maxlength="256" spellcheck="false" placeholder="DP-DEVICE1-…" required></textarea>
+          <p class="hint">让客户在 APK 的离线激活页复制完整设备码，再发给你。</p>
+          <button id="generate" class="primary" type="submit" disabled>生成永久激活码</button>
+        </form>
+        <p id="status" class="notice" role="status" aria-live="polite">先选择签发私钥，再填写设备码。</p>
+      </section>
+      <section class="card result-card">
+        <div class="heading"><span class="step">03</span><h2>把激活码发给客户</h2></div>
+        <label for="activation-code" class="muted">完整激活码</label><textarea id="activation-code" rows="5" readonly spellcheck="false" placeholder="生成的激活码会显示在这里"></textarea>
+        <div class="actions" style="margin-top:14px"><button id="copy" type="button" disabled>复制激活码</button><button id="download" type="button" disabled>下载 TXT 文件</button><span id="result-meta" class="result-meta">每个激活码仅对应一个安装实例</span></div>
+        <p class="hint" style="margin-bottom:0">客户粘贴激活码，或导入 TXT 文件后点击“激活本机”。</p>
+      </section>
+    </div>
+  </div>
+  <footer><span>永久授权 · 不检查车机日期 · 无法远程停用</span><span>联系微信：starts181004</span></footer>
+</main>
+<script>
+"use strict";
+(() => {
+  const config = __PUBLIC_CONFIG_JSON__;
+  const byId = id => document.getElementById(id);
+  const keyFile = byId("key-file"), keyStatus = byId("key-status"), deviceInput = byId("device-code");
+  const result = byId("activation-code"), status = byId("status");
+  let privateKey = null, publicKey = null, keyRevision = 0, generation = 0, activeDevice = "";
+  const algorithm = {name: "RSASSA-PKCS1-v1_5", hash: "SHA-256"};
+  const notice = (text, state = "") => { status.textContent = text; status.dataset.state = state; };
+  const keyNotice = (text, state = "") => { keyStatus.textContent = text; keyStatus.dataset.state = state; };
+  function clearResult() {
+    generation++; result.value = ""; activeDevice = "";
+    byId("copy").disabled = byId("download").disabled = true;
+    byId("result-meta").textContent = "每个激活码仅对应一个安装实例";
+  }
+  const fromBase64 = text => Uint8Array.from(atob(text), ch => ch.charCodeAt(0));
+  function toBase64Url(bytes) {
+    let binary = ""; for (const value of new Uint8Array(bytes)) binary += String.fromCharCode(value);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function deviceCode() {
+    const value = deviceInput.value.replace(/\s/g, "");
+    if (!/^DP-DEVICE1-[a-fA-F0-9]{64}$/.test(value)) throw new Error("请填写 DP-DEVICE1- 开头的完整设备码（后面为 64 位字符）。");
+    return value.slice(11).toLowerCase();
+  }
+  function uuid() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+    const h = Array.from(bytes, n => n.toString(16).padStart(2, "0")).join("");
+    return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+  }
+  byId("choose-key").addEventListener("click", () => keyFile.click());
+  byId("clear-key").addEventListener("click", () => {
+    keyRevision++; privateKey = null; keyFile.value = ""; clearResult();
+    byId("generate").disabled = byId("clear-key").disabled = true;
+    keyNotice("已清除本次凭据"); notice("重新选择签发私钥后可继续生成。");
+  });
+  keyFile.addEventListener("change", async () => {
+    const revision = ++keyRevision; privateKey = null; clearResult();
+    byId("generate").disabled = byId("clear-key").disabled = true;
+    const file = keyFile.files[0]; keyFile.value = "";
+    if (!file) { keyNotice("尚未选择私钥"); return; }
+    keyNotice("正在核对签发凭据…");
+    let encoded;
+    try {
+      if (file.size > 16384) throw new Error("文件过大，请选择 issuer-private.pem。");
+      const pem = await file.text();
+      const match = /^\s*-----BEGIN PRIVATE KEY-----\s+([A-Za-z0-9+/=\r\n]+)-----END PRIVATE KEY-----\s*$/.exec(pem);
+      if (!match) throw new Error("文件格式不正确，请选择原有的 issuer-private.pem。");
+      encoded = fromBase64(match[1].replace(/\s/g, ""));
+      const imported = await crypto.subtle.importKey("pkcs8", encoded, algorithm, false, ["sign"]);
+      publicKey ??= await crypto.subtle.importKey("spki", fromBase64(config.publicKey), algorithm, false, ["verify"]);
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const proof = await crypto.subtle.sign(algorithm.name, imported, challenge);
+      if (!await crypto.subtle.verify(algorithm.name, publicKey, proof, challenge)) throw new Error("这把私钥与当前 APK 不匹配，请选择原有的离线签发私钥。");
+      if (revision !== keyRevision) return;
+      privateKey = imported; byId("generate").disabled = byId("clear-key").disabled = false;
+      keyNotice("凭据就绪 · 已匹配当前 APK", "ready"); notice("粘贴客户设备码，即可生成激活码。");
+    } catch (error) {
+      if (revision !== keyRevision) return;
+      keyNotice(error instanceof Error && !error.name.includes("Error") ? "无法读取签发私钥。" : (error.message || "无法读取签发私钥。"), "error");
+      notice("未加载签发凭据，请重新选择正确的私钥文件。", "error");
+    } finally { if (encoded) encoded.fill(0); }
+  });
+  deviceInput.addEventListener("input", () => { clearResult(); notice(privateKey ? "设备码已修改，请重新生成。" : "先选择签发私钥，再填写设备码。"); });
+  byId("issue-form").addEventListener("submit", async event => {
+    event.preventDefault(); clearResult();
+    const run = generation, revision = keyRevision, key = privateKey;
+    try {
+      if (!key) throw new Error("请先选择签发私钥。");
+      const device = deviceCode(); byId("generate").disabled = true; notice("正在生成…");
+      const payload = new TextEncoder().encode(["DP-OFFLINE1", device, config.package, config.signer, "permanent", uuid()].join("\n"));
+      const signature = await crypto.subtle.sign(algorithm.name, key, payload);
+      if (run !== generation || revision !== keyRevision) return;
+      result.value = "DP-ACT1." + toBase64Url(payload) + "." + toBase64Url(signature); activeDevice = device;
+      byId("copy").disabled = byId("download").disabled = false;
+      byId("result-meta").textContent = "对应设备：" + device.slice(0,8) + "…" + device.slice(-8);
+      notice("已生成永久激活码。将完整文本或 TXT 文件发给该客户即可。", "success");
+    } catch (error) { if (run === generation) notice(error.message || "生成失败，请重试。", "error"); }
+    finally { if (revision === keyRevision) byId("generate").disabled = !privateKey; }
+  });
+  byId("copy").addEventListener("click", async () => {
+    if (!result.value) return;
+    const token = result.value;
+    try { await navigator.clipboard.writeText(token); notice("完整激活码已复制。", "success"); }
+    catch {
+      result.focus(); result.select();
+      notice(document.execCommand("copy") ? "完整激活码已复制。" : "已选中激活码，请按 Ctrl+C 复制。");
+    }
+  });
+  byId("download").addEventListener("click", () => {
+    if (!result.value) return;
+    const url = URL.createObjectURL(new Blob([result.value + "\n"], {type:"text/plain;charset=utf-8"}));
+    const link = document.createElement("a"); link.href = url; link.download = "DiPlay-activation-" + activeDevice.slice(0,8) + ".txt";
+    document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    notice("已下载 TXT 文件，可直接发给客户导入。", "success");
+  });
+  if (!window.isSecureContext || !window.crypto?.subtle) {
+    byId("choose-key").disabled = true;
+    keyNotice("当前浏览器不支持本地签发", "error");
+    notice("请使用桌面版 Edge 或 Chrome 直接打开此 HTML 文件，无需启动服务器。", "error");
+  }
+})();
+</script>
+</body>
+</html>

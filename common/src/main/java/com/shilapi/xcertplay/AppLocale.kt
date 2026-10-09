@@ -28,4 +28,19 @@ object AppLocale {
         }
         return context.createConfigurationContext(configuration)
     }
+    /** Restore Chinese after compatibility firmware resets the activity resources. */
+    @Suppress("DEPRECATION")
+    fun enforce(context: Context): Boolean {
+        val resources = context.resources
+        val current = if (Build.VERSION.SDK_INT >= 24) resources.configuration.locales[0]
+            else resources.configuration.locale
+        if (current == Locale.SIMPLIFIED_CHINESE) return false
+        val configuration = Configuration(resources.configuration).apply {
+            setLocale(Locale.SIMPLIFIED_CHINESE)
+            setLayoutDirection(Locale.SIMPLIFIED_CHINESE)
+        }
+        resources.updateConfiguration(configuration, resources.displayMetrics)
+        return true
+    }
+
 }

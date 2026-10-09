@@ -14,6 +14,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      DIPLAY_WORKERS_VECTOR: ${{ github.workspace }}/../diplay-worker-vector.json
+      DIPLAY_LICENSE_PREVIEW: 'true'
+      WRANGLER_SEND_METRICS: 'false'
     steps:
       - uses: actions/checkout@v4
       - name: Reject credentials and distribution files in source
@@ -22,6 +26,24 @@ jobs:
         run: python3 scripts/check_geely_scope.py
       - name: Maintenance workflow regression tests
         run: python3 -m unittest discover -s scripts/tests -p "test_*.py"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Offline activation issuer tests
+        run: |
+          python -m pip install -r offline-license/requirements.txt
+          python -m unittest discover -s offline-license -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: license-workers/package-lock.json
+      - name: Workers D1 integration and upload bundle validation
+        working-directory: license-workers
+        run: |
+          npm ci
+          npm test
+          npm run check
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -30,11 +52,12 @@ jobs:
         with:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;28.2.13676358
       - uses: gradle/actions/setup-gradle@v4
-      - name: Unit tests, API compatibility and source-only E01 APK
+      - name: Unit tests, API compatibility and both source-only E01 variants
         run: >-
           ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest
           :shared:lintDebug :common:lintDebug
-          :mobile:lintE01 :mobile:assembleE01
+          :mobile:lintE01 :mobile:assembleE01 :mobile:lintE01Public :mobile:assembleE01Public
+          :mobile:lintE01Licensed :mobile:assembleE01Licensed
           -I scripts/android51-api-lint.init.gradle --stacktrace
       - name: Verify Android 5.1 APK and absence of private authentication assets
         shell: bash
@@ -43,12 +66,12 @@ jobs:
           apk=mobile/build/outputs/apk/e01/mobile-e01.apk
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -Fx "sdkVersion:'22'"
           python3 scripts/check_source_apk.py "$apk"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: source-only-e01-not-for-car-installation
-          path: |
-            mobile/build/outputs/apk/e01/*.apk
-          if-no-files-found: error
+          public_apk=mobile/build/outputs/apk/e01Public/mobile-e01Public.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$public_apk" | grep -Fx "sdkVersion:'22'"
+          python3 scripts/check_source_apk.py "$public_apk"
+          python3 scripts/check_public_release_apk.py "$public_apk" mobile/build/outputs/mapping/e01Public/mapping.txt
+          python3 scripts/check_source_apk.py mobile/build/outputs/apk/e01Licensed/mobile-e01Licensed.apk
+      # APKs remain ephemeral validation outputs; public artifacts contain reports only.
       - name: Validation reports
         if: always()
         uses: actions/upload-artifact@v4

@@ -64,10 +64,15 @@ object AirPlayPersistence {
     private const val KEY_MODEL = "model"
     private const val KEY_OEM_LABEL = "oem_label"
     private const val KEY_CARPLAY_NIGHT_MODE = "carplay_night_mode"
+    private const val KEY_CARPLAY_NIGHT_START = "carplay_night_start_minute"
+    private const val KEY_CARPLAY_NIGHT_END = "carplay_night_end_minute"
     private const val KEY_AMBIENT_LUX_THRESHOLD = "ambient_lux_threshold"
     private const val KEY_FPS = "display_fps"
     private const val KEY_MEDIA_BUFFER_MS = "media_buffer_ms"
     private const val KEY_MAIN_BUFFERED_AUDIO = "main_buffered_audio"
+    private const val KEY_SMOOTH_VIDEO = "smooth_video"
+    private const val KEY_CALL_ECHO_CANCELLATION = "call_echo_cancellation"
+    private const val KEY_CALL_VOICE_FILTER = "call_voice_filter"
     private const val KEY_CLUSTER_MAP = "cluster_map_enabled"
     private const val KEY_GEELY_HUD_ENABLED = "geely_hud_enabled"
     private const val KEY_GEELY_HUD_DISPLAY_ID = "geely_hud_display_id"
@@ -108,7 +113,7 @@ object AirPlayPersistence {
 
     const val DEFAULT_MANUFACTURER = "DiPlay"
     const val DEFAULT_MODEL = "DiPlay"
-    const val DEFAULT_OEM_LABEL = "Geely"
+    const val DEFAULT_OEM_LABEL = "吉利"
     const val DEFAULT_MFI_I2C_PATH = "/dev/i2c-1"
 
     fun loadAmbientDelaySeconds(context: Context): Int =
@@ -152,7 +157,6 @@ object AirPlayPersistence {
     }
 
     fun loadHevcEnabled(context: Context): Boolean =
-        !E01Settings.enabled(context) &&
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_HEVC_ENABLED, false)
 
@@ -173,7 +177,6 @@ object AirPlayPersistence {
     }
 
     fun loadHevcSoftwareDecoderEnabled(context: Context): Boolean =
-        !E01Settings.enabled(context) &&
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_HEVC_SOFTWARE_DECODER, false)
 
@@ -472,7 +475,7 @@ object AirPlayPersistence {
         val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_OEM_LABEL, null)
         // Migrate the former upstream default, while preserving an owner's custom label.
         if (stored.isNullOrBlank() || stored == "BYD") {
-            return GeelyFactoryCarPlay.load(context)?.iconLabel ?: DEFAULT_OEM_LABEL
+            return DEFAULT_OEM_LABEL
         }
         return stored
     }
@@ -502,7 +505,25 @@ object AirPlayPersistence {
             .putString(KEY_CARPLAY_NIGHT_MODE, mode.key).apply()
     }
 
-    fun loadFps(context: Context): Int = if (E01Settings.enabled(context)) 30 else AirPlayDisplaySettings.sanitizeFps(
+    fun loadCarPlayNightSchedule(context: Context): CarPlayNightSchedule {
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val defaults = CarPlayNightSchedule()
+        val start = preferences.getInt(KEY_CARPLAY_NIGHT_START, defaults.startMinute)
+        val end = preferences.getInt(KEY_CARPLAY_NIGHT_END, defaults.endMinute)
+        return CarPlayNightSchedule(
+            start.takeIf { it in 0 until 24 * 60 } ?: defaults.startMinute,
+            end.takeIf { it in 0 until 24 * 60 } ?: defaults.endMinute,
+        )
+    }
+
+    fun saveCarPlayNightSchedule(context: Context, schedule: CarPlayNightSchedule) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_CARPLAY_NIGHT_START, schedule.startMinute)
+            .putInt(KEY_CARPLAY_NIGHT_END, schedule.endMinute)
+            .apply()
+    }
+
+    fun loadFps(context: Context): Int = AirPlayDisplaySettings.sanitizeFps(
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_FPS, 30),
     )
@@ -520,9 +541,32 @@ object AirPlayPersistence {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_MAIN_BUFFERED_AUDIO, enabled).apply()
     }
 
+    fun loadSmoothVideo(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SMOOTH_VIDEO, false)
+
+    fun saveSmoothVideo(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_SMOOTH_VIDEO, enabled).apply()
+    }
+
     fun saveMediaBufferMillis(context: Context, millis: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putInt(KEY_MEDIA_BUFFER_MS, com.shilapi.xcertplay.media.MediaAudioBuffer.sanitize(millis)).apply()
+    }
+
+    /** DiPlay's own experimental echo canceller on CarPlay call audio; opt-in, applies at reconnect. */
+    fun loadCallEchoCancellation(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CALL_ECHO_CANCELLATION, false)
+
+    fun saveCallEchoCancellation(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CALL_ECHO_CANCELLATION, enabled).apply()
+    }
+
+    /** Experimental bass cut on CarPlay call audio; opt-in, applies at reconnect. */
+    fun loadCallVoiceFilter(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CALL_VOICE_FILTER, false)
+
+    fun saveCallVoiceFilter(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CALL_VOICE_FILTER, enabled).apply()
     }
 
     fun saveFps(context: Context, fps: Int) {
@@ -579,7 +623,6 @@ object AirPlayPersistence {
     }
 
     fun loadClusterMapEnabled(context: Context): Boolean =
-        !E01Settings.enabled(context) &&
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CLUSTER_MAP, false)
 
     fun loadAdbClusterEnabled(context: Context): Boolean = loadClusterMapEnabled(context) &&

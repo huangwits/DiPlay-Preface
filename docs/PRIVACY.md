@@ -1,6 +1,10 @@
 # Privacy and diagnostics
 
-DiPlay's product flow uses local authentication and a direct USB/Wi-Fi connection to the iPhone. No account or remote authentication service is used. The iPhone's CarPlay apps have their own internet and privacy behavior.
+普通 `e01` 与历史离线 `e01Public` 使用本地软件授权/认证流程。可选 `e01Licensed` 会向构建时配置的 Workers HTTPS 服务发送本次安装的设备公钥、其 SHA-256 摘要、包名、安装签名摘要及签名挑战，请求或刷新软件授权。车机只在授权页面发起请求；待批准时每分钟查询一次，也可手动刷新，离开页面或 20 分钟后停止。应用不向服务发送配件认证身份、私钥、微信内容或安装包。
+
+D1 stores the installation public-key hash, random request number, license status/expiry and request times; the public key is used for proof verification without being stored. Pending requests inactive for 30 days are removed, audit decisions are retained for 180 days, and approved/revoked records remain until the operator handles deletion. Infrastructure processes IP addresses; the application's rate-limit hashes expire shortly. The administrator token stays in page memory and is cleared on reload, navigation or logout. See [the Workers data and deployment notes](../license-workers/README.md). Service operators are responsible for their own infrastructure configuration and data handling.
+
+CarPlay accessory authentication remains local and uses a direct USB/Wi-Fi connection to the iPhone, independently of optional online software licensing. The iPhone's CarPlay apps have their own internet and privacy behavior.
 
 Diagnostic reports are not uploaded automatically. In Settings, the user may enter a problem description and explicitly upload one redacted diagnostic report to the private project cloud. The upload contains that description, head-unit and connection information, and the same redacted session logs available through Save diagnostic report. It excludes protocol payloads, credentials and accessory identities.
 
@@ -15,3 +19,6 @@ Microphone access supports Siri and calls. Bluetooth/Nearby devices and Wi-Fi/Lo
 Usage Access is optional for hiding the launcher map over other apps. Android HOME activities identify launchers; foreground activity events are processed locally. This build does not query BYD instrument, battery, gear or wheel-speed services.
 
 The static website has no analytics script or account. GitHub Pages, GitHub and Telegram apply their own policies when you use those services.
+
+
+2026-10-09 更新：USB 普通连接不使用软件授权页面，也不触发软件授权请求；Android USB 权限和配件认证保持原流程。软件授权入口只保留在蓝牙工具中，连接设置不再显示该入口。

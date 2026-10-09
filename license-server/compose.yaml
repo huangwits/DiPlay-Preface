@@ -1,0 +1,35 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      DIPLAY_LICENSE_DATA: /data
+    volumes:
+      - license-data:/data
+    expose:
+      - "8787"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+  https:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      LICENSE_DOMAIN: ${LICENSE_DOMAIN:?Set LICENSE_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+volumes:
+  license-data:
+  caddy-data:
+  caddy-config:

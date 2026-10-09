@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DiPlay 授权管理</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script src="/admin.js" defer></script></head>
+<body><main><header><div><span class="eyebrow">DIPLAY · 星瑞</span><h1>授权管理</h1><p>激活码绑定设备，集中管理使用权限。</p></div><span class="contact">微信 starts181004</span></header>
+<section id="login"><h2>管理员登录</h2><p>输入服务器私有目录中的管理员密钥。密钥只在当前页面内存中使用。</p>
+<form id="login-form"><label for="token">管理员密钥</label><input id="token" type="password" autocomplete="off" required maxlength="100"><button>进入后台</button></form></section>
+<div id="workspace" hidden><div class="toolbar"><span id="count"></span><button id="refresh" class="secondary">刷新</button><button id="logout" class="secondary">退出登录</button></div>
+<section><h2>生成激活码</h2><form id="issue-form" class="issue-form"><div><label for="label">客户备注</label><input id="label" maxlength="100" placeholder="例如：张先生的星瑞"></div><div><label for="days">有效天数（从生成时起）</label><input id="days" type="number" min="1" max="3650" value="365" required></div><button>生成激活码</button></form>
+<div id="new-code" hidden><p>激活码仅在生成时显示，请保存后发给客户。</p><code id="code"></code><button id="copy" class="secondary">复制激活码</button></div></section>
+<section><h2>设备与授权</h2><p>停用后不再签发连接许可。已签发许可最长有效 5 分钟；正在运行的 CarPlay 不会被强制切断，下次新建会话检查授权。</p><div class="table-wrap"><table><thead><tr><th>客户 / 授权编号</th><th>状态</th><th>设备码</th><th>到期时间</th><th>最近校验</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div><p id="empty" hidden>还没有授权。生成第一条激活码后即可开始。</p></section></div>
+<p id="status" role="status" aria-live="polite"></p><footer>DiPlay 授权管理 · 请妥善保管管理员密钥，并定期备份授权数据。</footer>
+</main></body></html>

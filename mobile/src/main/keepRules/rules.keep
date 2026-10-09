@@ -1,12 +1,13 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
-#
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
+# Native libraries resolve these entry points by the original JNI symbol name.
+-keepclasseswithmembernames,includedescriptorclasses class * {
+    native <methods>;
+}
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# linux_i2c_jni.c constructs this exception via FindClass/GetMethodID.
+-keep,allowoptimization class com.shilapi.xcertplay.transport.LinuxI2cNativeException {
+    <init>(int, java.lang.String);
+}
+
+# Preserve useful crash positions; mapping.txt is retained privately with each build.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

@@ -44,3 +44,13 @@ release-signing.properties
 __pycache__/
 *.pyc
 *.pyo
+
+# Workers local dependencies, state and secrets
+node_modules/
+.wrangler/
+.dev.vars*
+.env*
+server-secrets.json
+admin-token.txt
+*.sqlite*
+*.db

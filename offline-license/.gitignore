@@ -1,0 +1,6 @@
+__pycache__/
+.venv/
+*.pem
+*.der
+*.txt
+!requirements.txt

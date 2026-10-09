@@ -1,0 +1,6 @@
+.venv/
+runtime/
+*.sqlite3*
+*.pem
+admin-token.txt
+.env

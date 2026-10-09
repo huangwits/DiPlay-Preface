@@ -1,4 +1,19 @@
+# DiPlay 星瑞 0.2.15.4 — 2026-10-09
+
+- 授权通过后收起申请栏，再次进入自动核验。
+- 调整 CarPlay 连接按钮位置，完善首次适配、测试和恢复说明。
+- 修复未授权无线连接入口，USB 仍无需软件激活。
+
+[下载与安装说明](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.15.4)
+
+---
+
+以下为上游历史更新记录，当前星瑞版适配范围以 README 为准。
+
 # DiPlay 0.2.13.2 — 2026-10-07
+
+- Add one-click read-only vehicle scan, verified profile application, direct Downloads export, and durable cloud report delivery up to 10 MiB.
+- Restore legacy immersive flags from v0.2.11 and apply display preferences to the scanner window.
 
 - Restore the previously working network, hotspot, USB and Bluetooth discovery paths while keeping 0.2.13.1 display, vehicle and audio features.
 - Apply the saved top status-bar switch immediately on the home/settings screen and restore it on resume or window focus.

@@ -148,4 +148,33 @@ class ManualHotspotReadinessTest {
         assertNull(select(snapshot(iface(addresses = emptyList()))))
         assertNull(select(snapshot(iface(addresses = listOf(InetAddress.getByName("127.0.0.1"))))))
     }
+
+    @Test fun geelyUsesPrivateEthernetWhenOemOnlyReportsItAsTheDefault() {
+        val state = snapshot(iface("wlan0", addresses = listOf(ipv6)),
+            iface("eth0", index = 7), ap = emptySet(), default = "eth0")
+        val selected = selectHotspotInterface(state, geelyCompatibility = true) {}!!
+        assertEquals("eth0", selected.name)
+        assertEquals(ipv4, selected.address)
+    }
+
+    @Test fun geelyServesAlternatePrivateLansButNeverObservedWifiUpstream() {
+        val alternate = InetAddress.getByName("192.168.7.1")
+        val state = snapshot(iface("ap0", index = 3), iface("eth0", index = 7, addresses = listOf(alternate)),
+            iface("wlan0", index = 9), ap = emptySet(), wifi = setOf("wlan0"), default = "eth0")
+        val selected = selectHotspotInterface(state, geelyCompatibility = true) {}!!
+        assertEquals("ap0", selected.name)
+        val addresses = manualHotspotAddresses(state, selected, geelyCompatibility = true)
+        assertEquals(listOf("ap0", "eth0"), addresses.map { it.name })
+        assertEquals(listOf(ipv4, alternate), addresses.map { it.address })
+        assertTrue(manualHotspotAddresses(state.copy(apEnabled = false), selected, true).isEmpty())
+    }
+
+    @Test fun geelyHonorsPositiveApOwnershipAndRetainsIpv6Scope() {
+        val state = snapshot(iface("ap0", index = 8, addresses = listOf(ipv6)),
+            iface("eth0", index = 7), ap = setOf("ap0"), default = "eth0")
+        val selected = selectHotspotInterface(state, geelyCompatibility = true) {}!!
+        assertEquals("ap0", selected.name)
+        assertEquals(8, (selected.address as Inet6Address).scopeId)
+        assertEquals(listOf("ap0"), manualHotspotAddresses(state, selected, true).map { it.name })
+    }
 }

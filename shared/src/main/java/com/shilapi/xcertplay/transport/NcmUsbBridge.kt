@@ -1,12 +1,12 @@
 package com.shilapi.xcertplay.transport
 
-import android.os.Build
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbRequest
+import android.os.Build
 import android.util.Log
 import java.io.Closeable
 import java.nio.ByteBuffer
@@ -28,6 +28,7 @@ class NcmUsbBridge internal constructor(
     private val statusEndpoint: UsbEndpoint?,
     private val claimedInterfaces: List<UsbInterface>,
     descriptorHostMac: ByteArray?,
+    private val onDiagnostic: (String) -> Unit = {},
 ) : Closeable {
     private val descriptorMac = descriptorHostMac?.copyOf()
     val hostMac: ByteArray? get() = descriptorMac?.copyOf()
@@ -50,6 +51,7 @@ class NcmUsbBridge internal constructor(
     private val directReadBuffer = ByteBuffer.allocateDirect(READ_CHUNK_BYTES)
     private var readRequest: UsbRequest? = null
     private var readQueued = false
+    private val readQueuePolicy = UsbReadQueuePolicy(Build.VERSION.SDK_INT)
     private val statusRunning = AtomicBoolean(statusEndpoint != null)
     private val statusThread = statusEndpoint?.let { endpoint ->
         Thread({ drainStatus(endpoint) }, "ncm-status-in").apply {
@@ -237,6 +239,7 @@ class NcmUsbBridge internal constructor(
     private fun readChunk(timeoutMillis: Long): Int? {
         if (Build.VERSION.SDK_INT < 26) return readChunkSynchronously(timeoutMillis)
         checkOpen()
+        var acceptedFallback: UsbReadQueueResult? = null
         val request = try {
             // Publish and queue atomically with close(), so detach cannot miss a new request.
             synchronized(stateLock) {
@@ -250,13 +253,29 @@ class NcmUsbBridge internal constructor(
                 }
                 if (!readQueued) {
                     directReadBuffer.clear()
-                    if (!current.queue(directReadBuffer)) throw failSession("Android could not queue the NCM read request")
+                    val queued = readQueuePolicy.queue(directReadBuffer, ::checkOpenLocked, current::queue)
+                    if (!queued.queued) throw failSession(
+                        "Android could not queue the NCM read request (api=${Build.VERSION.SDK_INT} " +
+                            "endpoint=${describeUsbEndpoint(inEndpoint)} firstBytes=${queued.firstBytes} " +
+                            "fallbackBytes=${queued.fallbackBytes ?: "not_attempted"})",
+                    )
                     readQueued = true
+                    if (queued.fallbackBytes != null) acceptedFallback = queued
                 }
                 current
             }
         } catch (error: RuntimeException) {
             throw failSession("NCM read failed", error)
+        }
+        // Emit outside stateLock; diagnostic callbacks must not affect queue or close behavior.
+        acceptedFallback?.let { queued ->
+            runCatching {
+                onDiagnostic(
+                    "NCM read queue compatibility fallback api=${Build.VERSION.SDK_INT} " +
+                        "endpoint=${describeUsbEndpoint(inEndpoint)} firstBytes=${queued.firstBytes} " +
+                        "fallbackBytes=${queued.fallbackBytes}",
+                )
+            }
         }
         try {
             val completed = try {
@@ -316,7 +335,11 @@ class NcmUsbBridge internal constructor(
         private const val NANOS_PER_MILLISECOND = 1_000_000L
 
         /** Claims and activates the NCM control/data interfaces; owns the connection on success. */
-        fun open(connection: UsbDeviceConnection, function: NcmFunctionDiscovery.NcmFunction): NcmUsbBridge {
+        fun open(
+            connection: UsbDeviceConnection,
+            function: NcmFunctionDiscovery.NcmFunction,
+            onDiagnostic: (String) -> Unit = {},
+        ): NcmUsbBridge {
             val claimed = ArrayList<UsbInterface>(2)
             try {
                 val descriptorHostMac = readNcmHostMac(connection, function.control.id)
@@ -375,6 +398,7 @@ class NcmUsbBridge internal constructor(
                     function.statusIn,
                     claimed,
                     descriptorHostMac,
+                    onDiagnostic,
                 )
             } catch (error: Throwable) {
                 for (usbInterface in claimed.asReversed()) {

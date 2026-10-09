@@ -61,13 +61,14 @@ class IphoneUsbMatcher private constructor(
  * configuration `6`. The vendor request can make the iPhone re-enumerate. Android does not offer
  * Linux sysfs configuration control or a synchronous re-enumeration primitive, so this class
  * closes the first connection and requires the caller to receive, re-authorize, and pass the new
- * [UsbDevice] to [selectCarPlayConfigurationAsync]. All opens run on the supplied executor.
+ * [UsbDevice] to [openIap2UsbSessionAsync]. All opens run on the supplied executor.
  */
 class IphoneUsbHost(
     context: Context,
     private val usbManager: UsbManager,
     private val matcher: IphoneUsbMatcher,
     private val permissionAction: String = "${context.packageName}.IPHONE_USB_PERMISSION",
+    private val onDiagnostic: (String) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
 
@@ -211,12 +212,17 @@ class IphoneUsbHost(
         device: UsbDevice,
         operation: (UsbDeviceConnection) -> TransitionResult,
     ): TransitionResult = try {
-        requireConfiguredDevice(device)
-        if (!usbManager.hasPermission(device)) {
-            throw IphoneUsbException.PermissionDenied("USB permission has not been granted")
+        val currentDevice = discover().firstOrNull { it.deviceName == device.deviceName }
+            ?: throw IphoneUsbException.DeviceUnavailable("iPhone USB 设备已断开，等待重新识别")
+        requireConfiguredDevice(currentDevice)
+        if (!usbManager.hasPermission(currentDevice)) {
+            throw IphoneUsbException.PermissionDenied("iPhone 当前 USB 设备没有访问权限，请重新授权")
         }
-        val connection = usbManager.openDevice(device)
-            ?: throw IphoneUsbException.DeviceUnavailable("UsbManager could not open the iPhone")
+        val connection = usbManager.openDevice(currentDevice)
+            ?: throw IphoneUsbException.DeviceUnavailable(
+                "Android 无法打开 iPhone USB 设备；present=${discover().any { it.deviceName == currentDevice.deviceName }} " +
+                    "permission=${usbManager.hasPermission(currentDevice)} configurations=${currentDevice.configurationCount}",
+            )
         try {
             operation(connection)
         } finally {
@@ -231,15 +237,20 @@ class IphoneUsbHost(
     }
 
     private fun openIap2UsbSession(device: UsbDevice): Iap2UsbSession {
-        requireConfiguredDevice(device)
-        if (!usbManager.hasPermission(device)) {
-            throw IphoneUsbException.PermissionDenied("USB permission has not been granted")
+        val currentDevice = discover().firstOrNull { it.deviceName == device.deviceName }
+            ?: throw IphoneUsbException.DeviceUnavailable("iPhone USB 设备已断开，等待重新识别")
+        requireConfiguredDevice(currentDevice)
+        if (!usbManager.hasPermission(currentDevice)) {
+            throw IphoneUsbException.PermissionDenied("iPhone 当前 USB 设备没有访问权限，请重新授权")
         }
-        val connection = usbManager.openDevice(device)
-            ?: throw IphoneUsbException.DeviceUnavailable("UsbManager could not open the iPhone")
+        val connection = usbManager.openDevice(currentDevice)
+            ?: throw IphoneUsbException.DeviceUnavailable(
+                "Android 无法打开 iPhone USB 设备；present=${discover().any { it.deviceName == currentDevice.deviceName }} " +
+                    "permission=${usbManager.hasPermission(currentDevice)} configurations=${currentDevice.configurationCount}",
+            )
         var claimedInterface: UsbInterface? = null
         try {
-            val configuration = IphoneCarPlayConfiguration.find(device)
+            val configuration = IphoneCarPlayConfiguration.find(currentDevice)
                 ?: throw IphoneUsbException.Protocol(
                     "Re-enumerated iPhone exposes no USBMUX CarPlay configuration",
                 )
@@ -265,7 +276,8 @@ class IphoneUsbHost(
                 throw IphoneUsbException.DeviceUnavailable("Android could not claim USBMUX interface 1")
             }
             claimedInterface = usbMux
-            return Iap2UsbSession(connection, endpoints.first, endpoints.second)
+            return Iap2UsbSession(connection, endpoints.first, endpoints.second, onDiagnostic,
+                devicePresent = { discover().any { it.deviceName == currentDevice.deviceName } })
         } catch (error: Throwable) {
             if (claimedInterface != null) connection.releaseInterface(claimedInterface)
             connection.close()
@@ -330,6 +342,8 @@ class Iap2UsbSession internal constructor(
     private val connection: UsbDeviceConnection,
     private val outEndpoint: UsbEndpoint,
     private val inEndpoint: UsbEndpoint,
+    private val onDiagnostic: (String) -> Unit = {},
+    private val devicePresent: () -> Boolean = { true },
 ) : Closeable {
     private val stateLock = Any()
     private val readLock = Any()
@@ -337,6 +351,7 @@ class Iap2UsbSession internal constructor(
     private var closed = false
     private var failure: IphoneUsbException? = null
     private var pendingRead: UsbRequest? = null
+    private val readQueuePolicy = UsbReadQueuePolicy(Build.VERSION.SDK_INT)
 
     fun write(data: ByteArray, timeoutMillis: Int) = synchronized(writeLock) {
         checkOpen()
@@ -364,14 +379,24 @@ class Iap2UsbSession internal constructor(
                 )
             }
             initialized = true
-            synchronized(stateLock) {
+            val buffer = ByteBuffer.allocateDirect(USBMUX_READ_CHUNK_BYTES)
+            val queueResult = synchronized(stateLock) {
                 checkOpenLocked()
                 pendingRead = request
+                readQueuePolicy.queue(buffer, ::checkOpenLocked, request::queue)
             }
-            val buffer = ByteBuffer.allocateDirect(USBMUX_READ_CHUNK_BYTES)
-            if (!request.queue(buffer)) {
+            if (!queueResult.queued) {
                 throw IphoneUsbException.DeviceUnavailable(
-                    "Android could not queue USBMUX read request (${requestDiagnostics(timeoutMillis, buffer.capacity())})",
+                    "Android could not queue USBMUX read request (${requestDiagnostics(timeoutMillis)} " +
+                        "firstBytes=${queueResult.firstBytes} fallbackBytes=${queueResult.fallbackBytes ?: "not_attempted"})",
+                )
+            }
+            // The policy remembers an accepted fallback, so this event occurs once per pipe.
+            if (queueResult.fallbackBytes != null) runCatching {
+                onDiagnostic(
+                    "USBMUX read queue compatibility fallback api=${Build.VERSION.SDK_INT} " +
+                        "endpoint=${describeUsbEndpoint(inEndpoint)} firstBytes=${queueResult.firstBytes} " +
+                        "fallbackBytes=${queueResult.fallbackBytes}",
                 )
             }
             val completed = try {
@@ -433,7 +458,13 @@ class Iap2UsbSession internal constructor(
             budget,
         )
         checkOpen()
-        if (read <= 0) return null
+        if (read <= 0) {
+            // Older bulkTransfer returns the same result for timeout and detach. A disappeared
+            // USB node must fail this pipe so its reader wakes the controller's reconnect path.
+            // Seeing another iPhone after a replug does not make the old file descriptor usable.
+            if (!devicePresent()) throw failSession("iPhone USB 已断开，正在准备重新连接")
+            return null
+        }
         return target.copyOf(read)
     }
 
@@ -462,11 +493,10 @@ class Iap2UsbSession internal constructor(
         return error
     }
 
-    private fun requestDiagnostics(timeoutMillis: Long, bufferBytes: Int? = null): String = buildString {
+    private fun requestDiagnostics(timeoutMillis: Long): String = buildString {
         append("api=").append(Build.VERSION.SDK_INT)
         append(" endpoint=").append(describeUsbEndpoint(inEndpoint))
         append(" timeoutMs=").append(timeoutMillis)
-        if (bufferBytes != null) append(" bufferBytes=").append(bufferBytes)
     }
 
     private companion object {
@@ -475,7 +505,7 @@ class Iap2UsbSession internal constructor(
     }
 }
 
-private fun describeUsbEndpoint(endpoint: UsbEndpoint): String =
+internal fun describeUsbEndpoint(endpoint: UsbEndpoint): String =
     "0x${endpoint.address.toString(16)}(direction=${endpoint.direction}," +
         "type=${endpoint.type},maxPacket=${endpoint.maxPacketSize})"
 
