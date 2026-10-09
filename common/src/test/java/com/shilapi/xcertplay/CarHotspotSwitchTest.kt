@@ -1,6 +1,5 @@
 package com.shilapi.xcertplay
 
-import android.content.Context
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
@@ -10,8 +9,6 @@ import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.host.R
 import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.*
 import org.junit.After
@@ -23,14 +20,13 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import org.robolectric.annotation.Implementation
-import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowAlertDialog
 import org.robolectric.shadows.ShadowSettings
+import org.robolectric.shadows.ShadowLog
 import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [29], qualifiers = "en", manifest = Config.NONE, shadows = [CarHotspotSwitchTest.Grant::class,
+@Config(sdk = [29], qualifiers = "en", manifest = Config.NONE, shadows = [CarHotspotSetupShadow::class,
     CarHotspotAdbGrantTest.WritePermission::class])
 class CarHotspotSwitchTest {
     private lateinit var activity: DiPlayActivity
@@ -44,13 +40,7 @@ class CarHotspotSwitchTest {
         CarPlayBackgroundSession.clear()
         CarHotspotAdbGrantTest.WritePermission.allowed = false
         ShadowSettings.setCanDrawOverlays(false)
-        Grant.entered = CountDownLatch(1)
-        Grant.release = CountDownLatch(1)
-        Grant.worker = null
-        Grant.requested.clear()
-        Grant.fail = false
-        Grant.allowed = CarHotspotSetup.Permission.entries.toSet()
-        Grant.access = LocalAdb.Access.READY
+        CarHotspotSetupShadow.reset()
         activity = Robolectric.buildActivity(DiPlayActivity::class.java).get()
         activity.setTheme(android.R.style.Theme_Material_NoActionBar)
         AirPlayPersistence.saveWirelessHotspotMode(activity, WirelessHotspotMode.MANUAL)
@@ -62,8 +52,8 @@ class CarHotspotSwitchTest {
     }
 
     @After fun tearDown() {
-        Grant.release.countDown()
-        Grant.worker?.join(3_000)
+        CarHotspotSetupShadow.release.countDown()
+        CarHotspotSetupShadow.worker?.join(3_000)
         shadowOf(Looper.getMainLooper()).idle()
         CarPlayBackgroundSession.clear()
     }
@@ -82,13 +72,13 @@ class CarHotspotSwitchTest {
         assertTrue(CarHotspotSettings.enabled(activity))
         assertTrue(hotspotSwitch().isChecked)
         assertTrue(hotspotSwitch().isEnabled)
-        assertEquals(listOf(CarHotspotSetup.Permission.HOTSPOT), Grant.requested)
+        assertEquals(listOf(CarHotspotSetup.Permission.HOTSPOT), CarHotspotSetupShadow.requested)
         assertFalse(CarHotspotSetup.Permission.BOOT_LAUNCH.granted(activity))
         assertFalse(AirPlayPersistence.loadAutoStartOnBoot(activity))
     }
 
     @Test fun adbApprovalFailureLeavesTheSwitchOffAndShowsTheReason() {
-        Grant.access = LocalAdb.Access.NOT_APPROVED
+        CarHotspotSetupShadow.access = LocalAdb.Access.NOT_APPROVED
         hotspotSwitch().isChecked = true
         awaitGrant(); completeGrant()
         assertFalse(CarHotspotSettings.enabled(activity))
@@ -98,7 +88,7 @@ class CarHotspotSwitchTest {
     }
 
     @Test fun adbSuccessWithoutActualPermissionDoesNotEnableTheSwitch() {
-        Grant.allowed = emptySet()
+        CarHotspotSetupShadow.allowed = emptySet()
         hotspotSwitch().isChecked = true
         awaitGrant(); completeGrant()
         assertFalse(CarHotspotSettings.enabled(activity))
@@ -120,14 +110,14 @@ class CarHotspotSwitchTest {
         AirPlayPersistence.saveAutoStartOnBoot(activity, true)
         hotspotSwitch().isChecked = true
         awaitGrant(); completeGrant()
-        assertEquals(listOf(CarHotspotSetup.Permission.HOTSPOT, CarHotspotSetup.Permission.BOOT_LAUNCH), Grant.requested)
+        assertEquals(listOf(CarHotspotSetup.Permission.HOTSPOT, CarHotspotSetup.Permission.BOOT_LAUNCH), CarHotspotSetupShadow.requested)
         assertTrue(CarHotspotSettings.enabled(activity))
         assertTrue(CarHotspotSetup.Permission.BOOT_LAUNCH.granted(activity))
     }
 
     @Test fun incompleteBootPermissionKeepsTheHotspotSwitchOff() {
         AirPlayPersistence.saveAutoStartOnBoot(activity, true)
-        Grant.allowed = setOf(CarHotspotSetup.Permission.HOTSPOT)
+        CarHotspotSetupShadow.allowed = setOf(CarHotspotSetup.Permission.HOTSPOT)
         hotspotSwitch().isChecked = true
         awaitGrant(); completeGrant()
         assertTrue(CarHotspotSetup.Permission.HOTSPOT.granted(activity))
@@ -143,7 +133,7 @@ class CarHotspotSwitchTest {
         assertFalse(AirPlayPersistence.loadAutoStartOnBoot(activity))
         assertFalse(bootSwitch().isEnabled)
         completeGrant()
-        assertEquals(listOf(CarHotspotSetup.Permission.BOOT_LAUNCH), Grant.requested)
+        assertEquals(listOf(CarHotspotSetup.Permission.BOOT_LAUNCH), CarHotspotSetupShadow.requested)
         assertTrue(AirPlayPersistence.loadAutoStartOnBoot(activity))
         assertTrue(CarHotspotSettings.enabled(activity))
     }
@@ -151,7 +141,7 @@ class CarHotspotSwitchTest {
     @Test fun aFailedBootGrantPreservesHotspotAndDoesNotEnableBootLaunch() {
         CarHotspotSettings.setEnabled(activity, true)
         CarHotspotAdbGrantTest.WritePermission.allowed = true
-        Grant.allowed = emptySet()
+        CarHotspotSetupShadow.allowed = emptySet()
         bootSwitch().isChecked = true
         awaitGrant(); completeGrant()
         assertFalse(AirPlayPersistence.loadAutoStartOnBoot(activity))
@@ -165,17 +155,17 @@ class CarHotspotSwitchTest {
         hotspotSwitch().isChecked = false
         assertFalse(CarHotspotSettings.enabled(activity))
         assertTrue(CarHotspotSetup.Permission.HOTSPOT.granted(activity))
-        assertTrue(Grant.requested.isEmpty())
+        assertTrue(CarHotspotSetupShadow.requested.isEmpty())
     }
 
     @Test fun vehicleControlsAreNotDuplicatedInTheHotspotPermissionCard() {
         assertEquals(1, switches(controls).size)
-        assertTrue(Grant.requested.isEmpty())
+        assertTrue(CarHotspotSetupShadow.requested.isEmpty())
     }
 
 
     @Test fun unexpectedAdbFailureRestoresTheSameSwitch() {
-        Grant.fail = true
+        CarHotspotSetupShadow.fail = true
         val control = hotspotSwitch()
         control.isChecked = true
         awaitGrant(); completeGrant()
@@ -222,12 +212,19 @@ class CarHotspotSwitchTest {
     }
 
 
-    private fun awaitGrant() { assertTrue(Grant.entered.await(3, TimeUnit.SECONDS)) }
+    private fun awaitGrant() {
+        if (!CarHotspotSetupShadow.entered.await(3, TimeUnit.SECONDS)) {
+            fail("Permission worker did not reach the grant fixture: " +
+                ShadowLog.getLogsForTag("DiPlay-Hotspot").joinToString("\n") {
+                    it.msg + (it.throwable?.stackTraceToString() ?: "")
+                })
+        }
+    }
 
     private fun completeGrant() {
-        Grant.release.countDown()
-        Grant.worker!!.join(3_000)
-        assertFalse(Grant.worker!!.isAlive)
+        CarHotspotSetupShadow.release.countDown()
+        CarHotspotSetupShadow.worker!!.join(3_000)
+        assertFalse(CarHotspotSetupShadow.worker!!.isAlive)
         shadowOf(Looper.getMainLooper()).idle()
     }
 
@@ -248,7 +245,7 @@ class CarHotspotSwitchTest {
             it.contentDescription == activity.getString(R.string.open_after_the_car_starts)
         }?.let { return it }
         val bootControls = LinearLayout(activity)
-        DiPlayActivity::class.java.getDeclaredMethod("settings", LinearLayout::class.java).apply {
+        DiPlayActivity::class.java.getDeclaredMethod("connectionSettings", LinearLayout::class.java).apply {
             isAccessible = true
         }.invoke(activity, bootControls)
         controls.addView(bootControls)
@@ -260,36 +257,4 @@ class CarHotspotSwitchTest {
         if (view is ViewGroup) for (i in 0 until view.childCount) addAll(switches(view.getChildAt(i)))
     }
 
-    @Implements(CarHotspotSetup::class, isInAndroidSdk = false)
-    internal class Grant {
-        @Implementation fun check(context: Context, adb: LocalAdb): LocalAdb.Access = LocalAdb.Access.UNREACHABLE
-
-        @Implementation fun grant(context: Context, permissions: List<CarHotspotSetup.Permission>, adb: LocalAdb): LocalAdb.Access {
-            worker = Thread.currentThread()
-            requested.addAll(permissions)
-            entered.countDown()
-            check(release.await(3, TimeUnit.SECONDS))
-            check(!fail) { "ADB connection failed" }
-            if (access == LocalAdb.Access.READY) {
-                for (permission in permissions) {
-                    if (permission !in allowed) break
-                    when (permission) {
-                        CarHotspotSetup.Permission.HOTSPOT -> CarHotspotAdbGrantTest.WritePermission.allowed = true
-                        CarHotspotSetup.Permission.BOOT_LAUNCH -> ShadowSettings.setCanDrawOverlays(true)
-                    }
-                }
-            }
-            return access
-        }
-
-        companion object {
-            lateinit var entered: CountDownLatch
-            lateinit var release: CountDownLatch
-            lateinit var allowed: Set<CarHotspotSetup.Permission>
-            lateinit var access: LocalAdb.Access
-            val requested = CopyOnWriteArrayList<CarHotspotSetup.Permission>()
-            @Volatile var worker: Thread? = null
-            @Volatile var fail = false
-        }
-    }
 }

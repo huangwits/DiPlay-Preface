@@ -26,6 +26,10 @@ class GeelyScopeTest {
             Intent(app, DiPlayActivity::class.java).putExtra("page", "settings")).setup()
         try {
             val activity = host.get()
+            descendants(activity.window.decorView).single {
+                it.contentDescription == activity.getString(R.string.settings_open_category,
+                    activity.getString(R.string.settings_vehicle))
+            }.performClick()
             val texts = descendants(activity.window.decorView).filterIsInstance<TextView>().map { it.text.toString() }.toList()
             assertTrue(texts.contains(activity.getString(R.string.geely_vehicle)))
             assertTrue(texts.contains(activity.getString(R.string.steering_identification)))

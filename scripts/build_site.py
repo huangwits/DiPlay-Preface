@@ -1,38 +1,24 @@
-#!/usr/bin/env python3
-"""Generate the static GitHub Pages editions, one per language in content.json; no runtime dependencies."""
+"""Generate project download, setup and source documentation entry points."""
 from pathlib import Path
 import json
-from html import escape as e
+from html import escape
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / 'site'
-data = json.loads((SITE / 'content.json').read_text())
-BASE = 'https://shihabal3amri.github.io/DiPlay/'
-REPO = 'https://github.com/shihabal3amri/DiPlay'
-VERSION = '0.2.13'
-RELEASE = REPO + f'/releases/tag/v{VERSION}'
-DOWNLOAD = REPO + f'/releases/download/v{VERSION}/DiPlay-{VERSION}.apk'
-for lang, d in data.items():
-    folder = SITE if lang == 'en' else SITE / lang
-    folder.mkdir(exist_ok=True)
-    prefix = './' if lang == 'en' else '../'
-    url = BASE + ('' if lang == 'en' else lang + '/')
-    nav = ''.join(f'<a href="{prefix}{"" if code == "en" else code + "/"}" lang="{code}" hreflang="{code}" dir="auto"'+(' aria-current="page"' if code == lang else '')+f'>{e(v["name"])}</a>' for code,v in data.items())
-    alternates = ''.join(f'<link rel="alternate" hreflang="{code}" href="{BASE}{"" if code == "en" else code + "/"}">' for code in data)
-    pics = ''.join(f'<figure><a href="{prefix}assets/{pic}.png"><img src="{prefix}assets/{pic}.png" width="1920" height="1080" loading="lazy" alt="{e(cap)}"></a><figcaption>{e(cap)}</figcaption></figure>' for pic,cap in zip(['home','settings'],d['captions']))
-    (folder/'index.html').write_text(f'''<!doctype html>
-<html lang="{lang}" dir="{d['dir']}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DiPlay · {e(d['download'])}</title><meta name="description" content="{e(d['intro'])}"><meta name="theme-color" content="#0c121c">
-<link rel="icon" href="{prefix}assets/icon.png"><link rel="stylesheet" href="{prefix}assets/site.css"><link rel="canonical" href="{url}">{alternates}
-<meta property="og:title" content="DiPlay — CarPlay for compatible Android head units"><meta property="og:description" content="{e(d['promise'])}"><meta property="og:image" content="{BASE}assets/home.png"><meta property="og:url" content="{url}"><meta property="og:type" content="website">
-</head><body><main>
-<header><a class="brand" href="{prefix}"><img src="{prefix}assets/icon.png" width="56" height="56" alt=""><span><strong>DiPlay</strong><small>{e(d['tag'])}</small></span></a><nav class="languages" aria-label="Language">{nav}</nav></header>
-<section class="hero"><span class="badge">{e(d['badge'])} · <bdi>{VERSION}</bdi></span><h1>{e(d['title']).replace(chr(10),'<br>')}</h1><p class="intro">{e(d['intro'])}</p><div class="actions"><a class="button" href="{DOWNLOAD}">{e(d['download'])} <span aria-hidden="true">↓</span></a><a class="button secondary" href="#install">{e(d['install'])}</a></div><p class="promise">{e(d['promise'])}</p><p class="note">{e(d['requires'])}</p><p class="note support-scope"><strong>{e(d['supportScope'])}</strong></p></section>
-<section class="gallery"><h2>{e(d['gallery'])}</h2><div class="screens">{pics}</div></section>
-<div class="grid"><section class="card" id="install"><span class="eyebrow">01</span><h2>{e(d['setup'])}</h2><ol>{''.join('<li>'+e(x)+'</li>' for x in d['steps'])}</ol><p class="note">{e(d['bssid'])}</p><a href="{REPO}/blob/main/docs/INSTALL.md">{e(d['adb'])} ↗</a></section>
-<section class="card"><span class="eyebrow">02</span><h2>{e(d['whats'])}</h2><ul>{''.join('<li>'+e(x)+'</li>' for x in d['features'])}</ul><a href="{RELEASE}">{e(d['notes'])} ↗</a><h3>{e(d['compat'])}</h3><p>{e(d['compatText'])}</p></section></div>
-<section class="card updates"><div><h2>{e(d['follow'])}</h2><p>{e(d['followText'])}</p></div><a class="button secondary" href="https://t.me/byd_localized">{e(d['telegram'])} ↗</a></section>
-<section class="signing"><h2>{e(d['update'])}</h2><p>{e(d['updateText'])}</p></section>
-<section class="card"><h2>{e(d['diagnosticsTitle'])}</h2><p>{e(d['diagnosticsText'])}</p><a href="{REPO}/issues">{e(d['feedback'])} ↗</a> · <a href="{REPO}/issues/new/choose">{e(d['newIssue'])} ↗</a></section>
-<footer><nav><a href="{REPO}/blob/main/docs/PRIVACY.md">{e(d["privacy"])}</a><a href="{REPO}">{e(d['source'])}</a><a href="{RELEASE}">{e(d['notes'])}</a><a href="{REPO}/issues">{e(d['feedback'])}</a></nav><p>{e(d['footer'])}</p></footer>
-</main></body></html>''')
-print('Generated', len(data), 'language pages')
+config = json.loads((SITE / 'content.json').read_text(encoding='utf8'))
+repo = config['repository']
+html = '''<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DiPlay 星瑞 · 下载与使用</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f1f5f4;color:#1b3537;font:16px/1.8 system-ui,"Microsoft YaHei",sans-serif}main{max-width:900px;margin:60px auto;padding:24px}header{border-bottom:1px solid #cad9d5;padding-bottom:28px}h1{font-size:40px;line-height:1.3}h2{font-size:23px}a{color:#116a5d}nav{display:flex;gap:12px;flex-wrap:wrap;margin:24px 0}nav a{background:#176c62;color:white;padding:10px 20px;border-radius:8px;text-decoration:none}section{background:white;padding:24px 28px;margin:24px 0;border-radius:14px}footer{font-size:13px;color:#536e6b}@media(max-width:500px){main{margin:12px auto;padding:16px}h1{font-size:30px}section{padding:20px}}
+</style></head><body><main>
+<header><span>DiPlay · Preface</span><h1>DiPlay 星瑞 CarPlay</h1><p>社区维护的 Android 车机项目，面向 Android 5.1 / E01。兼容性仍须按车辆、固件及手机组合验证。</p>
+<nav><a href="REPO/releases/latest">下载安装包</a><a href="REPO#readme">使用说明</a></nav></header>
+<section><h2>下载与连接</h2><p>在 GitHub Release 附件中下载正式 APK。更新时直接覆盖安装，不要先卸载，以保留设置和授权信息。</p><p>USB 无需软件激活。无线连接请在蓝牙工具页申请授权；通过后右侧申请栏自动收起，下次进入自动核验。首次适配请按应用内完整操作说明进行。</p></section><section><h2>使用须知</h2><p>本项目为社区非官方适配，与 Apple、吉利没有隶属或认证关系。请在安全停车时安装和操作蓝牙工具，提前确认备份及恢复方法。兼容性因车机、固件和手机而异，不保证未来系统兼容或服务持续可用。</p><a href="REPO/blob/main/docs/DISCLAIMER.md">阅读完整免责声明</a></section>
+<section lang="en"><h2>Download and use</h2><p>Download the validated APK from GitHub Releases. Update without uninstalling to retain settings and activation information. USB does not require software activation; wireless connections require approval and online revalidation.</p><p>This is an unofficial community adaptation. Perform setup and maintenance only while parked, verify backups and recovery procedures, and read the disclaimer. Compatibility and continued service availability are not guaranteed.</p></section>
+<footer>保留原作者及第三方署名，遵循 GPLv3。<a href="REPO/blob/main/LICENSE">许可证</a> · <a href="REPO#readme">项目与致谢</a></footer>
+</main></body></html>'''.replace('REPO', escape(repo, quote=True))
+# Existing language URLs remain valid entry points, with the current bilingual policy.
+pages = {SITE / 'index.html', *SITE.glob('*/index.html')}
+for page in pages:
+    page.write_text(html, encoding='utf8')
+print('Generated', len(pages), 'project entry pages')
