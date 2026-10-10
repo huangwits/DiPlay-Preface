@@ -100,6 +100,11 @@ class DiPlayActivity : ComponentActivity() {
     private var disconnectButton: Button? = null
     private var lastRunning: Boolean? = null
     private var pendingWireless = false
+    private var wirelessAdmissionGeneration = 0
+    private var wirelessAdmissionDialog: AlertDialog? = null
+    internal var refreshWirelessAdmission: (Context) -> Boolean = {
+        com.shilapi.xcertplay.license.OnlineLicense.refresh(it).approved
+    }
     private var initialLaunch = true
     private var notificationTransport = true
     private var exportInProgress = false
@@ -144,7 +149,12 @@ class DiPlayActivity : ComponentActivity() {
         override fun run() { refreshStatus(); handler.postDelayed(this, 1000) }
     }
     private val bluetoothPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) choosePhone() else permissionHelp(getString(R.string.nearby_devices), getString(R.string.allow_nearby_devices_so_diplay_can_connect_to_your_paired))
+        if (granted) {
+            if (pendingWireless) { pendingWireless = false; connect(true) } else choosePhone()
+        } else {
+            pendingWireless = false
+            permissionHelp(getString(R.string.nearby_devices), getString(R.string.allow_nearby_devices_so_diplay_can_connect_to_your_paired))
+        }
     }
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (hasPreciseLocation()) {
@@ -306,6 +316,7 @@ class DiPlayActivity : ComponentActivity() {
     override fun onStop() {
         CarPlayMediaKeys.stopSteeringLearning(this)
         cancelUsbPermissionSetup()
+        cancelWirelessAdmission()
         startupHotspotCancelled = true
         super.onStop()
         if (!isFinishing && !isChangingConfigurations) CenterMapOverlay.scheduleShow()
@@ -342,6 +353,7 @@ class DiPlayActivity : ComponentActivity() {
 
     override fun onDestroy() {
         cancelUsbPermissionSetup()
+        cancelWirelessAdmission()
         super.onDestroy()
     }
 
@@ -2717,11 +2729,14 @@ class DiPlayActivity : ComponentActivity() {
     }
 
     private fun connect(wireless: Boolean) {
-        if (com.shilapi.xcertplay.license.AppLicense.requireActivation(this, wireless)) return
+        if (!wireless) { cancelWirelessAdmission(); pendingWireless = false }
         if (com.shilapi.xcertplay.e01goc.E01GocManager.isBusy()) {
             toast("E01 蓝牙维护尚未结束，请等待完成后连接")
             return
         }
+        if (wireless && refreshAndroidAdmission()) return
+        if (com.shilapi.xcertplay.license.AppLicense.requireActivation(this, wireless)) return
+        if (wireless && !prepareAndroidBluetooth()) return
         startupHotspotCancelled = true
         if (wireless && pendingCarHotspotSetup) { toast(getString(R.string.save_your_hotspot_details_in_connection_setup_first)); page = "connection"; render(); return }
         if (setupError != null) { toast(setupError!!); return }
@@ -2750,6 +2765,65 @@ class DiPlayActivity : ComponentActivity() {
         }
         if (CarPlayBackgroundSession.hasSession()) CarPlayBackgroundSession.stop { runOnUiThread { open() } }
         else open()
+    }
+
+    // Returning Android-Bluetooth users renew the existing lease here, without a tools-page round trip.
+    private fun refreshAndroidAdmission(): Boolean {
+        if (wirelessAdmissionDialog != null) return true
+        if (com.shilapi.xcertplay.e01goc.E01GocPreferences.enabled(this) ||
+            com.shilapi.xcertplay.license.AppLicense.canStart(this) ||
+            com.shilapi.xcertplay.license.AppLicense.offline(this) ||
+            !com.shilapi.xcertplay.license.OnlineLicense.enabled(this) ||
+            !(com.shilapi.xcertplay.license.OnlineLicense.wasRequested(this) ||
+                com.shilapi.xcertplay.license.OnlineLicense.wasActivated(this))) return false
+        val generation = ++wirelessAdmissionGeneration
+        wirelessAdmissionDialog = AlertDialog.Builder(this)
+            .setMessage("正在核验已有授权，通过后自动连接…")
+            .setNegativeButton(getString(R.string.cancel)) { _, _ -> cancelWirelessAdmission() }
+            .setOnCancelListener { cancelWirelessAdmission() }
+            .show()
+        val app = applicationContext
+        val refresh = refreshWirelessAdmission
+        Thread({
+            val approved = runCatching { refresh(app) }.getOrDefault(false)
+            handler.post {
+                if (generation != wirelessAdmissionGeneration || isFinishing || isDestroyed) return@post
+                cancelWirelessAdmission()
+                // A saved activation flag or a stale callback must never replace the live admission check.
+                if (approved && com.shilapi.xcertplay.license.AppLicense.canStart(this)) connect(true)
+                else com.shilapi.xcertplay.license.AppLicense.requireActivation(this, true)
+            }
+        }, "diplay-wireless-admission").start()
+        return true
+    }
+
+    private fun cancelWirelessAdmission() {
+        wirelessAdmissionGeneration++
+        wirelessAdmissionDialog?.dismiss()
+        wirelessAdmissionDialog = null
+    }
+
+    private fun prepareAndroidBluetooth(): Boolean {
+        if (com.shilapi.xcertplay.e01goc.E01GocPreferences.enabled(this)) return true
+        if (Build.VERSION.SDK_INT >= 31 && checkCallingOrSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            pendingWireless = true
+            bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            return false
+        }
+        val adapter = systemService(BluetoothManager::class.java, "bluetooth")?.adapter
+        if (adapter == null) {
+            startActivity(Intent(this, com.shilapi.xcertplay.e01goc.E01GocActivity::class.java)
+                .putExtra("android_bluetooth_unavailable", true))
+            return false
+        }
+        if (!adapter.isEnabled) {
+            AlertDialog.Builder(this).setTitle(getString(R.string.turn_on_bluetooth))
+                .setMessage(getString(R.string.enable_the_car_s_bluetooth_and_pair_your_iphone_first))
+                .setPositiveButton(getString(R.string.open_bluetooth)) { _, _ -> openSystem(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
+                .setNegativeButton(getString(R.string.later), null).show()
+            return false
+        }
+        return true
     }
     private fun openProjection() {
         startActivity(Intent(this, CarPlayHostActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))

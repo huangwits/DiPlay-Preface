@@ -18,14 +18,14 @@ class UpdateClientTest {
         "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk",
         payload.size.toLong(), MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) }, "", assetApiUrl)
 
-    private class Response(url: URL, val bytes: ByteArray, val code: Int = 200,
+    private open class Response(url: URL, val bytes: ByteArray, val code: Int = 200,
         val headers: Map<String, String> = emptyMap()) : HttpURLConnection(url) {
         var closed = false
         override fun connect() {}
         override fun disconnect() { closed = true }
         override fun usingProxy() = false
         override fun getResponseCode() = code
-        override fun getInputStream() = ByteArrayInputStream(bytes)
+        override fun getInputStream(): java.io.InputStream = ByteArrayInputStream(bytes)
         override fun getHeaderField(name: String) = headers[name]
     }
 
@@ -48,16 +48,73 @@ class UpdateClientTest {
     @Test fun fallsBackToGithubApiAssetWhenBrowserDownloadCannotOpen() {
         val apiUrl = "https://api.github.com/repos/huangwits/DiPlay-Preface/releases/assets/123"
         val opened = mutableListOf<String>()
+        lateinit var response: Response
         val client = UpdateClient { url ->
             opened += url.toString()
             if (url.host == "github.com") throw IOException("release CDN unavailable")
-            Response(url, payload, headers = mapOf("Content-Length" to payload.size.toString()))
+            Response(url, payload, headers = mapOf("Content-Length" to payload.size.toString())).also { response = it }
         }
         val file = temporary.newFile()
         client.download(release(apiUrl), file, UpdateCancellation()) {}
         assertArrayEquals(payload, file.readBytes())
         assertEquals(2, opened.size)
         assertEquals(apiUrl, opened.last())
+        assertEquals("application/octet-stream", response.getRequestProperty("Accept"))
+    }
+
+    @Test fun connectionAndReadTimeoutsTryTheBinaryApiInsteadOfBeingTreatedAsCancellation() {
+        val apiUrl = "https://api.github.com/repos/huangwits/DiPlay-Preface/releases/assets/123"
+        for (stage in listOf("open", "headers", "body")) {
+            val opened = mutableListOf<String>()
+            val responses = mutableListOf<Response>()
+            val client = UpdateClient { url ->
+                opened += url.toString()
+                if (url.host == "github.com") {
+                    if (stage == "open") throw java.net.SocketTimeoutException("connect timed out")
+                    object : Response(url, payload) {
+                        override fun getResponseCode(): Int {
+                            if (stage == "headers") throw java.net.SocketTimeoutException("headers timed out")
+                            return 200
+                        }
+                        override fun getInputStream(): java.io.InputStream = object : java.io.InputStream() {
+                            var delivered = false
+                            override fun read(): Int = throw java.net.SocketTimeoutException("body timed out")
+                            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                                if (delivered) throw java.net.SocketTimeoutException("body timed out")
+                                buffer[offset] = payload[0]; delivered = true; return 1
+                            }
+                        }
+                    }.also(responses::add)
+                } else Response(url, payload).also(responses::add)
+            }
+            val file = temporary.newFile()
+            client.download(release(apiUrl), file, UpdateCancellation()) {}
+            assertArrayEquals(stage, payload, file.readBytes())
+            assertEquals(listOf(release().apkUrl, apiUrl), opened)
+            assertEquals("application/octet-stream", responses.last().getRequestProperty("Accept"))
+            assertTrue(responses.all { it.closed })
+        }
+    }
+
+    @Test fun cancelledConnectionDoesNotOpenTheFallbackAndRemovesExistingPartialBytes() {
+        val signal = UpdateCancellation()
+        var opens = 0
+        val client = UpdateClient {
+            opens++; signal.cancel(); throw IOException("disconnected")
+        }
+        val file = temporary.newFile().apply { writeBytes(payload.copyOf(3)) }
+        assertThrows(InterruptedIOException::class.java) {
+            client.download(release("https://api.github.com/repos/huangwits/DiPlay-Preface/releases/assets/123"), file, signal) {}
+        }
+        assertEquals(1, opens)
+        assertFalse(file.exists())
+    }
+
+    @Test fun releaseCatalogStillRequestsJson() {
+        lateinit var response: Response
+        val client = UpdateClient { url -> Response(url, byteArrayOf(), 500).also { response = it } }
+        assertThrows(IOException::class.java) { client.latest(UpdateCancellation()) }
+        assertEquals("application/vnd.github+json", response.getRequestProperty("Accept"))
     }
 
     @Test fun refusesRedirectsToPlainHttpOrUnrelatedHostsBeforeConnecting() {
