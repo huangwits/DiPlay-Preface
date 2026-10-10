@@ -67,3 +67,14 @@ D1 保存设备公钥摘要、申请号、授权状态、有效期和查询时�
 正常挑战请求和已登录的管理员列表查询会分批清理过期挑战/限流、30 天未查询的待批准申请及超过 180 天的审批事件，每类每次最多 100 条。无请求时不会运行。已批准和已停用设备保留，避免重新申请绕过停用。
 
 定期备份 D1 和签发密钥。签名私钥、签发私钥、管理员令牌和数据库不得进入源码或 APK；运行身份和授权签发密钥是不同用途的材料。保留项目许可证和第三方声明。
+
+
+## 旧安卓授权 TLS 兼容（0.2.16.2）
+
+部分 E01 的系统 CA 库无法验证现有 Pages HTTPS 链。2026-10-10 实测服务链为 Let’s Encrypt YE1 → Root YE → ISRG Root X2，TLS 1.2 握手正常。Android 5.1 的固件根证书更新情况不同，不能根据车型名称推定证书可用。
+
+客户端在 API 22–25 的授权连接上保留系统信任，并以应用内公开 ISRG Root X1/X2 作为补充。只修改该 HttpsURLConnection 的 SSLSocketFactory；不修改全局工厂、主机名校验、证书有效期校验或授权签名/租约规则。证书错误会提示检查日期、时间、网络和应用版本；不提供跳过验证选项。现代安卓仍使用系统工厂。此修复不等于完成领克 06 的原厂蓝牙实车适配。
+
+公开 DER 证书位于 `common/src/main/res/raw/license_isrg_root_x1.der` 和 `license_isrg_root_x2.der`，来自 [ISRG 官方证书库](https://letsencrypt.org/certificates/)。SHA-256 分别为 `96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6` 和 `69729b8e15a86efc177a57afb7171dfc64add28c2fca8cf1507e34453ccb1470`。它们仅包含公开 CA 证书，没有私钥或设备身份。证书轮换后检查新链能否锚定到这些根；若 CA 变化，应核实官方证书并重新验证客户端。
+
+验证包括旧根库缺失、未知颁发者、篡改签名、过期/未来证书、系统信任保留、全局 TLS/域名校验不变及官方根指纹。可设置 `DIPLAY_TLS_CHAIN` 为新抓取的公开 PEM 证书链，运行 `LicenseTlsTest` 检查实际链；未提供时该项为条件测试。来源：[Android TLS 指引](https://developer.android.com/privacy-and-security/security-ssl)、[ISRG 客户端兼容性](https://letsencrypt.org/docs/certificate-compatibility/)。

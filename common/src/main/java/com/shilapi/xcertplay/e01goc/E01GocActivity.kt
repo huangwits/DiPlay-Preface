@@ -2,6 +2,11 @@ package com.shilapi.xcertplay.e01goc
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.Manifest
+import android.bluetooth.BluetoothManager
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
 import android.os.Bundle
 import android.widget.Button
 import android.content.Intent
@@ -24,6 +29,10 @@ class E01GocActivity : Activity() {
     private lateinit var panel: com.shilapi.xcertplay.ConnectionWaitingView
     private lateinit var appearance: com.shilapi.xcertplay.ConnectionPageAppearance
     private val actions = mutableListOf<Button>()
+    private val factoryViews = mutableListOf<View>()
+    private val androidViews = mutableListOf<View>()
+    private lateinit var modeButton: Button
+    private lateinit var phoneButton: Button
     private var working = false
     private var temporary = false
     private var licensePanel: LicensePanel? = null
@@ -45,8 +54,6 @@ class E01GocActivity : Activity() {
         panel = com.shilapi.xcertplay.ConnectionWaitingView(this, showLogPanel = false)
         panel.title.text = "星瑞蓝牙"
         panel.stage.text = "就绪"
-        panel.instructions.text = "日常连接：车机蓝牙连接 iPhone 的电话和音乐，再点击“连接 CarPlay”。首次或更换手机时，先选择手机。"
-        panel.gestureHint.text = "首次完成适配后，无需每次测试或重复安装。"
         panel.retry.visibility = android.view.View.GONE
         panel.settings.visibility = android.view.View.GONE
         panel.recovery.visibility = android.view.View.GONE
@@ -55,6 +62,15 @@ class E01GocActivity : Activity() {
             val view = panel.addControlAction(title)
             view.setOnClickListener { action() }
             actions += view
+            factoryViews += view
+        }
+        fun factoryText(text: String, size: Float = 13f) {
+            factoryViews += panel.addControlText(text, size)
+        }
+        modeButton = panel.addControlAction("").apply {
+            tag = "bluetooth-mode"
+            setOnClickListener { chooseMode() }
+            actions += this
         }
         licenseStatus = panel.addControlText("").apply { tag = "bluetooth-license-status" }
         connectButton = panel.addControlAction("连接 CarPlay").apply {
@@ -62,17 +78,25 @@ class E01GocActivity : Activity() {
             setOnClickListener { continueConnection() }
             actions += this
         }
+        phoneButton = panel.addControlAction("选择手机").apply {
+            tag = "bluetooth-phone"
+            setOnClickListener { choosePhone() }
+            actions += this
+        }
         panel.addControlAction("完整操作说明").setOnClickListener { showInstructions() }
-        button("选择手机") { choosePhone() }
-        panel.addControlText("首次适配 · 按顺序操作", 16f)
-        panel.addControlText("① 检查状态：如果已安装兼容组件且服务正常，选择手机后直接连接；不要重复测试或安装。")
+        androidViews += panel.addControlAction("打开安卓蓝牙设置").apply {
+            setOnClickListener { openAndroidBluetooth() }
+            actions += this
+        }
+        factoryText("首次适配 · 按顺序操作", 16f)
+        factoryText("① 检查状态：已安装且服务正常时，选择手机后直接连接。")
         button("检查状态") { work {
             val snapshot = manager.inspect()
             showStatus(manager.describe(snapshot) + if (snapshot.installed)
                 "\n下一步：重新连接车机蓝牙，选择手机，再点击“连接 CarPlay”。无需重复测试或安装。"
             else "\n下一步：选择手机 → 连接测试。测试通过并恢复原服务后，才可安装适配。")
         } }
-        panel.addControlText("② 选择手机后做连接测试：只验证蓝牙兼容性，结束后恢复原服务；此步骤不会开始投屏。")
+        factoryText("② 连接测试：选择手机后验证兼容性，结束后恢复原服务。")
         button("连接测试") {
             val address = DiPlayPreferences.phoneAddress(this)
             if (!allowConnectionTest()) return@button
@@ -83,20 +107,15 @@ class E01GocActivity : Activity() {
                 work { manager.test(address) }
             }
         }
-        panel.addControlText("③ 测试通过后安装适配：备份并替换蓝牙组件。安装完成后，重新连接车机蓝牙并选择手机，再点击上方“连接 CarPlay”。")
+        factoryText("③ 安装适配：测试通过后备份并安装，完成后重新连接车机蓝牙。")
         button("安装适配") {
             confirm("安装适配", "将备份并替换蓝牙组件，需先通过连接测试。备份仅包含原程序；电话、音乐和重启后的效果需另行确认。安装期间请保持供电，不要重启。") { work { manager.install() } }
         }
-        panel.addControlText("恢复与切换 · 仅在需要时使用", 16f)
-        panel.addControlText("还原备份会恢复原版系统组件；标准蓝牙只切换连接方式，不会卸载已安装的适配。")
+        factoryText("恢复 · 仅在需要时使用", 16f)
+        factoryText("还原备份会恢复原版系统蓝牙组件。")
         button("还原备份") {
             confirm("还原备份", "将暂停 CarPlay，还原已校验的原版组件并重启蓝牙。") { work { manager.restore() } }
         }
-        button("标准蓝牙") { work {
-            check(E01BluetoothSwitchIntegration.prepare()) { "CarPlay 尚未停止" }
-            E01GocPreferences.select(applicationContext, false)
-            showStatus("已切换标准蓝牙，请重新选择手机。")
-        } }
         cancelButton = panel.addControlAction("停止测试").apply { visibility = View.GONE }
         cancelButton.setOnClickListener {
             if (temporary) { manager.cancelled = true; showStatus("正在结束测试并恢复蓝牙…") }
@@ -119,18 +138,50 @@ class E01GocActivity : Activity() {
             root.setBackgroundColor(com.shilapi.xcertplay.WaitingScreenColors.of(night).background)
         }
         setContentView(root)
+        updateModeLayout()
         updateLicenseLayout()
         // Discard the retired diagnostic history when upgrading an existing installation.
         for (name in listOf("e01-goc-last-result.txt", "last-result.txt")) {
             runCatching { java.io.File(filesDir, name).delete() }
         }
-        showStatus("模式：${if (E01GocPreferences.enabled(this)) "原厂蓝牙" else "标准蓝牙"}")
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent)
         licensePanel?.refreshAdmission()
+        updateModeLayout()
         updateLicenseLayout()
+    }
+
+    private fun updateModeLayout() {
+        val factory = E01GocPreferences.enabled(this)
+        factoryViews.forEach { it.visibility = if (factory) View.VISIBLE else View.GONE }
+        androidViews.forEach { it.visibility = if (factory) View.GONE else View.VISIBLE }
+        modeButton.text = "${if (factory) "原厂蓝牙" else "安卓蓝牙"} · 切换模式"
+        panel.instructions.text = if (factory)
+            "先连接车机蓝牙的电话和音乐，再连接 CarPlay。已完成适配时无需重复测试或安装。"
+        else "在安卓蓝牙设置中配对 iPhone，选择手机后连接 CarPlay。保持手机蓝牙和 Wi-Fi 开启。"
+        panel.gestureHint.text = "已选手机会自动保存，下次可直接连接。"
+        val selected = DiPlayPreferences.phoneAddress(this) != null
+        phoneButton.text = if (selected) "更换手机 · ${DiPlayPreferences.phoneName(this)}" else "选择手机"
+    }
+
+    private fun chooseMode() {
+        if (working || E01GocManager.isBusy()) return
+        val current = E01GocPreferences.enabled(this)
+        AlertDialog.Builder(this).setTitle("蓝牙模式")
+            .setSingleChoiceItems(arrayOf("安卓蓝牙", "原厂蓝牙"), if (current) 1 else 0) { dialog, index ->
+                dialog.dismiss()
+                val factory = index == 1
+                if (factory == current) return@setSingleChoiceItems
+                confirm("切换蓝牙模式", "将停止当前 CarPlay 连接，切换后需重新选择手机。此操作不会安装或卸载蓝牙适配。") {
+                    work {
+                        check(E01BluetoothSwitchIntegration.prepare()) { "CarPlay 尚未停止" }
+                        E01GocPreferences.select(applicationContext, factory)
+                        showStatus("已切换${if (factory) "原厂蓝牙" else "安卓蓝牙"}，请选择手机。")
+                    }
+                }
+            }.setNegativeButton("取消", null).show()
     }
 
     private fun updateLicenseLayout() {
@@ -146,6 +197,12 @@ class E01GocActivity : Activity() {
     }
 
     private fun showInstructions() {
+        if (!E01GocPreferences.enabled(this)) {
+            AlertDialog.Builder(this).setTitle("安卓蓝牙连接")
+                .setMessage("1. 打开安卓蓝牙设置，与 iPhone 配对。\n2. 返回本页选择手机，完成授权后连接 CarPlay。\n3. 下次保持手机蓝牙和 Wi-Fi 开启，直接连接即可。\n\nUSB 连接无需软件激活，请从首页选择 USB。")
+                .setPositiveButton("知道了", null).show()
+            return
+        }
         AlertDialog.Builder(this).setTitle("蓝牙连接完整步骤")
             .setMessage("日常使用（已经完成授权和适配）\n" +
                 "1. 在车机系统蓝牙中连接 iPhone，确认电话和音乐已连接。\n" +
@@ -160,7 +217,7 @@ class E01GocActivity : Activity() {
                 "遇到问题\n" +
                 "• 授权核验失败：检查网络后在右侧刷新；到期或停用请联系管理员，不必重复申请。\n" +
                 "• 测试中可点击“停止测试”，等待蓝牙恢复完成。\n" +
-                "• “还原备份”恢复原版系统组件；“标准蓝牙”只切换连接方式，不会卸载适配。\n" +
+                "• “还原备份”恢复原版系统组件；切换蓝牙模式不会卸载适配。\n" +
                 "• USB 连接无需软件激活，请从首页选择 USB。")
             .setPositiveButton("知道了", null).show()
     }
@@ -185,7 +242,64 @@ class E01GocActivity : Activity() {
         return false
     }
 
-    private fun choosePhone() = work {
+    private fun choosePhone() {
+        if (working || E01GocManager.isBusy()) return
+        if (!E01GocPreferences.enabled(this)) { chooseAndroidPhone(); return }
+        chooseFactoryPhone()
+    }
+
+    private fun openAndroidBluetooth() {
+        runCatching { startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
+            .onFailure { showStatus("未完成：无法打开蓝牙设置，请从车机系统设置中打开。") }
+    }
+
+    private fun chooseAndroidPhone() {
+        if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), 71)
+            return
+        }
+        try {
+            val adapter = (getSystemService(BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+            if (adapter == null || !adapter.isEnabled) {
+                AlertDialog.Builder(this).setTitle("请先开启安卓蓝牙")
+                    .setMessage("开启车机蓝牙并与 iPhone 配对，再返回选择手机。")
+                    .setPositiveButton("打开蓝牙设置") { _, _ -> openAndroidBluetooth() }
+                    .setNegativeButton("取消", null).show()
+                return
+            }
+            val devices = adapter.bondedDevices.sortedBy { it.name ?: "" }
+            if (devices.isEmpty()) {
+                AlertDialog.Builder(this).setTitle("请先配对 iPhone")
+                    .setMessage("在 iPhone 的设置 → 蓝牙中与车机配对，再返回选择手机。")
+                    .setPositiveButton("打开蓝牙设置") { _, _ -> openAndroidBluetooth() }
+                    .setNegativeButton("取消", null).show()
+                return
+            }
+            val phones = devices.map { it.address to (it.name ?: "iPhone") }
+            AlertDialog.Builder(this).setTitle("选择你的 iPhone")
+                .setItems(devices.map { device ->
+                    val name = device.name ?: "已配对手机"
+                    if (devices.count { it.name == device.name } > 1) "$name · ${device.address.takeLast(5)}" else name
+                }.toTypedArray()) { _, index ->
+                    val (address, name) = phones[index]
+                    work {
+                        check(E01BluetoothSwitchIntegration.prepare()) { "CarPlay 尚未停止" }
+                        DiPlayPreferences.savePhone(applicationContext, address, name)
+                        showStatus("已选择 $name，可连接 CarPlay。")
+                    }
+                }.setNeutralButton("配对其他手机") { _, _ -> openAndroidBluetooth() }
+                .setNegativeButton("取消", null).show()
+        } catch (_: SecurityException) { showStatus("未完成：请在系统设置中允许蓝牙权限后重试。") }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != 71 || isFinishing || isDestroyed || E01GocPreferences.enabled(this)) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) choosePhone()
+        else showStatus("未完成：选择手机需要蓝牙权限，请在系统设置中允许后重试。")
+    }
+
+    private fun chooseFactoryPhone() = work {
         val phones = E01ConnectedPhones(applicationContext).use { it.connected() }
         if (phones.isEmpty()) showStatus("未找到手机，请先连接车机电话和音乐。")
         else runOnUiThread {
@@ -226,6 +340,7 @@ class E01GocActivity : Activity() {
                 working = false; temporary = false; actions.forEach { it.isEnabled = true }
                 cancelButton.visibility = View.GONE
                 panel.stage.text = "就绪"
+                updateModeLayout()
                 updateLicenseLayout()
                 window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             } }
@@ -242,7 +357,7 @@ class E01GocActivity : Activity() {
     }
 
     override fun onResume() {
-        super.onResume(); appearance.resume(); licensePanel?.start(); updateLicenseLayout()
+        super.onResume(); appearance.resume(); licensePanel?.start(); updateModeLayout(); updateLicenseLayout()
         if (licensePanel != null) { handler.removeCallbacks(licenseTick); handler.post(licenseTick) }
     }
     override fun onPause() {

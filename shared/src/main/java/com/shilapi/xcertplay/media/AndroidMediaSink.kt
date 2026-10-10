@@ -1824,17 +1824,23 @@ private class AudioRenderer(
                             )
                         }
                     }
-                    if (size > 0) {
-                        val output = codec.getOutputBuffer(index)
-                        if (output != null) {
-                            if (size > pcm.size) pcm = ByteArray(size)
-                            output.position(info.offset)
-                            output.limit(info.offset + size)
-                            output.get(pcm, 0, size)
-                            writePcm(pcm, 0, size)
+                    var copied = false
+                    try {
+                        if (size > 0) {
+                            val output = codec.getOutputBuffer(index)
+                            if (output != null) {
+                                if (size > pcm.size) pcm = ByteArray(size)
+                                output.position(info.offset)
+                                output.limit(info.offset + size)
+                                output.get(pcm, 0, size)
+                                copied = true
+                            }
                         }
+                    } finally {
+                        // AudioTrack.write can block; return the codec buffer before playback.
+                        codec.releaseOutputBuffer(index, false)
                     }
-                    codec.releaseOutputBuffer(index, false)
+                    if (copied) writePcm(pcm, 0, size)
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) return
                 }
                 else -> return

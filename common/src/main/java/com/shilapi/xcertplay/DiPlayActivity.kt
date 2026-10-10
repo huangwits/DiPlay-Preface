@@ -1440,6 +1440,10 @@ class DiPlayActivity : ComponentActivity() {
         }
         filteredSection(content, SettingsSection.ABOUT, getString(R.string.about), R.drawable.ic_dp_about) { card ->
             card.addView(button(getString(R.string.about_diplay), false) { page = "about"; render() }, matchButton(0, 60))
+            if (packageName == com.shilapi.xcertplay.update.UpdateCatalog.PACKAGE)
+                card.addView(button("检查更新", false) {
+                    startActivity(Intent(this, com.shilapi.xcertplay.update.UpdateActivity::class.java))
+                }, matchButton(8, 56))
         }
     }
 
@@ -1452,6 +1456,10 @@ class DiPlayActivity : ComponentActivity() {
                 developerVersionTaps++
                 if (developerVersionTaps >= 7) { SteeringProfiles.unlockDeveloper(this); render() }
             }, matchButton(12, 56))
+            if (packageName == com.shilapi.xcertplay.update.UpdateCatalog.PACKAGE)
+                card.addView(button("检查更新", false) {
+                    startActivity(Intent(this, com.shilapi.xcertplay.update.UpdateActivity::class.java))
+                }, matchButton(10, 56))
             if (SteeringProfiles.developerUnlocked(this)) card.addView(button(getString(R.string.steering_diagnostics), false) {
                 startActivity(Intent(this, SteeringControlsActivity::class.java).putExtra("developer", true))
             }, matchButton(10, 56))
@@ -1649,9 +1657,10 @@ class DiPlayActivity : ComponentActivity() {
         content.addView(label(getString(R.string.set_up_once_your_details_stay_saved_for_the_next_drive_cha), 17, MUTED).apply { setPadding(0, dp(8), 0, dp(24)) })
         section(content, getString(R.string.s_1_choose_your_connection)) { card -> wirelessLinkControls(card) }
         val factoryBluetooth = com.shilapi.xcertplay.e01goc.E01GocPreferences.enabled(this)
-        section(content, "E01 原厂蓝牙（优先使用）") { card ->
-            card.addView(label("先在原厂蓝牙中连接 iPhone 的电话和音乐，再打开工具选择手机、临时测试，通过后可备份安装兼容组件。已安装的组件可检查后直接连接。", 16, MUTED))
-            card.addView(label("当前通道：${if (factoryBluetooth) "E01 原厂蓝牙" else "标准 Android 蓝牙"}", 16, TEXT))
+        section(content, if (factoryBluetooth) "原厂蓝牙" else "安卓蓝牙") { card ->
+            card.addView(label(if (factoryBluetooth)
+                "在原厂蓝牙中连接 iPhone 的电话和音乐。已完成适配时，选择手机后可直接连接。"
+                else "在安卓蓝牙设置中配对 iPhone，再选择手机连接。蓝牙工具中可切换模式。", 16, MUTED))
             card.addView(button("蓝牙工具", true) {
                 startActivity(Intent(this, com.shilapi.xcertplay.e01goc.E01GocActivity::class.java))
             }, matchButton(12, 60))

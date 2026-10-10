@@ -66,6 +66,7 @@ data class AirPlayConfig(
     val disableAudioOutput: Boolean = false,
     val opusOutputSupported: Boolean = true,
     val microphone: Boolean = false,
+    val microphoneOpus: Boolean = true,
     val manufacturer: String = "xcertplay",
     val model: String = "xcertplay",
     val oemLabel: String = "xcertplay",

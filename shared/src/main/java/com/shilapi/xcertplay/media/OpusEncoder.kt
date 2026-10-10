@@ -1,15 +1,18 @@
 package com.shilapi.xcertplay.media
 
 import android.util.Log
+import org.concentus.OpusSignal
 import org.concentus.OpusApplication
 import org.concentus.OpusEncoder as ConcentusOpusEncoder
 import java.io.Closeable
 
 /** Encodes 20 ms chunks of 48 kHz mono PCM for the wireless CarPlay microphone uplink. */
 internal class OpusEncoder(bitrate: Int) : Closeable {
-    private val encoder: ConcentusOpusEncoder? = try {
+    private var encoder: ConcentusOpusEncoder? = try {
         ConcentusOpusEncoder(SAMPLE_RATE, CHANNELS, OpusApplication.OPUS_APPLICATION_VOIP).apply {
             setBitrate(bitrate)
+            setComplexity(5)
+            setSignalType(OpusSignal.OPUS_SIGNAL_VOICE)
         }.also {
             Log.i(TAG, "Opus microphone software encoder started bitrate=$bitrate name=Concentus")
         }
@@ -20,17 +23,18 @@ internal class OpusEncoder(bitrate: Int) : Closeable {
     private val output = ByteArray(MAX_OUTPUT_BYTES)
     private var closed = false
     private var outputPackets = 0
+    private var failures = 0
 
     val available: Boolean get() = encoder != null && !closed
 
     fun encode(pcm: ByteArray): List<ByteArray> {
         val encoder = encoder ?: return emptyList()
-        if (closed || pcm.size % (CHANNELS * 2) != 0) return emptyList()
+        if (closed || pcm.size != FRAME_BYTES) return emptyList()
         val frameSamples = pcm.size / (CHANNELS * 2)
         val size = try {
             encoder.encode(pcm, 0, frameSamples, output, 0, output.size)
         } catch (error: Exception) {
-            Log.w(TAG, "Opus microphone software encode failed", error)
+            if (failures++ < 3) Log.w(TAG, "Opus microphone software encode failed", error)
             return emptyList()
         }
         if (size <= 0) return emptyList()
@@ -48,9 +52,12 @@ internal class OpusEncoder(bitrate: Int) : Closeable {
 
     override fun close() {
         closed = true
+        encoder = null
     }
 
-    private companion object {
+    internal companion object {
+        const val FRAME_SAMPLES = 960
+        const val FRAME_BYTES = FRAME_SAMPLES * 2
         const val TAG = "xcertplay-usb"
         const val SAMPLE_RATE = 48_000
         const val CHANNELS = 1

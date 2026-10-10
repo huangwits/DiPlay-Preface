@@ -26,6 +26,73 @@ class BufferedAudioStreamTest {
     private val key = ByteArray(32) { (it + 1).toByte() }
     private val format = AudioFormat(AudioCodecKind.AAC_LC, 48_000, 2, BufferedAudioStream.STREAM_TYPE, "media")
 
+    @Test fun intakePacesAfterFifteenSecondsAndRefillsImmediatelyAfterFlush() {
+        val paced = CountDownLatch(1)
+        val resume = CountDownLatch(1)
+        val pauses = CopyOnWriteArrayList<Long>()
+        val stream = BufferedAudioStream(key, format, RecordingSink(), pause = { millis ->
+            pauses += millis
+            paced.countDown()
+            resume.await()
+        })
+        try {
+            stream.start()
+            Socket(InetAddress.getLoopbackAddress(), stream.port).use { socket ->
+                val out = DataOutputStream(socket.getOutputStream())
+                fun send(first: Int, count: Int) {
+                    repeat(count) { offset ->
+                        val i = first + offset
+                        val body = seal(i, i * 1024L, byteArrayOf(0x21))
+                        out.writeShort(body.size + 2); out.write(body)
+                    }
+                    out.flush()
+                }
+                send(0, 702)
+                waitFor { queuedFrames(stream) == 702 }
+                assertTrue(pauses.isEmpty())
+                send(702, 1)
+                assertTrue(paced.await(3, TimeUnit.SECONDS))
+                assertEquals(listOf(5L), pauses.toList())
+                stream.flush(703 * 1024L)
+                assertEquals(0, queuedFrames(stream))
+                resume.countDown()
+                send(703, 10)
+                waitFor { queuedFrames(stream) == 10 }
+                assertEquals(1, pauses.size)
+            }
+        } finally { resume.countDown(); stream.close() }
+    }
+
+    @Test fun closeDuringPacingStopsFurtherReadsAndDiscardsBufferedFrames() {
+        val paced = CountDownLatch(1)
+        val resume = CountDownLatch(1)
+        val reader = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val stream = BufferedAudioStream(key, format, RecordingSink(), pause = {
+            reader.set(Thread.currentThread())
+            paced.countDown()
+            resume.await()
+        })
+        try {
+            stream.start()
+            Socket(InetAddress.getLoopbackAddress(), stream.port).use { socket ->
+                val out = DataOutputStream(socket.getOutputStream())
+                repeat(704) { i ->
+                    val body = seal(i, i * 1024L, byteArrayOf(0x21))
+                    out.writeShort(body.size + 2); out.write(body)
+                }
+                out.flush()
+                assertTrue(paced.await(3, TimeUnit.SECONDS))
+                stream.close()
+                assertTrue(stream.outputCleanupComplete)
+                assertEquals(0, queuedFrames(stream))
+                resume.countDown()
+                reader.get().join(3000)
+                assertFalse(reader.get().isAlive)
+                assertEquals(0, queuedFrames(stream))
+            }
+        } finally { resume.countDown(); stream.close() }
+    }
+
     @Test
     fun theOfferIsMadeOnlyWhenEnabled() {
         val off = AirPlayInfoPlist.build(config)
@@ -74,6 +141,42 @@ class BufferedAudioStreamTest {
                 stream.close()
                 sending.get(3, TimeUnit.SECONDS)
             }
+        } finally {
+            stream.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun theFillRunsFreeToTheFloorAndIsPacedBeyondIt() {
+        // 15 s of 1024-sample frames at 48 kHz, the point past which the intake is held back.
+        val floor = 48_000 * 15_000 / (1024 * 1000)
+        val extra = 200
+        val pauses = CopyOnWriteArrayList<Long>()
+        val stream = BufferedAudioStream(key, format, RecordingSink(), pause = { pauses.add(it) })
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            stream.start()
+            Socket(InetAddress.getLoopbackAddress(), stream.port).use { socket ->
+                val sending = executor.submit {
+                    try {
+                        val out = DataOutputStream(socket.getOutputStream())
+                        repeat(floor + extra) { i ->
+                            val body = seal(i, i * 1024L, byteArrayOf(0x21))
+                            out.writeShort(body.size + 2); out.write(body)
+                        }
+                        out.flush()
+                    } catch (_: java.io.IOException) { /* Closing the stream interrupts a blocked writer. */ }
+                }
+                waitFor { queuedFrames(stream) >= floor + extra }
+                sending.get(3, TimeUnit.SECONDS)
+            }
+            assertEquals(floor + extra, queuedFrames(stream))
+            // Music starts at once: nothing is held back until the floor is reached, and from
+            // there every frame costs a quarter of its own duration, so the intake settles at
+            // about four times real time instead of racing TCP to the two-minute cap.
+            assertEquals(extra + 1, pauses.size)
+            assertEquals(setOf(5L), pauses.toSet())
         } finally {
             stream.close()
             executor.shutdownNow()
@@ -155,6 +258,14 @@ class BufferedAudioStreamTest {
         }
     }
 
+    private fun queuedFrames(stream: BufferedAudioStream): Int {
+        val lock = BufferedAudioStream::class.java.getDeclaredField("lock").apply { isAccessible = true }.get(stream)!!
+        return synchronized(lock) {
+            val queue = BufferedAudioStream::class.java.getDeclaredField("queue").apply { isAccessible = true }.get(stream)
+            (queue as java.util.ArrayDeque<*>).size
+        }
+    }
+
     private fun queuedBytes(stream: BufferedAudioStream): Long {
         val lock = BufferedAudioStream::class.java.getDeclaredField("lock").apply { isAccessible = true }.get(stream)!!
         return synchronized(lock) {
@@ -221,7 +332,9 @@ class BufferedAudioStreamTest {
 
     @Test
     fun tinyAuthenticatedFramesCannotGrowAnUnboundedObjectQueue() {
-        val stream = BufferedAudioStream(key, format, RecordingSink())
+        // The frame-count bound, not the paced fill: take the frames at full speed so the two
+        // minutes this fills are reached inside the test's own deadline.
+        val stream = BufferedAudioStream(key, format, RecordingSink(), pause = {})
         val executor = Executors.newSingleThreadExecutor()
         try {
             stream.start()
