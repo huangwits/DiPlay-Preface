@@ -23,9 +23,10 @@ internal object UpdateVersion {
 }
 
 internal data class UpdateRelease(val version: String, val apkName: String, val apkUrl: String,
-    val size: Long, val sha256: String, val notes: String) {
+    val size: Long, val sha256: String, val notes: String, val assetApiUrl: String? = null) {
     fun json(): JSONObject = JSONObject().put("version", version).put("apkName", apkName)
         .put("apkUrl", apkUrl).put("size", size).put("sha256", sha256).put("notes", notes)
+        .apply { assetApiUrl?.let { put("assetApiUrl", it) } }
 }
 
 internal object UpdateCatalog {
@@ -51,18 +52,26 @@ internal object UpdateCatalog {
         if (!Regex("sha256:[0-9a-fA-F]{64}").matches(digest))
             throw IOException("新版安装包缺少校验信息，请稍后重试。")
         return validate(UpdateRelease(version, name, asset.getString("browser_download_url"),
-            asset.getLong("size"), digest.substringAfter(':').lowercase(), release.optString("body").take(12_000)), tag)
+            asset.getLong("size"), digest.substringAfter(':').lowercase(), release.optString("body").take(12_000),
+            asset.optString("url").takeIf { it.isNotBlank() }), tag)
     }
 
     fun restore(json: String): UpdateRelease = JSONObject(json).let {
         validate(UpdateRelease(it.getString("version"), it.getString("apkName"), it.getString("apkUrl"),
-            it.getLong("size"), it.getString("sha256"), it.optString("notes").take(12_000)))
+            it.getLong("size"), it.getString("sha256"), it.optString("notes").take(12_000),
+            it.optString("assetApiUrl").takeIf { value -> value.isNotBlank() }))
     }
 
     private fun validate(release: UpdateRelease, tag: String = "v${release.version}"): UpdateRelease {
         require(UpdateVersion.parse(release.version) != null && !release.version.startsWith("v"))
         require(release.apkName == "DiPlay-Preface-v${release.version}.apk")
         require(release.apkUrl == "$REPOSITORY/releases/download/$tag/${release.apkName}")
+        release.assetApiUrl?.let {
+            val url = java.net.URL(it)
+            require(url.protocol == "https" && url.host == "api.github.com" &&
+                url.userInfo == null && (url.port == -1 || url.port == 443) &&
+                url.path.startsWith("/repos/huangwits/DiPlay-Preface/releases/assets/"))
+        }
         require(release.size in 1..MAX_APK_SIZE && Regex("[0-9a-f]{64}").matches(release.sha256))
         return release
     }

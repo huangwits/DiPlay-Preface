@@ -14,9 +14,9 @@ import java.security.MessageDigest
 class UpdateClientTest {
     @get:Rule val temporary = TemporaryFolder()
     private val payload = "a complete update payload".toByteArray()
-    private fun release() = UpdateRelease("0.2.16.1", "DiPlay-Preface-v0.2.16.1.apk",
+    private fun release(assetApiUrl: String? = null) = UpdateRelease("0.2.16.1", "DiPlay-Preface-v0.2.16.1.apk",
         "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk",
-        payload.size.toLong(), MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) }, "")
+        payload.size.toLong(), MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) }, "", assetApiUrl)
 
     private class Response(url: URL, val bytes: ByteArray, val code: Int = 200,
         val headers: Map<String, String> = emptyMap()) : HttpURLConnection(url) {
@@ -43,6 +43,21 @@ class UpdateClientTest {
         assertArrayEquals(payload, file.readBytes())
         assertEquals(100, progress.last())
         assertTrue(replies.all { it.closed && !it.instanceFollowRedirects })
+    }
+
+    @Test fun fallsBackToGithubApiAssetWhenBrowserDownloadCannotOpen() {
+        val apiUrl = "https://api.github.com/repos/huangwits/DiPlay-Preface/releases/assets/123"
+        val opened = mutableListOf<String>()
+        val client = UpdateClient { url ->
+            opened += url.toString()
+            if (url.host == "github.com") throw IOException("release CDN unavailable")
+            Response(url, payload, headers = mapOf("Content-Length" to payload.size.toString()))
+        }
+        val file = temporary.newFile()
+        client.download(release(apiUrl), file, UpdateCancellation()) {}
+        assertArrayEquals(payload, file.readBytes())
+        assertEquals(2, opened.size)
+        assertEquals(apiUrl, opened.last())
     }
 
     @Test fun refusesRedirectsToPlainHttpOrUnrelatedHostsBeforeConnecting() {
