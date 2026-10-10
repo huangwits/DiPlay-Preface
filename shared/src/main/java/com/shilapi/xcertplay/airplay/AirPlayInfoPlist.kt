@@ -53,6 +53,7 @@ object AirPlayInfoPlist {
             info["audioFormats"] = audioFormats(
                 config.entertainmentSampleRate,
                 config.microphone,
+                config.microphoneOpus,
                 config.opusOutputSupported,
                 config.mainBufferedAudio,
             )
@@ -126,6 +127,7 @@ object AirPlayInfoPlist {
     private fun audioFormats(
         entertainmentRate: Int,
         microphone: Boolean,
+        microphoneOpus: Boolean,
         opusOutputSupported: Boolean,
         mainBuffered: Boolean = false,
     ): List<Map<String, Any?>> {
@@ -147,7 +149,7 @@ object AirPlayInfoPlist {
         val aacLc = if (is48) 0x800000 else 0x400000
         val pcmInput = if (microphone) pcmMono else null
         val opusOutput = if (opusOutputSupported) opus else 0
-        val wirelessInput = if (microphone) pcmMono or opusOutput else null
+        val wirelessInput = if (microphone) pcmMono or (if (microphoneOpus) opusOutput else 0) else null
 
         return listOf(
             format(100, "compatibility", pcm, pcmInput),

@@ -746,4 +746,9 @@
     <string name="call_echo_cancellation_description">尝试减少 CarPlay 通话中发送给对方的扬声器回声。效果取决于车载主机。下次连接 CarPlay 时生效。</string>
     <string name="call_voice_filter">更清晰的通话人声（实验性）</string>
     <string name="call_voice_filter_description">削减 CarPlay 通话音频的低音。这可能改变人声的音色。下次连接 CarPlay 时生效。</string>
+    <string name="vpn_authorization_unavailable">系统无法打开 VPN 授权。请返回 DiPlay 后重试；若仍无法授权，请检查车机系统的 VPN 功能。</string>
+    <string name="settings_discard_pending_title">设置尚未保存</string>
+    <string name="settings_discard_pending_message">是否保存本次修改？保存后将重新连接 CarPlay。</string>
+    <string name="settings_discard_pending_confirm">放弃修改</string>
+    <string name="settings_continue_editing">继续编辑</string>
 </resources>

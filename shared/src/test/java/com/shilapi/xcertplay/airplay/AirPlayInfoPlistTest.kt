@@ -211,6 +211,9 @@ class AirPlayInfoPlistTest {
             0x70004154,
             telephony(AirPlayInfoPlist.build(base.copy(microphone = true)))["audioInputFormats"],
         )
+        val withoutEncoder = telephony(AirPlayInfoPlist.build(base.copy(microphone = true, microphoneOpus = false)))
+        assertEquals(0x4154, withoutEncoder["audioInputFormats"])
+        assertEquals(0x70004154, withoutEncoder["audioOutputFormats"])
     }
 
     @Test
