@@ -97,6 +97,17 @@ class LicenseTlsTest {
         }
     }
 
+    @Test fun packagedMozillaBundleContainsThePublicRootSetAndEveryEntryIsAValidCa() {
+        val app = RuntimeEnvironment.getApplication()
+        val roots = LicenseTls.packagedRoots(app)
+        assertTrue("The app must carry the public CA bundle, not one service-specific root", roots.size >= 120)
+        assertTrue(roots.all { it.basicConstraints >= 0 })
+        val bundle = app.resources.openRawResource(R.raw.license_mozilla_roots).use { it.readBytes() }
+        assertEquals(181178, bundle.size)
+        assertEquals("173575594a2dd75bfbd2c47a89e8c4cc5f8522c7530c1c716ff6b0b5de252ff6",
+            MessageDigest.getInstance("SHA-256").digest(bundle).joinToString("") { "%02x".format(it.toInt() and 255) })
+    }
+
     @Test fun capturedProductionChainValidatesWithoutSystemRootsWhenProvided() {
         val path = System.getenv("DIPLAY_TLS_CHAIN")
         org.junit.Assume.assumeTrue("Provide a freshly captured public server chain", !path.isNullOrBlank())

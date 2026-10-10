@@ -16,7 +16,6 @@ import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
-/** Supplemental public CAs for license connections, including OEMs with stale trust stores. */
 internal object LicenseTls {
     @Volatile private var cachedFactory: SSLSocketFactory? = null
 
@@ -34,11 +33,16 @@ internal object LicenseTls {
 
     internal fun packagedRoots(context: Context): List<X509Certificate> {
         val parser = CertificateFactory.getInstance("X.509")
-        // The current service uses YE1 -> Root YE. Trust the official self-signed root directly
-        // so older path builders do not need the longer YE -> X2 -> X1 cross-sign chain.
-        return listOf(R.raw.license_isrg_root_x1, R.raw.license_isrg_root_x2, R.raw.license_isrg_root_ye).map { id ->
-            context.resources.openRawResource(id).use { parser.generateCertificate(it) as X509Certificate }
+        // The Mozilla bundle covers normal public CA rotation; Root YE covers the current
+        // Let's Encrypt generation used by the service. All entries remain public CA roots.
+        val roots = mutableListOf<X509Certificate>()
+        context.resources.openRawResource(R.raw.license_mozilla_roots).use { input ->
+            roots += parser.generateCertificates(input).filterIsInstance<X509Certificate>()
         }
+        listOf(R.raw.license_isrg_root_x1, R.raw.license_isrg_root_x2, R.raw.license_isrg_root_ye).forEach { id ->
+            context.resources.openRawResource(id).use { roots += parser.generateCertificate(it) as X509Certificate }
+        }
+        return roots
     }
 
     internal fun trustedRoots(roots: List<X509Certificate>): X509TrustManager {
