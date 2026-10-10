@@ -5,6 +5,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.security.MessageDigest
 
@@ -31,7 +32,7 @@ internal class UpdateClient(private val connect: (URL) -> HttpURLConnection = { 
         }
     }
 
-    private fun open(address: String, cancellation: UpdateCancellation): HttpURLConnection {
+    private fun open(address: String, cancellation: UpdateCancellation, binary: Boolean = false): HttpURLConnection {
         var url = URL(address)
         repeat(6) {
             cancellation.check()
@@ -44,7 +45,7 @@ internal class UpdateClient(private val connect: (URL) -> HttpURLConnection = { 
                 connection.instanceFollowRedirects = false
                 connection.useCaches = false
                 connection.setRequestProperty("User-Agent", "DiPlay-Preface-Updater")
-                connection.setRequestProperty("Accept", if (url.host == "api.github.com") "application/vnd.github+json" else "application/octet-stream")
+                connection.setRequestProperty("Accept", if (binary) "application/octet-stream" else "application/vnd.github+json")
                 connection.setRequestProperty("Accept-Encoding", "identity")
                 val status = connection.responseCode
                 if (status in setOf(301, 302, 303, 307, 308)) {
@@ -88,8 +89,10 @@ internal class UpdateClient(private val connect: (URL) -> HttpURLConnection = { 
             try {
                 downloadFrom(source, release, destination, cancellation, progress)
                 return
-            } catch (error: Throwable) {
-                if (error is InterruptedIOException) throw error
+            } catch (error: IOException) {
+                destination.delete()
+                cancellation.check()
+                if (error is InterruptedIOException && error !is SocketTimeoutException) throw error
                 failure = error
             }
         }
@@ -98,7 +101,7 @@ internal class UpdateClient(private val connect: (URL) -> HttpURLConnection = { 
 
     private fun downloadFrom(address: String, release: UpdateRelease, destination: File,
         cancellation: UpdateCancellation, progress: (Int) -> Unit) {
-        val connection = open(address, cancellation)
+        val connection = open(address, cancellation, binary = true)
         try {
             val declared = connection.getHeaderField("Content-Length")?.toLongOrNull()
             if (declared != null && declared != release.size) throw IOException("安装包大小不匹配，请重新检查更新。")

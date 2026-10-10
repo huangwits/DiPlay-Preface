@@ -140,6 +140,9 @@ class E01GocActivity : Activity() {
         setContentView(root)
         updateModeLayout()
         updateLicenseLayout()
+        if (intent.getBooleanExtra("android_bluetooth_unavailable", false)) {
+            showStatus("未检测到安卓蓝牙。请切换到原厂蓝牙模式，按提示完成连接准备。")
+        }
         // Discard the retired diagnostic history when upgrading an existing installation.
         for (name in listOf("e01-goc-last-result.txt", "last-result.txt")) {
             runCatching { java.io.File(filesDir, name).delete() }

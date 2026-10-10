@@ -45,3 +45,9 @@ The static site layout, CSS and generator adapt DiAuto (AGPL-3.0). The AGPL lice
 Required Notice: Copyright AndyShaman (https://github.com/AndyShaman/BYDMate)
 
 The maneuver PNGs under `shared/src/main/assets/byd-hud-icons` were imported from BYDMate. Its PolyForm Noncommercial 1.0.0 terms and required notice are included alongside the assets. These files are separate from the project code license; upstream describes them as donor assets and their original provenance is not independently established. The validated DiLink5.1 windshield path uses factory turn codes rather than these images.
+
+## Public ISRG certificate trust anchors
+
+License HTTPS connections retain platform trust and supplement missing OEM trust anchors with the official ISRG Root X1, ISRG Root X2 and Root YE certificates. Domain, signature and certificate-validity checks remain enabled. These public certificates are application resources, not changes to the device trust store.
+
+Source: https://letsencrypt.org/certificates/ and https://letsencrypt.org/certs/gen-y/root-ye.der . Root YE DER SHA-256: `e14ffcad5b0025731006caa43a121a22d8e9700f4fb9cf852f02a708aa5d5666`.
