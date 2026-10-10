@@ -1,7 +1,6 @@
 package com.shilapi.xcertplay.license
 
 import android.content.Context
-import android.os.Build
 import com.shilapi.xcertplay.host.R
 import java.security.KeyStore
 import java.security.cert.CertificateException
@@ -17,25 +16,29 @@ import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
-/** Supplemental public CAs for the license connection on older OEM Android trust stores. */
+/** Supplemental public CAs for license connections, including OEMs with stale trust stores. */
 internal object LicenseTls {
     @Volatile private var cachedFactory: SSLSocketFactory? = null
 
     fun configure(context: Context, connection: HttpsURLConnection) {
-        if (Build.VERSION.SDK_INT > 25) return
         connection.sslSocketFactory = socketFactory(context)
         // Keep HttpsURLConnection's hostname verifier; never change process-wide TLS defaults.
     }
 
     @Synchronized private fun socketFactory(context: Context): SSLSocketFactory {
         cachedFactory?.let { return it }
-        val parser = CertificateFactory.getInstance("X.509")
-        val roots = listOf(R.raw.license_isrg_root_x1, R.raw.license_isrg_root_x2).map { id ->
-            context.resources.openRawResource(id).use { parser.generateCertificate(it) as X509Certificate }
-        }
-        val manager = SupplementalTrustManager(trustManager(null), trustedRoots(roots))
+        val manager = SupplementalTrustManager(trustManager(null), trustedRoots(packagedRoots(context)))
         return SSLContext.getInstance("TLS").apply { init(null, arrayOf(manager), null) }
             .socketFactory.also { cachedFactory = it }
+    }
+
+    internal fun packagedRoots(context: Context): List<X509Certificate> {
+        val parser = CertificateFactory.getInstance("X.509")
+        // The current service uses YE1 -> Root YE. Trust the official self-signed root directly
+        // so older path builders do not need the longer YE -> X2 -> X1 cross-sign chain.
+        return listOf(R.raw.license_isrg_root_x1, R.raw.license_isrg_root_x2, R.raw.license_isrg_root_ye).map { id ->
+            context.resources.openRawResource(id).use { parser.generateCertificate(it) as X509Certificate }
+        }
     }
 
     internal fun trustedRoots(roots: List<X509Certificate>): X509TrustManager {

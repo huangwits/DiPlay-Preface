@@ -40,6 +40,8 @@ class DefaultConnectionModeTest {
     }
 
     @Test fun initialLaunchUsesTheFixedDefaultInsteadOfTheLastManualTransport() {
+        shadowOf(android.bluetooth.BluetoothAdapter.getDefaultAdapter()).setState(android.bluetooth.BluetoothAdapter.STATE_ON)
+        shadowOf(app).grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
         DiPlayPreferences.saveAutoConnect(app, true)
         DiPlayPreferences.savePhone(app, "00:11:22:33:44:55", "Test iPhone")
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.WIFI_P2P)

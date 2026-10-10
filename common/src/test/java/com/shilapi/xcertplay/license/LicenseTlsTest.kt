@@ -68,7 +68,7 @@ class LicenseTlsTest {
         catch (_: CertificateException) { }
     }
 
-    @Test fun oldAndroidChangesOnlyThisConnectionFactoryAndKeepsHostnameVerification() {
+    @Test @Config(sdk = [23, 28, 33]) fun staleOemStoresAtAnyApiUseOnlyThisConnectionFactoryAndKeepHostnameVerification() {
         val defaults = HttpsURLConnection.getDefaultSSLSocketFactory()
         val verifier = HttpsURLConnection.getDefaultHostnameVerifier()
         val connection = URL("https://license.example.test").openConnection() as HttpsURLConnection
@@ -81,18 +81,12 @@ class LicenseTlsTest {
         assertSame(verifier, HttpsURLConnection.getDefaultHostnameVerifier())
     }
 
-    @Test @Config(sdk = [28]) fun modernAndroidKeepsItsPlatformFactory() {
-        val connection = URL("https://license.example.test").openConnection() as HttpsURLConnection
-        val original = connection.sslSocketFactory
-        LicenseTls.configure(RuntimeEnvironment.getApplication(), connection)
-        assertSame(original, connection.sslSocketFactory)
-    }
-
     @Test fun packagedAnchorsMatchTheOfficialIsrgCertificates() {
         val app = RuntimeEnvironment.getApplication()
         for ((id, expected) in listOf(
             R.raw.license_isrg_root_x1 to "96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6",
             R.raw.license_isrg_root_x2 to "69729b8e15a86efc177a57afb7171dfc64add28c2fca8cf1507e34453ccb1470",
+            R.raw.license_isrg_root_ye to "e14ffcad5b0025731006caa43a121a22d8e9700f4fb9cf852f02a708aa5d5666",
         )) {
             val bytes = app.resources.openRawResource(id).use { it.readBytes() }
             val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
@@ -111,11 +105,11 @@ class LicenseTlsTest {
             parser.generateCertificates(input).map { it as X509Certificate }.toTypedArray()
         }
         val app = RuntimeEnvironment.getApplication()
-        val roots = listOf(R.raw.license_isrg_root_x1, R.raw.license_isrg_root_x2).map { id ->
-            app.resources.openRawResource(id).use { parser.generateCertificate(it) as X509Certificate }
-        }
-        LicenseTls.SupplementalTrustManager(missingRoots, LicenseTls.trustedRoots(roots))
+        LicenseTls.SupplementalTrustManager(missingRoots, LicenseTls.trustedRoots(LicenseTls.packagedRoots(app)))
             .checkServerTrusted(chain, "ECDHE_ECDSA")
+        // A short chain ending directly at the new YE anchor must work even with an empty system store.
+        LicenseTls.SupplementalTrustManager(missingRoots, LicenseTls.trustedRoots(LicenseTls.packagedRoots(app)))
+            .checkServerTrusted(chain.take(2).toTypedArray(), "ECDHE_ECDSA")
     }
 
     @Test fun certificateErrorsAreReadableAndApprovalFailuresKeepTheirMeaning() {
@@ -126,6 +120,35 @@ class LicenseTlsTest {
         assertFalse(LicenseFailureMessage.describe(untrusted).contains("Exception"))
         assertTrue(LicenseFailureMessage.describe(untrusted).contains("安全证书"))
         assertEquals("授权未通过", LicenseFailureMessage.describe(java.io.IOException("授权未通过")))
+    }
+
+    @Test @Config(sdk = [23, 28]) fun liveLicenseChallengeWorksWithOnlyPackagedRootsWhenRequested() {
+        val origin = System.getenv("DIPLAY_TLS_LIVE_ORIGIN")
+        org.junit.Assume.assumeTrue("Opt in to a live license challenge", !origin.isNullOrBlank())
+        val app = RuntimeEnvironment.getApplication()
+        for (emptySystemStore in listOf(false, true)) {
+            val connection = URL(origin!!.trimEnd('/') + "/v1/challenge").openConnection() as HttpsURLConnection
+            LicenseTls.configure(app, connection)
+            if (emptySystemStore) {
+                val trust = LicenseTls.SupplementalTrustManager(missingRoots,
+                    LicenseTls.trustedRoots(LicenseTls.packagedRoots(app)))
+                connection.sslSocketFactory = javax.net.ssl.SSLContext.getInstance("TLS").apply {
+                    init(null, arrayOf(trust), null)
+                }.socketFactory
+            }
+            connection.connectTimeout = 10_000; connection.readTimeout = 10_000
+            connection.instanceFollowRedirects = false
+            connection.requestMethod = "POST"; connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setFixedLengthStreamingMode(2)
+            try {
+                connection.outputStream.use { it.write("{}".toByteArray()) }
+                assertEquals(200, connection.responseCode)
+                val reply = connection.inputStream.use { org.json.JSONObject(String(it.readBytes(), Charsets.UTF_8)) }
+                assertTrue(reply.getString("id").matches(Regex("[0-9a-f]{48}")))
+                assertTrue(reply.getString("nonce").matches(Regex("[0-9a-f]{64}")))
+            } finally { connection.disconnect() }
+        }
     }
 
     private fun reject(chain: Array<X509Certificate>) {
