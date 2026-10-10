@@ -52,6 +52,8 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
     private val extraLabels = mutableListOf<TextView>()
     private val extraInputs = mutableListOf<EditText>()
     private var themedNight = false
+    private var appStyle = false
+    private var primaryAction: Button? = null
     private var following = true
     private var positioning = false
     private var renderedLogs = ""
@@ -121,7 +123,7 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
             layoutWidth = width; layoutHeight = height
             controls.gravity = if (centered) Gravity.CENTER else Gravity.TOP or Gravity.START
             carplayIcon.visibility = if (centered) VISIBLE else GONE
-            statusLabel.visibility = if (centered) GONE else VISIBLE
+            statusLabel.visibility = if (centered || appStyle) GONE else VISIBLE
             val contentWidth = if (centered) minOf(dp(560), (width - dp(32)).coerceAtLeast(1)) else -1
             for (i in 0 until controls.childCount) {
                 val child = controls.getChildAt(i)
@@ -221,7 +223,23 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
         return input
     }
 
+    fun useAppStyle() {
+        appStyle = true
+        statusLabel.visibility = GONE
+        controls.background = AppPageStyle.card(context)
+        controls.setPadding(dp(16), dp(16), dp(16), dp(16))
+        title.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        applyTheme(true)
+    }
+
+    fun setPrimaryAction(button: Button?) {
+        if (primaryAction === button) return
+        primaryAction = button
+        if (appStyle) extraButtons.forEach { AppPageStyle.action(it, it === button) }
+    }
+
     fun applyTheme(night: Boolean) {
+        if (appStyle && !night) { applyTheme(true); return }
         themedNight = night
         val palette = WaitingScreenColors.of(night)
         setBackgroundColor(palette.background)
@@ -241,6 +259,7 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
             it.backgroundTintList = android.content.res.ColorStateList.valueOf(
                 if (night) Color.rgb(42, 56, 77) else Color.rgb(213, 225, 243))
         }
+        if (appStyle) extraButtons.forEach { AppPageStyle.action(it, it === primaryAction) }
     }
 
     private fun action(label: String) = Button(context).apply {

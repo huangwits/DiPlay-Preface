@@ -226,7 +226,7 @@ internal object CarPlayMediaKeys {
         }
         keyLogMonitor?.let { lastKeyLogDiagnostics = it.diagnostics(); it.close() }; keyLogMonitor = null
         val generation = ++monitorGeneration
-        val inputBindings = steeringProfile?.bindings?.filterNot { it.isVendorInput } ?: if (!useGeelyInput && appContext?.let(GeelyFactoryCarPlay::load) != null) {
+        val inputBindings = steeringProfile?.bindings?.filter { !it.isVendorInput && it.source != "android" } ?: if (!useGeelyInput && appContext?.let(GeelyFactoryCarPlay::load) != null) {
             // HardKeyModel in the factory APK logs this press even without a connected iPhone.
             listOf(SteeringBinding("siri", 200231, 0, "logcat", "HardKeyModel"))
         } else emptyList()
@@ -428,6 +428,19 @@ internal object CarPlayMediaKeys {
         }
     }
 
+    /** Foreground delivery also works before the first music buffer creates a media session. */
+    fun dispatchHardwareKey(event: KeyEvent): Boolean = callback.dispatchHardwareKey(event)
+
+    private fun routeAndroidKey(event: KeyEvent): Boolean {
+        val binding = synchronized(this) {
+            steeringProfile?.bindings?.firstOrNull { it.source == "android" && it.keyCode == event.keyCode }
+        } ?: return false
+        if (event.repeatCount == 0 && event.action == binding.event) {
+            onObservedKey(SteeringObservedKey(event.keyCode, event.action, "android"))
+        }
+        return true
+    }
+
     /** Avoid applying the standard action again when this physical key has a custom mapping. */
     fun consumesHardwareKey(keyCode: Int): Boolean = synchronized(this) {
         val standard = CarPlayMediaButton.forKeyCode(keyCode) != null || CarPlayMediaButton.opensSiri(keyCode)
@@ -496,8 +509,7 @@ internal object CarPlayMediaKeys {
             else audio?.requestAudioFocus(legacyFocusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         focusRequest = request.takeIf { manageAudioFocus }
         focusHeld = granted
-        session = MediaSession(context, "DiPlay CarPlay").apply {
-            setCallback(callback, mainHandler)
+        session = createMediaKeySession(context, callback, mainHandler).apply {
             setMetadata(androidMetadata(nowPlaying, shownArtworkLocked()))
             isActive = true
         }
@@ -521,6 +533,7 @@ internal object CarPlayMediaKeys {
             it.release()
         }
         session = null
+        callback.reset()
         mediaAudioActive = false
         nowPlaying = CarPlayNowPlaying()
         artwork = null
@@ -574,6 +587,8 @@ internal object CarPlayMediaKeys {
     private val callback = CarPlayMediaCallback(
         send = ::send,
         consumesKey = ::consumesHardwareKey,
+        routeKey = ::routeAndroidKey,
+        active = { controller?.hasActiveAirPlayAttachment() == true },
     )
 
     /** Whether [next] changes what the media session's metadata shows; position and play state do not. */
@@ -663,6 +678,14 @@ internal object CarPlayMediaKeys {
     private const val MAX_CACHED_ARTWORK = 4
 }
 
+/** Android 5.x requires these flags to route wheel keys to the session. */
+@Suppress("DEPRECATION")
+internal fun createMediaKeySession(context: Context, callback: MediaSession.Callback, handler: Handler): MediaSession =
+    MediaSession(context, "DiPlay CarPlay").apply {
+        setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
+        setCallback(callback, handler)
+    }
+
 /**
  * Media-session input → CarPlay presses. Hardware keys arrive as button events and keep the toggle;
  * media controllers (not hardware keys) call [onPlay] and [onPause] with an explicit intent.
@@ -670,14 +693,31 @@ internal object CarPlayMediaKeys {
 internal class CarPlayMediaCallback(
     private val send: (index: Int, source: String) -> Unit,
     private val consumesKey: (Int) -> Boolean = { false },
+    private val routeKey: (KeyEvent) -> Boolean = { false },
+    private val active: () -> Boolean = { true },
 ) : MediaSession.Callback() {
+    private data class Press(val code: Int, val action: Int, val down: Long, val time: Long, val device: Int)
+    private var lastPress: Press? = null
+
+    fun reset() { lastPress = null }
+
     override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
         @Suppress("DEPRECATION")
         val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
-        if (consumesKey(event.keyCode)) return true
+        return dispatchHardwareKey(event)
+    }
+
+    fun dispatchHardwareKey(event: KeyEvent): Boolean {
+        if (!active()) return false
         val index = CarPlayMediaButton.forKeyCode(event.keyCode)
-            ?: return super.onMediaButtonEvent(mediaButtonIntent)
+        val press = Press(event.keyCode, event.action, event.downTime, event.eventTime, event.deviceId)
+        if (press == lastPress) return true
+        // Learned Android events must run before suppressing the key's default action.
+        if (routeKey(event)) { lastPress = press; return true }
+        if (consumesKey(event.keyCode)) return true
+        if (index == null) return false
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            lastPress = press
             send(index, KeyEvent.keyCodeToString(event.keyCode))
         }
         return true

@@ -15,13 +15,13 @@
 | --- | --- |
 | 上游版本 | `0.2.16` |
 | 上游 versionCode | `41` |
-| 星瑞修订 | `6` |
-| APK versionName | `0.2.16.6` |
-| APK versionCode | `50`（此前同包名交付 0.2.16.5 为 `49`） |
-| 本地 APK 文件名 | `DiPlay-Preface-v0.2.16.6.apk` |
-| 对应发布标签 / Release | `v0.2.16.6` / `preface v0.2.16.6` |
+| 星瑞修订 | `7` |
+| APK versionName | `0.2.16.7` |
+| APK versionCode | `51`（此前同包名交付 0.2.16.6 为 `50`） |
+| 本地 APK 文件名 | `DiPlay-Preface-v0.2.16.7.apk` |
+| 对应发布标签 / Release | `v0.2.16.7` / `preface v0.2.16.7` |
 
-2026-10-10 从 [Carlito 发布记录](https://github.com/carlito12345/DiPlay/releases/tag/v0.2.16) 和 [该标签的构建配置](https://github.com/carlito12345/DiPlay/blob/v0.2.16/mobile/build.gradle.kts) 核实上游版本及编号。上游最低 API 25，本适配仍为 API 22；本次未合入全部 0.2.16 功能，范围见 [当前版本说明](PREFACE-0.2.16.6.md) 和 [更新评估](UPSTREAM-0.2.16-REVIEW.md)。
+2026-10-10 从 [Carlito 发布记录](https://github.com/carlito12345/DiPlay/releases/tag/v0.2.16) 和 [该标签的构建配置](https://github.com/carlito12345/DiPlay/blob/v0.2.16/mobile/build.gradle.kts) 核实上游版本及编号。上游最低 API 25，本适配仍为 API 22；本次未合入全部 0.2.16 功能，范围见 [当前版本说明](PREFACE-0.2.16.7.md) 和 [更新评估](UPSTREAM-0.2.16-REVIEW.md)。
 
 交付前从最终 APK 读取 `versionName`、`versionCode`、包名及签名，核对文件名和对应源码；执行 BUILD.md 的完整包认证与签名门禁。仅重命名旧 APK 不算修正内部版本。
 
@@ -29,4 +29,4 @@
 
 Follow the full Carlito upstream version and append a Preface revision: upstream `x.y.z` becomes `x.y.z.1`, then `.2`, `.3` for later deliveries. Reset the revision to `.1` when the upstream version changes. Keep APK versionName, current documentation and installer filename aligned; `v` is only a filename/tag prefix. Debug builds retain their existing suffix. Set the integer versionCode to one greater than the maximum of the previously delivered same-package code and verified upstream code. Never downgrade it.
 
-The current local delivery is `0.2.16.6` / `50`, based on upstream numbering `0.2.16` / `41`; the selected API 22 connection baseline and documented selective adaptations remain. This supersedes the former separate APK/release version convention. Preserve historical artifacts and tags. Releases attach the validated APK only; corresponding source and build documentation remain in the repository.
+The current local delivery is `0.2.16.7` / `51`, based on upstream numbering `0.2.16` / `41`; the selected API 22 connection baseline and documented selective adaptations remain. This supersedes the former separate APK/release version convention. Preserve historical artifacts and tags. Releases attach the validated APK only; corresponding source and build documentation remain in the repository.

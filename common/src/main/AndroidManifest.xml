@@ -26,6 +26,7 @@
     <!-- The centre card also follows whichever launcher is the default home. -->
     <queries>
         <package android:name="ecarx.bluetooth.service" />
+        <package android:name="com.neusoft.extraservice" />
         <package android:name="com.autolink.carplay" />
         <package android:name="com.autolink.carplay.app" />
         <package android:name="com.geely.service.oneosapi" />

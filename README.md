@@ -2,11 +2,11 @@
 
 面向吉利星瑞 E01（MT6735）车机的 CarPlay 适配版，支持 Android 5.1，界面为简体中文。
 
-[下载安装包](https://github.com/huangwits/DiPlay-Preface/releases/latest) · [更新说明](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.16.6)
+[下载安装包](https://github.com/huangwits/DiPlay-Preface/releases/latest) · [更新说明](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.16.7)
 
 ## 安装
 
-当前版本 **0.2.16.6**。下载 Release 中的 APK，传到车机安装，并按提示授予所需权限。
+当前版本 **0.2.16.7**。下载 Release 中的 APK，传到车机安装，并按提示授予所需权限。
 
 已安装带更新功能的版本，可在“设置 → 关于 → 检查更新”下载新版。更新时直接覆盖安装，不要先卸载，以保留设置和授权信息。请在安全停车后完成安装与连接设置。
 
@@ -33,7 +33,7 @@
 
 ## English
 
-DiPlay Preface is a community CarPlay adaptation for Geely E01 / MT6735 head units running Android 5.1, with a Simplified Chinese interface. Current version: **0.2.16.6**.
+DiPlay Preface is a community CarPlay adaptation for Geely E01 / MT6735 head units running Android 5.1, with a Simplified Chinese interface. Current version: **0.2.16.7**.
 
 Download the APK from [Releases](https://github.com/huangwits/DiPlay-Preface/releases/latest). If your version includes the updater, check Settings → About → Check for updates. Update without uninstalling to retain settings and activation information. Complete setup while safely parked.
 

@@ -23,7 +23,7 @@ internal class CommunityCard(context: Context) : LinearLayout(context) {
     private val thumbnail = ImageView(context).apply {
         setImageResource(R.drawable.preface_qq_group)
         scaleType = ImageView.ScaleType.FIT_CENTER
-        contentDescription = "星瑞 QQ 群二维码，点按放大"
+        contentDescription = "QQ 群二维码，点按放大"
         isFocusable = true
         setOnClickListener { showQr() }
     }
@@ -42,7 +42,7 @@ internal class CommunityCard(context: Context) : LinearLayout(context) {
     fun applyTheme(night: Boolean) {
         val colors = WaitingScreenColors.of(night)
         background = GradientDrawable().apply {
-            setColor(if (night) Color.rgb(29, 40, 56) else Color.rgb(238, 244, 252))
+            setColor(if (night) com.shilapi.xcertplay.AppPageStyle.button else Color.rgb(238, 244, 252))
             cornerRadius = dp(12).toFloat()
         }
         caption.setTextColor(colors.secondary)
@@ -66,7 +66,7 @@ internal class CommunityCard(context: Context) : LinearLayout(context) {
         root.addView(ImageView(context).apply {
             setImageResource(R.drawable.preface_qq_group)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "星瑞交流群完整二维码，群号 $GROUP_NUMBER"
+            contentDescription = "QQ 群完整二维码，群号 $GROUP_NUMBER"
         }, LayoutParams(-1, 0, 1f))
         viewer.setContentView(root)
         viewer.setOnDismissListener { if (dialog === viewer) dialog = null }
