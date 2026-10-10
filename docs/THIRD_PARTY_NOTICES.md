@@ -51,3 +51,7 @@ The maneuver PNGs under `shared/src/main/assets/byd-hud-icons` were imported fro
 License HTTPS connections retain platform trust and supplement missing OEM trust anchors with the official ISRG Root X1, ISRG Root X2 and Root YE certificates. Domain, signature and certificate-validity checks remain enabled. These public certificates are application resources, not changes to the device trust store.
 
 Source: https://letsencrypt.org/certificates/ and https://letsencrypt.org/certs/gen-y/root-ye.der . Root YE DER SHA-256: `e14ffcad5b0025731006caa43a121a22d8e9700f4fb9cf852f02a708aa5d5666`.
+
+The bundled public root set is the Mozilla CA extraction published by curl on 2026-09-25. The certificate-only resource contains 121 roots and has SHA-256 `173575594a2dd75bfbd2c47a89e8c4cc5f8522c7530c1c716ff6b0b5de252ff6`. Source and update information: https://curl.se/ca/cacert.pem and https://curl.se/docs/caextract.html .
+
+Mozilla certificate data is distributed under the [Mozilla Public License 2.0](licenses/Mozilla-MPL-2.0.txt). The certificate-only extraction preserves the certificates without altering their content.
