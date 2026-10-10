@@ -12,6 +12,21 @@ internal object E01RootBridge {
     fun execute(script: File, action: String, current: String = "none", background: Boolean = false): String {
         check(Looper.myLooper() != Looper.getMainLooper())
         val command = command(script.absolutePath, action, current, android.os.Process.myPid(), background)
+        return transact(command)
+    }
+
+    /** Launch only our private, locally generated self-update script; no downloaded shell code. */
+    fun startAppUpdate(script: File): String {
+        check(Looper.myLooper() != Looper.getMainLooper())
+        val path = script.canonicalPath
+        require(Regex("/[A-Za-z0-9_./-]+").matches(path))
+        require(path.endsWith("/com.shihab.diplay.preface/files/app-update/install.sh"))
+        val command = "/system/bin/sh $path </dev/null >/dev/null 2>&1 & rc=\$?; echo $MARKER\$rc"
+        require(command.toByteArray(Charsets.UTF_8).size <= 220)
+        return transact(command)
+    }
+
+    private fun transact(command: String): String {
         val binder = runCatching {
             Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
                 .invoke(null, "ExtraUtilsService") as? IBinder

@@ -216,7 +216,7 @@ internal class LicensePanel(
                         handler.postDelayed(poll, 60_000)
                     } else showPollingStopped()
                 }, onFailure = {
-                    message.text = it.message ?: "授权校验失败，请检查网络后重试"
+                    message.text = LicenseFailureMessage.describe(it)
                     setState(LicensePanelState.ERROR)
                 })
             }

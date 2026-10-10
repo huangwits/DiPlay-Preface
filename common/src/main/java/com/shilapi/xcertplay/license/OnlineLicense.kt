@@ -68,14 +68,14 @@ object OnlineLicense {
         val action = if (requestActivation) "request" else "refresh"
         val began = SystemClock.elapsedRealtime()
         try {
-            val challenge = post(origin, "/v1/challenge", JSONObject())
+            val challenge = post(context, origin, "/v1/challenge", JSONObject())
             val id = challenge.getString("id")
             val proof = LicenseProtocol.proof(action, id, challenge.getString("nonce"), device, publicBytes, "", packageName, signer)
             val signed = Signature.getInstance("SHA256withRSA").run { initSign(privateKey); update(proof); sign() }
             val request = JSONObject().put("challengeId", id).put("deviceId", device)
                 .put("publicKey", encode(publicBytes)).put("signature", encode(signed))
                 .put("package", packageName).put("signer", signer)
-            val response = post(origin, "/v1/$action", request)
+            val response = post(context, origin, "/v1/$action", request)
             val requestId = response.getString("requestId")
             check(Regex("[0-9A-F]{12}").matches(requestId)) { "授权申请号无效" }
             val prefs = context.getSharedPreferences("diplay-license", Context.MODE_PRIVATE)
@@ -120,9 +120,9 @@ object OnlineLicense {
         return entry.certificate.publicKey.encoded to entry.privateKey
     }
 
-    private fun post(origin: String, path: String, body: JSONObject): JSONObject {
+    private fun post(context: Context, origin: String, path: String, body: JSONObject): JSONObject {
         val connection = URL(origin.trimEnd('/') + path).openConnection() as HttpsURLConnection
-        // Use platform certificate/hostname verification; never install a trust-all verifier.
+        LicenseTls.configure(context, connection)
         connection.connectTimeout = 10000; connection.readTimeout = 10000
         connection.instanceFollowRedirects = false; connection.requestMethod = "POST"; connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json")

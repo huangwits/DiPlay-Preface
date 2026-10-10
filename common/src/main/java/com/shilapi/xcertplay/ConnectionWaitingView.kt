@@ -12,7 +12,8 @@ import android.widget.*
 import kotlin.math.roundToInt
 
 /** Full-width connection controls; USB explicitly opts into the diagnostic panel. */
-internal class ConnectionWaitingView(context: Context, private var showLogPanel: Boolean = false) : FrameLayout(context) {
+internal class ConnectionWaitingView(context: Context, private var showLogPanel: Boolean = false,
+    statusTitle: String = "连接状态", private val preparation: Boolean = false) : FrameLayout(context) {
     val columns = LinearLayout(context)
     val controls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     val controlScroll = ScrollView(context).apply { isFillViewport = true; addView(controls) }
@@ -37,7 +38,12 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
         addView(logText, LayoutParams(-1, -2))
     }
     val title = text("DiPlay", 26f)
-    private val statusLabel = text("连接状态", 13f)
+    private val carplayIcon = ImageView(context).apply {
+        setImageResource(com.shilapi.xcertplay.host.R.drawable.ic_carplay)
+        contentDescription = "CarPlay"
+        visibility = GONE
+    }
+    private val statusLabel = text(statusTitle, 13f)
     val logTitle = text("实时连接日志", 16f)
     private val follow = action("跟随最新")
     private val copy = action("复制日志")
@@ -57,6 +63,7 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
     init {
         isClickable = true
         controls.setPadding(dp(16), dp(12), dp(16), dp(12))
+        controls.addView(carplayIcon, LinearLayout.LayoutParams(dp(64), dp(64)).apply { bottomMargin = dp(12) })
         for (view in listOf(title, statusLabel, stage, instructions, confirmed, failure,
             retry, settings, recovery, back, gestureHint)) {
             controls.addView(view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
@@ -101,6 +108,7 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
         val height = MeasureSpec.getSize(heightMeasureSpec) - paddingTop - paddingBottom
         val landscape = width >= dp(600) && width > height
         val short = height < dp(420)
+        val centered = preparation && !showLogPanel
         if (wide != landscape || compact != short) {
             wide = landscape; compact = short
             columns.orientation = if (landscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
@@ -111,6 +119,21 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
         val leftWidth = (width * .34f).roundToInt().coerceIn(dp(240), dp(400))
         if (layoutWidth != width || layoutHeight != height) {
             layoutWidth = width; layoutHeight = height
+            controls.gravity = if (centered) Gravity.CENTER else Gravity.TOP or Gravity.START
+            carplayIcon.visibility = if (centered) VISIBLE else GONE
+            statusLabel.visibility = if (centered) GONE else VISIBLE
+            val contentWidth = if (centered) minOf(dp(560), (width - dp(32)).coerceAtLeast(1)) else -1
+            for (i in 0 until controls.childCount) {
+                val child = controls.getChildAt(i)
+                val params = child.layoutParams as LinearLayout.LayoutParams
+                if (child === carplayIcon) {
+                    params.width = dp(if (short) 48 else 72)
+                    params.height = params.width
+                } else params.width = if (centered && child is Button) minOf(dp(300), contentWidth) else contentWidth
+                child.layoutParams = params
+                if (child is TextView && child !is Button)
+                    child.gravity = if (centered) Gravity.CENTER else Gravity.CENTER_VERTICAL
+            }
             if (!showLogPanel) {
                 controlScroll.layoutParams = LinearLayout.LayoutParams(-1, -1)
             } else if (landscape) {
@@ -122,6 +145,18 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
             }
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    }
+
+    fun showConnection(wireless: Boolean, phoneName: String, factory: Boolean) {
+        val heading = if (wireless) "连接 $phoneName" else "USB CarPlay"
+        val help = when {
+            !wireless -> "请用 USB 数据线连接并解锁 iPhone，允许手机上的信任提示。"
+            factory -> "保持车机电话和音乐已连接，开启 iPhone 的蓝牙和 Wi-Fi。"
+            else -> "保持 iPhone 靠近车机，开启蓝牙和 Wi-Fi，并允许手机上的 CarPlay 提示。"
+        }
+        if (title.text.toString() != heading) title.text = heading
+        if (instructions.text.toString() != help) instructions.text = help
+        setLogPanelVisible(!wireless)
     }
 
     fun showLogs(value: String) {

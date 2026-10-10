@@ -1,6 +1,7 @@
 package com.shilapi.xcertplay
 
 import android.content.Intent
+import android.content.DialogInterface
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Handler
@@ -111,12 +112,18 @@ class CarPlayHostSettingsTest {
         assertTrue(field("menuOpen") as Boolean)
     }
 
-    @Test fun fullSettingsShortcutDiscardsPreviewWithoutRestartingTheSession() {
+    @Test fun fullSettingsShortcutWaitsForDiscardConfirmationWithoutRestartingTheSession() {
         val controller = attachController()
         invoke("openSettingsMenu")
         val original = AirPlayPersistence.loadDisplayScalePercent(activity)
         resolutionSlider().progress = 0
         fullSettingsButton().performClick()
+        assertTrue(field("menuOpen") as Boolean)
+        assertNull(shadowOf(activity).nextStartedActivity)
+        val dialog = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(dialog.isShowing)
+        dialog.getButton(DialogInterface.BUTTON_NEGATIVE).performClick()
+        shadowOf(android.os.Looper.getMainLooper()).idle()
         assertFalse(field("menuOpen") as Boolean)
         assertNull(field("settingsBaseline"))
         assertEquals(original, field("displayScalePercent"))
@@ -126,6 +133,47 @@ class CarPlayHostSettingsTest {
         val intent = shadowOf(activity).nextStartedActivity
         assertEquals(DiPlayActivity::class.java.name, intent.component!!.className)
         assertEquals("settings", intent.getStringExtra("page"))
+    }
+
+    @Test fun continueEditingPreservesPendingChangesAndDoesNotNavigate() {
+        val controller = attachController()
+        invoke("openSettingsMenu")
+        resolutionSlider().progress = 0
+        fullSettingsButton().performClick()
+        org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+            .getButton(DialogInterface.BUTTON_NEUTRAL).performClick()
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue(field("menuOpen") as Boolean)
+        assertEquals(CarPlayDisplayScale.MIN_PERCENT, field("displayScalePercent"))
+        assertSame(controller, field("controller"))
+        assertNull(shadowOf(activity).nextStartedActivity)
+    }
+
+    @Test fun confirmingSaveNavigatesOnlyAfterSuccessfulValidation() {
+        attachController()
+        invoke("openSettingsMenu")
+        resolutionSlider().progress = 0
+        fullSettingsButton().performClick()
+        org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+            .getButton(DialogInterface.BUTTON_POSITIVE).performClick()
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertFalse(field("menuOpen") as Boolean)
+        assertEquals(CarPlayDisplayScale.MIN_PERCENT, AirPlayPersistence.loadDisplayScalePercent(activity))
+        assertEquals(1, field("restartGeneration"))
+        assertEquals("settings", shadowOf(activity).nextStartedActivity.getStringExtra("page"))
+    }
+
+    @Test fun failedSaveFromLeaveDialogKeepsMenuOpenWithoutNavigation() {
+        attachController()
+        invoke("openSettingsMenu")
+        views(menu()).filterIsInstance<RadioButton>().first { it.tag == MfiTarget.LOCAL }.performClick()
+        fullSettingsButton().performClick()
+        org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+            .getButton(DialogInterface.BUTTON_POSITIVE).performClick()
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue(field("menuOpen") as Boolean)
+        assertNull(shadowOf(activity).nextStartedActivity)
+        assertEquals(0, field("restartGeneration"))
     }
 
     @Test fun returningFromFullSettingsReloadsSavedConnectionPreferences() {

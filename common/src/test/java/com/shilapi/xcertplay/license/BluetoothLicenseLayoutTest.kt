@@ -60,6 +60,7 @@ class BluetoothLicenseLayoutTest {
     }
 
     @Test fun factoryToolsKeepAuthorizationOnTheRightAcrossWindowSizes() {
+        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val activity = host.get()
@@ -74,7 +75,7 @@ class BluetoothLicenseLayoutTest {
                 assertTrue(right.right <= row.width && right.bottom <= row.height)
                 assertNull(left.logPanel.parent)
                 val labels = views(left).filterIsInstance<Button>().map { it.text.toString() }.toList()
-                for (text in listOf("检查状态", "选择手机", "连接测试", "安装适配", "还原备份", "标准蓝牙", "返回")) assertTrue(text in labels)
+                for (text in listOf("检查状态", "选择手机", "连接测试", "安装适配", "还原备份", "原厂蓝牙 · 切换模式", "返回")) assertTrue(text in labels)
                 assertFalse(labels.any { it.contains("原厂已连接") || it.contains("临时兼容测试") })
                 assertFalse(views(root).filterIsInstance<TextView>().any { "微信" in it.text || "starts181004" in it.text })
                 screenshot(root, "bluetooth-${width}x${height}", width, height)
@@ -149,6 +150,7 @@ class BluetoothLicenseLayoutTest {
     }
 
     @Test fun detailedGuideExplainsFirstSetupDailyUseAndRestoreWithoutStartingMaintenance() {
+        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val activity = host.get()

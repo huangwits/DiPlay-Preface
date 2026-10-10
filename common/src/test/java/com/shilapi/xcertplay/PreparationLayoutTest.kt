@@ -24,6 +24,57 @@ import java.io.File
 @Config(sdk = [28], qualifiers = "zh-rCN-mdpi", manifest = Config.NONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PreparationLayoutTest {
+    @Test fun wirelessPreparationCentersTheSavedPhoneAndKeepsActionsReachableWhenShortOrFailing() {
+        val panel = ConnectionWaitingView(RuntimeEnvironment.getApplication(), preparation = true)
+        panel.retry.visibility = View.GONE
+        panel.showConnection(true, "我的 iPhone", false)
+        panel.stage.text = "正在通过蓝牙连接 iPhone"
+        for ((width, height) in listOf(1280 to 480, 960 to 360, 640 to 240, 360 to 640)) {
+            for (night in listOf(false, true)) {
+                panel.applyTheme(night)
+                layout(panel, width, height)
+                assertNull(panel.logPanel.parent)
+                assertEquals("连接 我的 iPhone", panel.title.text.toString())
+                assertEquals(width / 2, panel.title.left + panel.title.width / 2)
+                assertTrue(panel.title.top >= 0)
+                assertTrue(panel.back.width >= 48)
+                assertTrue(panel.back.right <= width)
+                panel.controlScroll.fullScroll(View.FOCUS_DOWN)
+                layout(panel, width, height)
+                assertTrue("back reachable at $width x $height", panel.back.bottom <= panel.controlScroll.height + panel.controlScroll.scrollY)
+                panel.controlScroll.scrollTo(0, 0)
+                preview(panel, "wireless-${width}x${height}-${if (night) "night" else "day"}", width, height)
+            }
+        }
+        panel.showFailure("未能连接 iPhone，请确认手机蓝牙已开启。")
+        panel.recovery.visibility = View.VISIBLE
+        layout(panel, 640, 240)
+        panel.controlScroll.fullScroll(View.FOCUS_DOWN)
+        layout(panel, 640, 240)
+        assertTrue(panel.back.bottom <= panel.controlScroll.height + panel.controlScroll.scrollY)
+        assertEquals(View.VISIBLE, panel.retry.visibility)
+        panel.showConnection(false, "我的 iPhone", false)
+        layout(panel, 960, 360)
+        assertNotNull(panel.logPanel.parent)
+        assertEquals("USB CarPlay", panel.title.text.toString())
+        panel.showConnection(true, "另一台 iPhone", true)
+        layout(panel, 960, 360)
+        assertNull(panel.logPanel.parent)
+        assertEquals("连接 另一台 iPhone", panel.title.text.toString())
+        assertTrue(panel.instructions.text.contains("电话和音乐"))
+        assertEquals(480, panel.title.left + panel.title.width / 2)
+    }
+
+    private fun preview(view: View, name: String, width: Int, height: Int) {
+        System.getenv("DIPLAY_LAYOUT_PREVIEW_DIR")?.let { directory ->
+            File(directory).mkdirs()
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+    }
+
     @Test fun onlyUsbOptsIntoLogsAndChangingModeReclaimsTheWholeViewport() {
         val panel = ConnectionWaitingView(RuntimeEnvironment.getApplication())
         for ((width, height) in listOf(1280 to 480, 480 to 800)) {
