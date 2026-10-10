@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.InputFilter
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -46,6 +47,7 @@ class SteeringControlsActivity : ComponentActivity() {
     private val bindingLabels = mutableMapOf<String, TextView>()
     private val identifyButtons = mutableListOf<Button>()
     private var learningOperation: String? = null
+    private var learnedAndroidKey: Int? = null
     private lateinit var cancelButton: Button
     private var exportProfile: SteeringProfile? = null
     private val developer get() = intent.getBooleanExtra("developer", false) && SteeringProfiles.developerUnlocked(this)
@@ -84,6 +86,25 @@ class SteeringControlsActivity : ComponentActivity() {
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
         buildPanel()
         SteeringProfiles.scheduleUpload(this)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (learnedAndroidKey == event.keyCode) {
+            if (event.action == KeyEvent.ACTION_UP) learnedAndroidKey = null
+            return true
+        }
+        val operation = learningOperation
+        // Keep Back/Home, volume and power available while identifying a wheel button.
+        if (operation != null && event.keyCode in 1..1000 && event.keyCode !in listOf(
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER,
+                KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE)) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                learnedAndroidKey = event.keyCode
+                onIdentifiedKey(operation, SteeringObservedKey(event.keyCode, event.action, "android"))
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onResume() { super.onResume(); updateAccess(); handler.post(refresh) }

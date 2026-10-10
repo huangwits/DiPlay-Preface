@@ -5,4 +5,8 @@ data class CarPlayHudGuidance(
     val distanceMeters: Int,
     val maneuverCode: Int,
     val road: String,
+    val appleManeuver: Int = 0,
+    val drivingSide: Int = 0,
+    val remainingSeconds: Long? = null,
+    val remainingMeters: Long? = null,
 )

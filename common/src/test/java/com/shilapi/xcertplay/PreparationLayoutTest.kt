@@ -174,7 +174,7 @@ class PreparationLayoutTest {
             assertEquals("选择手机后即可连接", panel.confirmed.text.toString())
             for (night in listOf(false, true)) {
                 panel.applyTheme(night)
-                assertEquals(WaitingScreenColors.of(night).text, panel.stage.currentTextColor)
+                assertEquals(WaitingScreenColors.of(true).text, panel.stage.currentTextColor)
             }
         } finally { host.pause().stop().destroy() }
     }

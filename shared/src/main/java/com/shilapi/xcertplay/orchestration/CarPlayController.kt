@@ -637,7 +637,10 @@ class CarPlayController(
         hudNavigationListener = listener
         val current = synchronized(hudRouteLock) {
             hudRouteState.current()?.let {
-                CarPlayHudGuidance(it.distanceMeters, it.maneuver, it.road)
+                hudRouteState.currentApple().let { apple ->
+                    CarPlayHudGuidance(it.distanceMeters, it.maneuver, it.road,
+                        apple?.type ?: 0, apple?.drivingSide ?: 0, apple?.remainingSeconds, apple?.remainingMeters)
+                }
             }
         }
         mainHandler.post {
@@ -839,7 +842,10 @@ class CarPlayController(
             val update = hudRouteState.accept(frame.messageId, frame.payload)
             changed = update != CarPlayRouteChange.NONE
             hudRouteState.current()?.let {
-                CarPlayHudGuidance(it.distanceMeters, it.maneuver, it.road)
+                hudRouteState.currentApple().let { apple ->
+                    CarPlayHudGuidance(it.distanceMeters, it.maneuver, it.road,
+                        apple?.type ?: 0, apple?.drivingSide ?: 0, apple?.remainingSeconds, apple?.remainingMeters)
+                }
             }
         }
         if (changed) {
