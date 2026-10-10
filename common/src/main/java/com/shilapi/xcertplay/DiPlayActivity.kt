@@ -78,9 +78,9 @@ internal object SettingsInformationArchitecture {
             SettingsSection.AUTOMATIC_CONNECTION, SettingsSection.HOTSPOT_ADB, SettingsSection.PERMISSIONS_AND_HELP),
         SettingsCategory.DISPLAY to setOf(SettingsSection.DISPLAY_AND_PERFORMANCE),
         SettingsCategory.AUDIO to setOf(SettingsSection.AUDIO_ROUTING),
-        SettingsCategory.NAVIGATION to setOf(SettingsSection.LOCATION, SettingsSection.VEHICLE_MAP, SettingsSection.CLUSTER_MAP),
+        SettingsCategory.NAVIGATION to setOf(SettingsSection.LOCATION, SettingsSection.CLUSTER_MAP),
         SettingsCategory.VEHICLE to setOf(SettingsSection.CARPLAY_CONTROLS, SettingsSection.CAR_BUTTON,
-            SettingsSection.GEELY_VEHICLE, SettingsSection.STEERING_IDENTIFICATION, SettingsSection.VEHICLE_PROBE),
+            SettingsSection.GEELY_VEHICLE, SettingsSection.VEHICLE_MAP, SettingsSection.STEERING_IDENTIFICATION, SettingsSection.VEHICLE_PROBE),
         SettingsCategory.DIAGNOSTICS to setOf(SettingsSection.DIAGNOSTICS),
         SettingsCategory.ADVANCED to setOf(SettingsSection.EXPERIMENTAL_DISPLAY, SettingsSection.ADVANCED_MEDIA),
     )
@@ -1342,6 +1342,10 @@ class DiPlayActivity : ComponentActivity() {
             card.addView(label(getString(R.string.location_reporting_reconnects), 14, MUTED))
         }
         filteredSection(content, SettingsSection.GEELY_VEHICLE, getString(R.string.geely_vehicle), R.drawable.ic_dp_navigation) { card ->
+            toggle(card, getString(R.string.e01_native_navigation), getString(R.string.e01_native_navigation_hint),
+                E01NavigationOutput.enabled(this)) { E01NavigationOutput.setEnabled(this, it) }
+            card.addView(label(getString(if (E01NavigationOutput.available(this)) R.string.e01_native_navigation_available
+                else R.string.e01_native_navigation_unavailable), 14, MUTED))
             toggle(card, getString(R.string.bridge_motion_to_iphone), getString(R.string.bridge_motion_to_iphone_hint),
                 BridgeVehicleSpeedSource.enabled(this)) {
                 BridgeVehicleSpeedSource.setEnabled(this, it)
@@ -3396,11 +3400,11 @@ class DiPlayActivity : ComponentActivity() {
             intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER) &&
                 !intent.hasExtra("page")
 
-        private val BG = Color.rgb(12, 17, 27)
-        private val SURFACE = Color.rgb(21, 30, 44)
+        private val BG = AppPageStyle.background
+        private val SURFACE = AppPageStyle.surface
         // One step lighter than a card, so a button reads as a button even where its 1 px border is faint.
-        private val BUTTON = Color.rgb(31, 43, 61)
-        private val BORDER = Color.rgb(42, 56, 75)
+        private val BUTTON = AppPageStyle.button
+        private val BORDER = AppPageStyle.border
         private val ACCENT = com.shilapi.xcertplay.settings.SettingsTheme.CARD.accent
         private val RAIL_SELECTED = Color.rgb(24, 54, 92)
         private val RAIL_SELECTED_BORDER = Color.rgb(42, 82, 130)

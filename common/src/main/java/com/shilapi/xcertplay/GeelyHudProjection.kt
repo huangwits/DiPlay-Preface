@@ -56,6 +56,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     private var attachedHeight = 0
     private var guidance: CarPlayHudGuidance? = null
     private var navigationHidden = false
+    private var factoryNavigation: E01NavigationOutput? = null
     private val expireGuidance = Runnable {
         guidance = null
         refresh()
@@ -67,6 +68,8 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
                 detachWindow()
                 stopVehicleReader()
                 displayManager?.unregisterDisplayListener(this)
+                factoryNavigation?.clear()
+                factoryNavigation = E01NavigationOutput(activity.applicationContext)
                 activityRef = WeakReference(activity)
                 displayManager = activity.systemService(DisplayManager::class.java, "display")
                 displayManager?.registerDisplayListener(this, mainHandler)
@@ -85,6 +88,8 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
             navigationHidden = false
             displayManager?.unregisterDisplayListener(this)
             displayManager = null
+            factoryNavigation?.clear()
+            factoryNavigation = null
             activityRef = null
         }
     }
@@ -171,6 +176,12 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     /** carlito | Switch only the guidance element; vehicle cards keep their own visibility. */
     fun flyNavigation(activity: Activity): Int {
         if (guidance == null) return com.shilapi.xcertplay.host.R.string.projection_no_guidance
+        if (E01NavigationOutput.enabled(activity) && E01NavigationOutput.available(activity) && selectedDisplay(activity) == null) {
+            navigationHidden = !navigationHidden
+            refresh()
+            return if (navigationHidden) com.shilapi.xcertplay.host.R.string.projection_navigation_hidden
+                else com.shilapi.xcertplay.host.R.string.projection_navigation_shown
+        }
         if (!com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(activity)) return com.shilapi.xcertplay.host.R.string.projection_permission_required
         val selected = selectedDisplay(activity)
         if (selected == null) return com.shilapi.xcertplay.host.R.string.projection_select_display
@@ -212,8 +223,10 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
         if (activity == null || activity.isFinishing || activity.isDestroyed) {
             detachWindow()
             stopVehicleReader()
+            factoryNavigation?.clear()
             return
         }
+        factoryNavigation?.update(guidance.takeUnless { navigationHidden })
         if (!AirPlayPersistence.loadGeelyHudEnabled(activity)) {
             windowStage = "DISABLED"
             detachWindow()

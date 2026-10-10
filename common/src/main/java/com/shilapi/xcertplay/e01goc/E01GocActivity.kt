@@ -27,7 +27,6 @@ import com.shilapi.xcertplay.network.E01ConnectedPhones
 class E01GocActivity : Activity() {
     private lateinit var manager: E01GocManager
     private lateinit var panel: com.shilapi.xcertplay.ConnectionWaitingView
-    private lateinit var appearance: com.shilapi.xcertplay.ConnectionPageAppearance
     private val actions = mutableListOf<Button>()
     private val factoryViews = mutableListOf<View>()
     private val androidViews = mutableListOf<View>()
@@ -39,6 +38,12 @@ class E01GocActivity : Activity() {
     private lateinit var connectButton: Button
     private lateinit var licenseStatus: TextView
     private lateinit var cancelButton: Button
+    private lateinit var setupTitle: TextView
+    private lateinit var setupHint: TextView
+    private val setupButtons = mutableListOf<Button>()
+    // Guidance only; manager.inspect/test/install still enforce the real maintenance checks.
+    private var setupStep = 0
+    private var hadAdmission = false
     private val handler = Handler(Looper.getMainLooper())
     private val licenseTick = object : Runnable {
         override fun run() {
@@ -52,8 +57,8 @@ class E01GocActivity : Activity() {
         super.onCreate(savedInstanceState)
         manager = E01GocManager(this, ::showStatus)
         panel = com.shilapi.xcertplay.ConnectionWaitingView(this, showLogPanel = false)
-        panel.title.text = "星瑞蓝牙"
-        panel.stage.text = "就绪"
+        panel.title.text = "蓝牙工具"
+        panel.stage.visibility = View.GONE
         panel.retry.visibility = android.view.View.GONE
         panel.settings.visibility = android.view.View.GONE
         panel.recovery.visibility = android.view.View.GONE
@@ -63,6 +68,7 @@ class E01GocActivity : Activity() {
             view.setOnClickListener { action() }
             actions += view
             factoryViews += view
+            if (title != "还原备份") setupButtons += view
         }
         fun factoryText(text: String, size: Float = 13f) {
             factoryViews += panel.addControlText(text, size)
@@ -88,15 +94,22 @@ class E01GocActivity : Activity() {
             setOnClickListener { openAndroidBluetooth() }
             actions += this
         }
-        factoryText("首次适配 · 按顺序操作", 16f)
-        factoryText("① 检查状态：已安装且服务正常时，选择手机后直接连接。")
-        button("检查状态") { work {
+        setupTitle = panel.addControlText("首次适配 · 按顺序完成", 18f).apply {
+            tag = "bluetooth-setup-title"
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            factoryViews += this
+        }
+        setupHint = panel.addControlText("", 14f).apply { tag = "bluetooth-setup-hint"; factoryViews += this }
+        button("检查状态") { setupStep = 0; work {
             val snapshot = manager.inspect()
+            runOnUiThread {
+                setupStep = if (snapshot.installed) 3 else 1
+                updateSetupGuide()
+            }
             showStatus(manager.describe(snapshot) + if (snapshot.installed)
                 "\n下一步：重新连接车机蓝牙，选择手机，再点击“连接 CarPlay”。无需重复测试或安装。"
             else "\n下一步：选择手机 → 连接测试。测试通过并恢复原服务后，才可安装适配。")
         } }
-        factoryText("② 连接测试：选择手机后验证兼容性，结束后恢复原服务。")
         button("连接测试") {
             val address = DiPlayPreferences.phoneAddress(this)
             if (!allowConnectionTest()) return@button
@@ -104,39 +117,38 @@ class E01GocActivity : Activity() {
             else confirm("连接测试", "将暂停 CarPlay 并临时重启蓝牙，结束后恢复原服务。测试不替换系统程序，但可能更新配对数据。请保持手机蓝牙开启，完成后检查电话和音乐。") {
                 if (!allowConnectionTest()) return@confirm
                 temporary = true
-                work { manager.test(address) }
+                setupStep = 1
+                work { manager.test(address); runOnUiThread { setupStep = 2; updateSetupGuide() } }
             }
         }
-        factoryText("③ 安装适配：测试通过后备份并安装，完成后重新连接车机蓝牙。")
         button("安装适配") {
-            confirm("安装适配", "将备份并替换蓝牙组件，需先通过连接测试。备份仅包含原程序；电话、音乐和重启后的效果需另行确认。安装期间请保持供电，不要重启。") { work { manager.install() } }
+            confirm("安装适配", "将备份并替换蓝牙组件，需先通过连接测试。备份仅包含原程序；电话、音乐和重启后的效果需另行确认。安装期间请保持供电，不要重启。") { work { manager.install(); runOnUiThread { setupStep = 3; updateSetupGuide() } } }
         }
         factoryText("恢复 · 仅在需要时使用", 16f)
         factoryText("还原备份会恢复原版系统蓝牙组件。")
         button("还原备份") {
-            confirm("还原备份", "将暂停 CarPlay，还原已校验的原版组件并重启蓝牙。") { work { manager.restore() } }
+            confirm("还原备份", "将暂停 CarPlay，还原已校验的原版组件并重启蓝牙。") { work { manager.restore(); runOnUiThread { setupStep = 0; updateSetupGuide() } } }
         }
         cancelButton = panel.addControlAction("停止测试").apply { visibility = View.GONE }
         cancelButton.setOnClickListener {
             if (temporary) { manager.cancelled = true; showStatus("正在结束测试并恢复蓝牙…") }
         }
         panel.addControlAction("返回").setOnClickListener { onBackPressed() }
+        arrangeSetupGuide()
+        panel.useAppStyle()
         val root: View = if (OnlineLicense.enabled(this)) {
             val authorization = LicensePanel(this, ::continueConnection,
-                onStateChanged = ::updateLicenseLayout, showConnectionAction = false).also { licensePanel = it }
+                onStateChanged = ::updateLicenseLayout, showConnectionAction = false, compactWhenApproved = true).also { licensePanel = it }
             val gap = (8 * resources.displayMetrics.density).toInt()
-            LinearLayout(this).apply {
+            BluetoothToolColumns(this).apply {
                 tag = "bluetooth-license-columns"
-                orientation = LinearLayout.HORIZONTAL
                 setPadding(gap, gap, gap, gap)
                 addView(panel, LinearLayout.LayoutParams(0, -1, 1f))
                 addView(authorization, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = gap })
             }
         } else panel
-        appearance = com.shilapi.xcertplay.ConnectionPageAppearance(this, panel) { night ->
-            licensePanel?.applyTheme(night)
-            root.setBackgroundColor(com.shilapi.xcertplay.WaitingScreenColors.of(night).background)
-        }
+        root.setBackgroundColor(com.shilapi.xcertplay.AppPageStyle.background)
+        licensePanel?.applyTheme(true)
         setContentView(root)
         updateModeLayout()
         updateLicenseLayout()
@@ -160,13 +172,13 @@ class E01GocActivity : Activity() {
         val factory = E01GocPreferences.enabled(this)
         factoryViews.forEach { it.visibility = if (factory) View.VISIBLE else View.GONE }
         androidViews.forEach { it.visibility = if (factory) View.GONE else View.VISIBLE }
-        modeButton.text = "${if (factory) "原厂蓝牙" else "安卓蓝牙"} · 切换模式"
-        panel.instructions.text = if (factory)
-            "先连接车机蓝牙的电话和音乐，再连接 CarPlay。已完成适配时无需重复测试或安装。"
-        else "在安卓蓝牙设置中配对 iPhone，选择手机后连接 CarPlay。保持手机蓝牙和 Wi-Fi 开启。"
+        modeButton.text = "当前模式：${if (factory) "原厂蓝牙" else "安卓蓝牙"}（切换）"
+        panel.instructions.visibility = if (factory) View.GONE else View.VISIBLE
+        panel.instructions.text = "配对 iPhone 后选择手机，保持蓝牙和 Wi-Fi 开启。"
         panel.gestureHint.text = "已选手机会自动保存，下次可直接连接。"
         val selected = DiPlayPreferences.phoneAddress(this) != null
         phoneButton.text = if (selected) "更换手机 · ${DiPlayPreferences.phoneName(this)}" else "选择手机"
+        updateSetupGuide()
     }
 
     private fun chooseMode() {
@@ -189,14 +201,100 @@ class E01GocActivity : Activity() {
 
     private fun updateLicenseLayout() {
         val authorization = licensePanel
-        authorization?.visibility = if (authorization?.needsAttention == true) View.VISIBLE else View.GONE
+        // Keep the authorization column mounted after approval so the group QR code and
+        // current authorization status remain available for daily users.
+        authorization?.visibility = View.VISIBLE
         val message = authorization?.admissionMessage ?: when {
             !AppLicense.enabled(this) -> "此版本无需软件激活。"
             AppLicense.canStart(this) -> "授权已通过，可以连接 CarPlay。"
             else -> "请先完成本机离线激活。"
         }
         if (licenseStatus.text.toString() != message) licenseStatus.text = message
-        connectButton.isEnabled = !working && !E01GocManager.isBusy() && AppLicense.canStart(this)
+        val admitted = AppLicense.canStart(this)
+        connectButton.isEnabled = !working && !E01GocManager.isBusy() && admitted
+        if (admitted && !hadAdmission && E01GocPreferences.enabled(this) && setupStep == 0) {
+            panel.controlScroll.scrollTo(0, 0)
+        }
+        hadAdmission = admitted
+        updateSetupGuide()
+    }
+
+    private fun arrangeSetupGuide() {
+        val controls = panel.controls
+        val insertAt = controls.indexOfChild(licenseStatus) + 1
+        listOf(setupTitle, setupHint).forEach { controls.removeView(it) }
+        val steps = LinearLayout(this).apply { tag = "bluetooth-setup-steps" }
+        val gap = (8 * resources.displayMetrics.density).toInt()
+        setupButtons.forEachIndexed { index, button ->
+            controls.removeView(button)
+            val step = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            step.addView(TextView(this).apply {
+                text = "第 ${index + 1} 步"; textSize = 13f
+                setTextColor(com.shilapi.xcertplay.AppPageStyle.muted)
+                setPadding(0, 0, 0, gap / 2)
+            })
+            step.addView(button, LinearLayout.LayoutParams(-1, -2))
+            steps.addView(step, LinearLayout.LayoutParams(0, -2, 1f).apply { if (index > 0) leftMargin = gap })
+        }
+        controls.addView(setupTitle, insertAt)
+        controls.addView(steps, insertAt + 1, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gap })
+        controls.addView(setupHint, insertAt + 2)
+        factoryViews += steps
+        // Phone selection precedes the real connection action in both Bluetooth modes.
+        controls.removeView(phoneButton)
+        controls.addView(phoneButton, controls.indexOfChild(connectButton))
+        // Detailed results stay below the daily controls; they must not push the next step off-screen.
+        listOf(panel.confirmed, panel.failure).forEachIndexed { index, result ->
+            controls.removeView(result)
+            controls.addView(result, controls.indexOfChild(connectButton) + 1 + index)
+        }
+    }
+
+    private fun updateSetupGuide() {
+        if (!::setupHint.isInitialized || setupButtons.size != 3) return
+        val factory = E01GocPreferences.enabled(this)
+        val allowed = AppLicense.canStart(this)
+        setupTitle.text = if (setupStep == 3) "已安装适配 · 日常连接" else "首次适配 · 按顺序完成"
+        setupTitle.setTextColor(com.shilapi.xcertplay.AppPageStyle.text)
+        setupHint.text = when {
+            !allowed -> "审批通过后，从第 1 步开始；已安装过适配也可检查状态。"
+            setupStep == 0 -> "下一步：检查状态。已安装适配时，无需重复测试或安装。"
+            setupStep == 1 -> "下一步：选择手机，再进行连接测试。测试结束后会恢复原服务。"
+            setupStep == 2 -> "测试已通过，原服务已恢复。下一步：安装适配。"
+            else -> "重新连接车机电话和音乐，选择手机，再连接 CarPlay。"
+        }
+        val primary = when {
+            working -> null
+            !factory -> connectButton
+            setupStep == 1 && DiPlayPreferences.phoneAddress(this) == null -> phoneButton
+            setupStep == 3 -> connectButton
+            else -> setupButtons[setupStep]
+        }
+        panel.setPrimaryAction(primary)
+    }
+
+    /** Keeps the two-column layout on wide screens and stacks the panels on portrait/compact screens. */
+    private class BluetoothToolColumns(context: android.content.Context) : LinearLayout(context) {
+        private val gap get() = (8 * resources.displayMetrics.density).toInt()
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val width = MeasureSpec.getSize(widthMeasureSpec)
+            val height = MeasureSpec.getSize(heightMeasureSpec)
+            val wide = width >= (700 * resources.displayMetrics.density).toInt() && width > height
+            val next = if (wide) HORIZONTAL else VERTICAL
+            if (orientation != next) orientation = next
+            for (index in 0 until childCount) {
+                val child = getChildAt(index)
+                val params = child.layoutParams as? LayoutParams ?: continue
+                params.width = if (wide) 0 else -1
+                params.height = if (wide) -1 else 0
+                params.weight = if (wide && index == 0) 1.4f else 1f
+                params.leftMargin = if (wide && index > 0) gap else 0
+                params.topMargin = if (!wide && index > 0) gap else 0
+                child.layoutParams = params
+            }
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
     }
 
     private fun showInstructions() {
@@ -209,7 +307,7 @@ class E01GocActivity : Activity() {
         AlertDialog.Builder(this).setTitle("蓝牙连接完整步骤")
             .setMessage("日常使用（已经完成授权和适配）\n" +
                 "1. 在车机系统蓝牙中连接 iPhone，确认电话和音乐已连接。\n" +
-                "2. 等待已有授权自动核验。成功后右侧授权区会收起；无需重复申请。\n" +
+                "2. 等待已有授权自动核验。成功后可直接连接 CarPlay，右侧仍保留授权状态和群二维码。\n" +
                 "3. 首次或更换 iPhone 时点击“选择手机”，之后点击“连接 CarPlay”。\n\n" +
                 "第一次使用原厂蓝牙适配\n" +
                 "1. 先完成系统蓝牙配对；在右侧申请激活，联系管理员核对申请号并等待批准。每分钟自动查询，也可手动刷新。\n" +
@@ -332,6 +430,8 @@ class E01GocActivity : Activity() {
         manager.cancelled = false
         actions.forEach { it.isEnabled = false }
         panel.stage.text = "处理中…"
+        panel.stage.visibility = View.VISIBLE
+        updateSetupGuide()
         panel.confirmed.text = ""
         panel.confirmed.visibility = android.view.View.GONE
         panel.failure.visibility = android.view.View.GONE
@@ -342,7 +442,7 @@ class E01GocActivity : Activity() {
             finally { runOnUiThread {
                 working = false; temporary = false; actions.forEach { it.isEnabled = true }
                 cancelButton.visibility = View.GONE
-                panel.stage.text = "就绪"
+                panel.stage.visibility = View.GONE
                 updateModeLayout()
                 updateLicenseLayout()
                 window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -360,14 +460,14 @@ class E01GocActivity : Activity() {
     }
 
     override fun onResume() {
-        super.onResume(); appearance.resume(); licensePanel?.start(); updateModeLayout(); updateLicenseLayout()
+        super.onResume(); licensePanel?.start(); updateModeLayout(); updateLicenseLayout()
         if (licensePanel != null) { handler.removeCallbacks(licenseTick); handler.post(licenseTick) }
     }
     override fun onPause() {
-        handler.removeCallbacks(licenseTick); licensePanel?.stop(); appearance.pause(); super.onPause()
+        handler.removeCallbacks(licenseTick); licensePanel?.stop(); super.onPause()
     }
     override fun onConfigurationChanged(config: android.content.res.Configuration) {
-        super.onConfigurationChanged(config); appearance.configurationChanged()
+        super.onConfigurationChanged(config); panel.requestLayout()
     }
     override fun onBackPressed() {
         if (working) {

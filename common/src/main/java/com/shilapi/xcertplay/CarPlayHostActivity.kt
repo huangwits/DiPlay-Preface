@@ -914,7 +914,7 @@ class CarPlayHostActivity : ComponentActivity() {
             return true
         }
 
-        // During a CarPlay call the wheel's call key answers on the iPhone instead of opening BYD's phone app.
+        if (CarPlayMediaKeys.dispatchHardwareKey(event)) return true
 
         // Keep DiPlay's existing steering-wheel/voice-key Siri handling intact.
         if (!CarPlayMediaButton.opensSiri(event.keyCode)) return super.dispatchKeyEvent(event)

@@ -70,12 +70,17 @@ class BluetoothLicenseLayoutTest {
             val right = root.findViewWithTag<LicensePanel>("online-license-panel")
             for ((width, height) in listOf(1280 to 480, 960 to 360, 480 to 800)) {
                 layout(root, width, height)
-                assertTrue(left.right < right.left)
-                assertEquals(left.height, right.height)
+                if (width > height) {
+                    assertTrue(left.right < right.left)
+                    assertEquals(left.height, right.height)
+                } else {
+                    assertTrue(left.bottom < right.top)
+                    assertEquals(left.width, right.width)
+                }
                 assertTrue(right.right <= row.width && right.bottom <= row.height)
                 assertNull(left.logPanel.parent)
                 val labels = views(left).filterIsInstance<Button>().map { it.text.toString() }.toList()
-                for (text in listOf("检查状态", "选择手机", "连接测试", "安装适配", "还原备份", "原厂蓝牙 · 切换模式", "返回")) assertTrue(text in labels)
+                for (text in listOf("检查状态", "选择手机", "连接测试", "安装适配", "还原备份", "当前模式：原厂蓝牙（切换）", "返回")) assertTrue(text in labels)
                 assertFalse(labels.any { it.contains("原厂已连接") || it.contains("临时兼容测试") })
                 assertFalse(views(root).filterIsInstance<TextView>().any { "微信" in it.text || "starts181004" in it.text })
                 screenshot(root, "bluetooth-${width}x${height}", width, height)
@@ -106,7 +111,8 @@ class BluetoothLicenseLayoutTest {
         } finally { host.pause().stop().destroy() }
     }
 
-    @Test fun authorizedReturnHidesTheWholeRightColumnAndKeepsDailyConnectionOnTheLeft() {
+    @Test fun authorizedReturnKeepsTheGroupQrAndDailyConnectionAvailable() {
+        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
         ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
@@ -115,13 +121,21 @@ class BluetoothLicenseLayoutTest {
             val row = root.findViewWithTag<LinearLayout>("bluetooth-license-columns")
             val left = row.getChildAt(0) as ConnectionWaitingView
             val right = row.getChildAt(1) as LicensePanel
-            assertEquals(View.GONE, right.visibility)
+            assertEquals(View.VISIBLE, right.visibility)
+            assertEquals(View.VISIBLE, right.findViewWithTag<CommunityCard>("license-community-card").visibility)
             val connect = left.findViewWithTag<Button>("bluetooth-connect")
             assertTrue(connect.isEnabled)
             assertTrue(left.findViewWithTag<TextView>("bluetooth-license-status").text.contains("授权已通过"))
             for ((width,height) in listOf(1280 to 480, 960 to 360, 480 to 800)) {
                 layout(root,width,height)
-                assertTrue(left.width >= row.width - row.paddingLeft - row.paddingRight)
+                assertTrue(left.width > 0)
+                val steps = root.findViewWithTag<View>("bluetooth-setup-steps")
+                assertTrue(steps.isShown)
+                assertTrue(steps.bottom <= left.controlScroll.height)
+                val card = right.findViewWithTag<View>("license-community-card")
+                assertTrue(card.isShown)
+                assertTrue(card.bottom <= right.height)
+                assertFalse(views(right).filterIsInstance<Button>().any { it.isShown && it.text == "申请激活" })
                 screenshot(root,"authorized-${width}x${height}",width,height)
             }
             connect.performClick()
@@ -134,19 +148,48 @@ class BluetoothLicenseLayoutTest {
         }
     }
 
-    @Test fun authorizationLossReopensThePanelAndDisablesTheDailyConnectButton() {
+    @Test fun authorizationLossRestoresApplicationControlsAndDisablesDailyConnection() {
         ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val root = host.get().window.decorView
             val right = root.findViewWithTag<LicensePanel>("online-license-panel")
-            assertEquals(View.GONE,right.visibility)
+            assertEquals(View.VISIBLE,right.visibility)
             ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
             right.refreshAdmission()
             assertEquals(View.VISIBLE,right.visibility)
             assertFalse(root.findViewWithTag<Button>("bluetooth-connect").isEnabled)
+            assertTrue(views(right).filterIsInstance<Button>().single { it.text == "刷新状态" }.isShown)
             assertNull(shadowOf(host.get()).nextStartedActivity)
         } finally { host.pause().stop().destroy() }
+    }
+
+    @Test fun approvalReturnsToTheFirstSetupStepAndKeepsQrVisible() {
+        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
+        val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
+        try {
+            val root = host.get().findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+            val row = root.findViewWithTag<LinearLayout>("bluetooth-license-columns")
+            val left = row.getChildAt(0) as ConnectionWaitingView
+            val right = row.getChildAt(1) as LicensePanel
+            layout(root, 960, 360)
+            left.controlScroll.scrollTo(0, 200)
+            right.scrollTo(0, 200)
+            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
+            right.refreshAdmission()
+            layout(root, 960, 360)
+            assertEquals(0, left.controlScroll.scrollY)
+            assertEquals(0, right.scrollY)
+            assertTrue(root.findViewWithTag<TextView>("bluetooth-setup-hint").text.contains("下一步：检查状态"))
+            val primary = ReflectionHelpers.getField<Button>(left, "primaryAction")
+            assertEquals("检查状态", primary.text.toString())
+            val card = right.findViewWithTag<View>("license-community-card")
+            assertTrue(card.isShown && card.bottom <= right.height)
+            assertFalse(File(host.get().filesDir, "e01-goc/manage.sh").exists())
+        } finally {
+            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
+            host.pause().stop().destroy()
+        }
     }
 
     @Test fun detailedGuideExplainsFirstSetupDailyUseAndRestoreWithoutStartingMaintenance() {
