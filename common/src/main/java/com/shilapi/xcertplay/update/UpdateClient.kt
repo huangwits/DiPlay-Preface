@@ -82,7 +82,23 @@ internal class UpdateClient(private val connect: (URL) -> HttpURLConnection = { 
 
     fun download(release: UpdateRelease, destination: File, cancellation: UpdateCancellation,
         progress: (Int) -> Unit) {
-        val connection = open(release.apkUrl, cancellation)
+        val sources = listOfNotNull(release.apkUrl, release.assetApiUrl).distinct()
+        var failure: Throwable? = null
+        for (source in sources) {
+            try {
+                downloadFrom(source, release, destination, cancellation, progress)
+                return
+            } catch (error: Throwable) {
+                if (error is InterruptedIOException) throw error
+                failure = error
+            }
+        }
+        throw (failure ?: IOException("安装包下载失败，请稍后重试。"))
+    }
+
+    private fun downloadFrom(address: String, release: UpdateRelease, destination: File,
+        cancellation: UpdateCancellation, progress: (Int) -> Unit) {
+        val connection = open(address, cancellation)
         try {
             val declared = connection.getHeaderField("Content-Length")?.toLongOrNull()
             if (declared != null && declared != release.size) throw IOException("安装包大小不匹配，请重新检查更新。")
