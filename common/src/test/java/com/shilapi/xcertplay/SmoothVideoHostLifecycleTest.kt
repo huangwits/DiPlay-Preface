@@ -59,7 +59,9 @@ class SmoothVideoHostLifecycleTest {
         AirPlayPersistence.saveAdaptPipResolution(activity, false)
         AirPlayPersistence.saveMfiTarget(activity, MfiTarget.USB_CH341)
         // Host startup without vendor-service workers or real transports.
-        controllerConstruction = mockConstruction(CarPlayController::class.java)
+        controllerConstruction = mockConstruction(CarPlayController::class.java) { controller, _ ->
+            `when`(controller.awaitClosed(4_000)).thenReturn(true)
+        }
         (getField("teardownExecutor") as ExecutorService).shutdownNow()
         setField("teardownExecutor", PausedExecutorService())
         setField("activeDisplaySize", size(1920, 990))
@@ -91,7 +93,7 @@ class SmoothVideoHostLifecycleTest {
         AirPlayPersistence.saveSmoothVideo(activity, true)
         setField("smoothVideo", true)
         allowStartup()
-        val oldController = mock(CarPlayController::class.java)
+        val oldController = closedController()
         val oldSink = sink(pacingDelayMillis = 0)
         val stop = DeferredStop()
         CarPlayBackgroundSession.store(oldController, oldSink, 1920, 990, Any(), display, stop::invoke)
@@ -129,7 +131,7 @@ class SmoothVideoHostLifecycleTest {
             setField("sink", null)
             AirPlayPersistence.saveSmoothVideo(activity, smooth)
             setField("smoothVideo", smooth)
-            val controller = mock(CarPlayController::class.java)
+            val controller = closedController()
             val sink = sink(pacingDelayMillis = if (smooth) smoothVideoDelayMillis(60) else 0)
             val stop = DeferredStop()
             CarPlayBackgroundSession.store(controller, sink, 1920, 990, Any(), display, stop::invoke)
@@ -148,7 +150,7 @@ class SmoothVideoHostLifecycleTest {
     @Test fun aHostRebuildingItsVideoViewReleasesTheSessionSlotFirst() {
         setField("smoothVideo", false)
         allowStartup()
-        val controller = mock(CarPlayController::class.java)
+        val controller = closedController()
         val sink = sink(pacingDelayMillis = 0)
         setField("controller", controller)
         setField("sink", sink)
@@ -193,7 +195,7 @@ class SmoothVideoHostLifecycleTest {
     // (3) A shutdown while a restart's teardown is still closing must not drop the restart's sink: until
     // its decoders release their codecs it may still render to the SurfaceView being destroyed.
     @Test fun aShutdownDuringARestartKeepsTheRestartsSinkDetachable() {
-        val controller = mock(CarPlayController::class.java)
+        val controller = closedController()
         val restarting = spy(AndroidMediaSink()).also(ownedSinks::add)
         setField("controller", controller)
         setField("sink", restarting)
@@ -238,7 +240,7 @@ class SmoothVideoHostLifecycleTest {
         closing.onVideoConfig(110, config)
         closing.onVideoFrame(110, byteArrayOf(0, 0, 0, 1, 0x65, 0x88.toByte(), 0x84.toByte(), 0x21))
         assertTrue("The decoder is blocked inside queueInputBuffer", codec.entered.await(5, TimeUnit.SECONDS))
-        val controller = mock(CarPlayController::class.java)
+        val controller = closedController()
         setField("controller", controller)
         setField("sink", closing)
         CarPlayBackgroundSession.store(controller, closing, 1920, 990, activity, display) { it() }
@@ -291,6 +293,58 @@ class SmoothVideoHostLifecycleTest {
 
     private fun sink(pacingDelayMillis: Int) =
         AndroidMediaSink(videoPacingDelayMillis = pacingDelayMillis).also(ownedSinks::add)
+
+    private fun closedController() = mock(CarPlayController::class.java).also {
+        `when`(it.awaitClosed(4_000)).thenReturn(true)
+    }
+
+    @Test fun aSlowRestartMustFinishBeforeBluetoothMaintenanceAndAnotherConnection() {
+        val previous = closedController()
+        val previousSink = sink(0)
+        setField("controller", previous)
+        setField("sink", previousSink)
+        var maintenanceReady = false
+        var secondStopReady = false
+        CarPlayBackgroundSession.store(previous, previousSink, 1920, 990, activity, display) { done ->
+            activity.javaClass.getDeclaredMethod("shutdown", Boolean::class.javaPrimitiveType,
+                String::class.java, Function0::class.java).apply { isAccessible = true }
+                .invoke(activity, false, "Bluetooth setup", done)
+        }
+        restartCarPlay("Retry before setup")
+        CarPlayBackgroundSession.stop { maintenanceReady = true }
+        CarPlayBackgroundSession.stop { secondStopReady = true }
+        var waits = 0
+        `when`(previous.awaitClosed(4_000)).thenAnswer {
+            assertTrue(CarPlayBackgroundSession.hasSession())
+            assertNull(CarPlayBackgroundSession.snapshot())
+            assertFalse(maintenanceReady)
+            assertFalse(secondStopReady)
+            assertNull(getField("controller"))
+            ++waits >= 2
+        }
+        finishTeardown()
+        assertEquals(2, waits)
+        assertTrue(maintenanceReady)
+        assertTrue(secondStopReady)
+        assertFalse(CarPlayBackgroundSession.hasSession())
+    }
+
+    @Test fun repeatedShutdownCallbacksWaitForActualTransportClosure() {
+        val previous = closedController()
+        val previousSink = sink(0)
+        setField("controller", previous)
+        setField("sink", previousSink)
+        CarPlayBackgroundSession.store(previous, previousSink, 1920, 990, activity, display) { it() }
+        var completions = 0
+        val method = activity.javaClass.getDeclaredMethod("shutdown", Boolean::class.javaPrimitiveType,
+            String::class.java, Function0::class.java).apply { isAccessible = true }
+        repeat(2) { method.invoke(activity, false, "Stop", { completions++ }) }
+        assertEquals(0, completions)
+        assertTrue(CarPlayBackgroundSession.hasSession())
+        finishTeardown()
+        assertEquals(2, completions)
+        assertFalse(CarPlayBackgroundSession.hasSession())
+    }
 
     private fun surface(): Surface {
         val texture = SurfaceTexture(0)

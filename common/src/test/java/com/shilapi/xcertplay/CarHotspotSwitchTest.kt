@@ -72,8 +72,8 @@ class CarHotspotSwitchTest {
         assertTrue(CarHotspotSettings.enabled(activity))
         assertTrue(hotspotSwitch().isChecked)
         assertTrue(hotspotSwitch().isEnabled)
-        assertEquals(listOf(CarHotspotSetup.Permission.HOTSPOT), CarHotspotSetupShadow.requested)
-        assertFalse(CarHotspotSetup.Permission.BOOT_LAUNCH.granted(activity))
+        assertEquals(listOf(CarHotspotSetup.Permission.HOTSPOT, CarHotspotSetup.Permission.BOOT_LAUNCH), CarHotspotSetupShadow.requested)
+        assertTrue(CarHotspotSetup.Permission.BOOT_LAUNCH.granted(activity))
         assertFalse(AirPlayPersistence.loadAutoStartOnBoot(activity))
     }
 
@@ -105,6 +105,7 @@ class CarHotspotSwitchTest {
         assertTrue(hotspotSwitch().isChecked)
         assertNull(ShadowAlertDialog.getLatestAlertDialog())
     }
+
 
     @Test fun selectingBootFirstGrantsBothRequiredPermissionsFromTheHotspotSwitch() {
         AirPlayPersistence.saveAutoStartOnBoot(activity, true)

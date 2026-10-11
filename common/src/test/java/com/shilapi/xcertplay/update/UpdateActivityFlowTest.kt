@@ -21,6 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.util.ReflectionHelpers
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -36,7 +37,8 @@ import java.net.URL
 import java.security.MessageDigest
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [23], qualifiers = "zh-rCN", shadows = [UpdateActivityFlowTest.PrefaceContext::class])
+@Config(sdk = [23], qualifiers = "zh-rCN", shadows = [UpdateActivityFlowTest.PrefaceContext::class,
+    com.shilapi.xcertplay.e01goc.RootServiceShadow::class])
 @Suppress("DEPRECATION")
 class UpdateActivityFlowTest {
     @Implements(className = "android.app.ContextImpl", isInAndroidSdk = false)
@@ -44,34 +46,80 @@ class UpdateActivityFlowTest {
         @Implementation fun getPackageName(): String = UpdateCatalog.PACKAGE
     }
     @Before fun configureInstalledApp() {
+        com.shilapi.xcertplay.e01goc.RootServiceShadow.factory = null
         val app = RuntimeEnvironment.getApplication()
         val installed = app.packageManager.getPackageInfo(app.applicationInfo.packageName, 0)
         installed.packageName = UpdateCatalog.PACKAGE
         installed.versionName = "0.2.15.4"; installed.versionCode = 44
         installed.signatures = arrayOf(Signature("0123456789abcdef"))
         shadowOf(app.packageManager).installPackage(installed)
-        CarPlayBackgroundSession.active = false
+        CarPlayBackgroundSession.clear()
     }
 
-    @Test fun aboutPageExposesUpdateAndOpeningItDoesNotStartDownload() {
-        val app = RuntimeEnvironment.getApplication()
-        val host = Robolectric.buildActivity(DiPlayActivity::class.java,
-            Intent(app, DiPlayActivity::class.java).putExtra("page", "about")).setup()
+    private fun aboutHost() = Robolectric.buildActivity(DiPlayActivity::class.java,
+        Intent(RuntimeEnvironment.getApplication(), DiPlayActivity::class.java).putExtra("page", "about")).setup()
+
+    private fun updates(activity: DiPlayActivity): UpdatePanel = ReflectionHelpers.getField(activity, "updatePanel")
+
+    @Test fun openingAboutDoesNotCheckOrDownloadAndLegacyEntryReturnsToAbout() {
+        val host = aboutHost()
         try {
-            views(host.get().window.decorView).filterIsInstance<Button>().single { it.text == "检查更新" }.performClick()
-            assertEquals(UpdateActivity::class.java.name, shadowOf(host.get()).nextStartedActivity.component?.className)
-        } finally { host.pause().stop().destroy() }
-        val updates = Robolectric.buildActivity(UpdateActivity::class.java).setup()
-        try {
-            val button = updates.get().window.decorView.findViewWithTag<Button>("update-action")
+            val button = host.get().window.decorView.findViewWithTag<Button>("update-action")
             assertTrue(button.isEnabled); assertEquals("检查更新", button.text)
-            assertNull(shadowOf(updates.get()).nextStartedActivity)
-            assertFalse(File(updates.get().filesDir, "app-update/install.sh").exists())
-        } finally { updates.pause().stop().destroy() }
+            assertNull(shadowOf(host.get()).nextStartedActivity)
+            assertFalse(File(host.get().filesDir, "app-update/install.sh").exists())
+            val status = host.get().window.decorView.findViewWithTag<TextView>("update-status")
+            assertEquals(View.GONE, status.visibility)
+        } finally { host.pause().stop().destroy() }
+        val legacy = Robolectric.buildActivity(UpdateActivity::class.java).create()
+        val intent = shadowOf(legacy.get()).nextStartedActivity
+        assertEquals(DiPlayActivity::class.java.name, intent.component?.className)
+        assertEquals("about", intent.getStringExtra("page"))
+        assertTrue(legacy.get().isFinishing)
+        legacy.destroy()
+    }
+
+    @Test fun checkingStaysInlineAndSurvivesSettingsRerenderWithoutDuplicateRequests() {
+        val host = aboutHost()
+        val activity = host.get()
+        val requested = java.util.concurrent.CountDownLatch(1)
+        val respond = java.util.concurrent.CountDownLatch(1)
+        try {
+            var requests = 0
+            updates(activity).client = UpdateClient { url -> object : HttpURLConnection(url) {
+                override fun connect() {}
+                override fun disconnect() { respond.countDown() }
+                override fun usingProxy() = false
+                override fun getResponseCode() = 200
+                override fun getInputStream(): ByteArrayInputStream {
+                    requests++; requested.countDown()
+                    respond.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    return ByteArrayInputStream("[]".toByteArray())
+                }
+            } }
+            val button = activity.window.decorView.findViewWithTag<Button>("update-action")
+            button.performClick()
+            assertTrue(requested.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals("正在检查…", button.text)
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "render")
+            assertSame(button, activity.window.decorView.findViewWithTag<Button>("update-action"))
+            assertFalse(button.isEnabled)
+            ReflectionHelpers.setField(activity, "page", "settings")
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "render")
+            assertSame(button, activity.window.decorView.findViewWithTag<Button>("update-action"))
+            assertNull(shadowOf(activity).nextStartedActivity)
+            assertEquals(1, requests)
+            views(activity.window.decorView).filterIsInstance<Button>().single { it.text == "取消" }.performClick()
+            assertEquals("检查更新", button.text)
+            assertTrue(activity.window.decorView.findViewWithTag<TextView>("update-status").text.contains("已取消"))
+            respond.countDown()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("检查更新", button.text)
+        } finally { respond.countDown(); host.pause().stop().destroy() }
     }
 
     @Test fun checksDownloadsCachesRevalidatesAndOpensLegacyInstallerWithoutAdb() {
-        val host = Robolectric.buildActivity(UpdateActivity::class.java).setup()
+        val host = aboutHost()
         val activity = host.get()
         try {
             val bytes = "fixture payload, package identity supplied by PackageManager shadow".toByteArray()
@@ -85,7 +133,7 @@ class UpdateActivityFlowTest {
                 .put("assets", JSONArray().put(JSONObject().put("name", name).put("size", bytes.size)
                     .put("digest", "sha256:$digest").put("browser_download_url", "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/$name")))).toString().toByteArray()
             var requests = 0
-            activity.client = UpdateClient { url -> object : HttpURLConnection(url) {
+            updates(activity).client = UpdateClient { url -> object : HttpURLConnection(url) {
                 override fun connect() {}
                 override fun disconnect() {}
                 override fun usingProxy() = false
@@ -123,7 +171,68 @@ class UpdateActivityFlowTest {
             assertArrayEquals(bytes, external.readBytes())
             assertTrue(external.path.startsWith(activity.getExternalFilesDir("updates")!!.path))
             assertFalse(File(activity.filesDir, "adb.private").exists())
+            host.pause().resume()
+            assertSame(button, activity.window.decorView.findViewWithTag<Button>("update-action"))
+            assertEquals("安装 0.2.16.1", button.text)
         } finally { CarPlayBackgroundSession.active = false; host.pause().stop().destroy() }
+    }
+
+    @Test
+    fun installAutomaticallyChecksRootAfterConfirmationAndKeepsPackageOnFailure() {
+        val app = RuntimeEnvironment.getApplication()
+        shadowOf(app.packageManager).installPackage(PackageInfo().apply {
+            packageName = "ecarx.bluetooth.service"
+            applicationInfo = android.content.pm.ApplicationInfo().apply {
+                packageName = "ecarx.bluetooth.service"
+                flags = android.content.pm.ApplicationInfo.FLAG_SYSTEM
+            }
+        })
+        val directory = File(app.cacheDir, "update").apply { mkdirs() }
+        val bytes = "validated fixture".toByteArray()
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val saved = File(directory, "$digest.apk").apply { writeBytes(bytes) }
+        val release = UpdateRelease("0.2.16.1", "DiPlay-Preface-v0.2.16.1.apk",
+            "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk", bytes.size.toLong(), digest, "")
+        File(directory, "pending.json").writeText(release.json().toString())
+        shadowOf(app.packageManager).setPackageArchiveInfo(saved.absolutePath, PackageInfo().apply {
+            packageName = UpdateCatalog.PACKAGE; versionName = "0.2.16.1"; versionCode = 45
+            signatures = arrayOf(Signature("0123456789abcdef"))
+        })
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val binder = object : android.os.Binder() {
+            override fun onTransact(code: Int, data: android.os.Parcel, reply: android.os.Parcel?, flags: Int): Boolean {
+                data.enforceInterface("com.neusoft.alfus.os.IExtraUtilsService")
+                data.readInt(); data.readInt()
+                val command = String(data.createByteArray()!!, Charsets.UTF_8)
+                assertTrue(command.contains("/system/bin/id"))
+                assertFalse(command.contains("install.sh"))
+                calls.incrementAndGet()
+                reply!!.writeNoException()
+                reply.writeByteArray("uid=2000\n__DIPLAY_RC:0".toByteArray())
+                return true
+            }
+        }
+        com.shilapi.xcertplay.e01goc.RootServiceShadow.factory = binder
+        val host = aboutHost()
+        try {
+            val activity = host.get()
+            val status = activity.window.decorView.findViewWithTag<TextView>("update-status")
+            assertEquals(0, calls.get())
+            assertNull(activity.window.decorView.findViewWithTag<View>("update-root-test"))
+            activity.window.decorView.findViewWithTag<Button>("update-action").performClick()
+            assertEquals("Only confirmation may start the permission check", 0, calls.get())
+            ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            await { status.text.contains("没有 Root 权限") }
+            assertEquals(1, calls.get())
+            assertNull(shadowOf(activity).nextStartedActivity)
+            assertFalse(File(activity.filesDir, "app-update/install.sh").exists())
+            assertFalse(E01UpdateInstaller.busy(activity))
+            assertTrue(saved.isFile)
+            assertEquals("安装 0.2.16.1", activity.window.decorView.findViewWithTag<Button>("update-action").text)
+            activity.window.decorView.findViewWithTag<Button>("update-action").performClick()
+            ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            await { calls.get() == 2 && status.text.contains("没有 Root 权限") }
+        } finally { host.pause().stop().destroy() }
     }
 
     @Test
@@ -131,6 +240,13 @@ class UpdateActivityFlowTest {
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     fun downloadedUpdateFitsShortAndPortraitWindows() {
         val app = RuntimeEnvironment.getApplication()
+        shadowOf(app.packageManager).installPackage(PackageInfo().apply {
+            packageName = "ecarx.bluetooth.service"
+            applicationInfo = android.content.pm.ApplicationInfo().apply {
+                packageName = "ecarx.bluetooth.service"
+                flags = android.content.pm.ApplicationInfo.FLAG_SYSTEM
+            }
+        })
         val directory = File(app.cacheDir, "update").apply { mkdirs() }
         val sha = "c".repeat(64)
         File(directory, "$sha.apk").writeText("cached")
@@ -138,7 +254,7 @@ class UpdateActivityFlowTest {
             "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk", 6, sha,
             "新增应用内检查更新和下载。\n支持 E01 车机覆盖安装，保留设置和授权信息。")
         File(directory, "pending.json").writeText(release.json().toString())
-        val host = Robolectric.buildActivity(UpdateActivity::class.java).setup()
+        val host = aboutHost()
         try {
             val root = host.get().findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
             for ((width, height) in listOf(1280 to 480, 960 to 360, 480 to 800)) {
@@ -151,6 +267,14 @@ class UpdateActivityFlowTest {
                 val button = root.findViewWithTag<Button>("update-action")
                 assertEquals("安装 0.2.16.1", button.text)
                 assertTrue(button.width > 0 && button.right <= (button.parent as View).width)
+                val scroll = root as android.widget.ScrollView
+                val rect = android.graphics.Rect(0, 0, button.width, button.height)
+                (scroll.getChildAt(0) as ViewGroup).offsetDescendantRectToMyCoords(button, rect)
+                scroll.scrollTo(0, (rect.top - 16).coerceAtLeast(0))
+                assertTrue("install reachable at $width x $height", rect.top >= scroll.scrollY &&
+                    rect.bottom <= scroll.scrollY + scroll.height)
+                assertTrue(button.background is android.graphics.drawable.RippleDrawable)
+                assertEquals(com.shilapi.xcertplay.AppPageStyle.background, button.currentTextColor)
                 System.getenv("DIPLAY_UPDATE_SCREENSHOTS")?.let { output ->
                     val folder = File(output).apply { mkdirs() }
                     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)

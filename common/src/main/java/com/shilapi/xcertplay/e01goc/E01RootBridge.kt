@@ -5,10 +5,45 @@ import android.os.Looper
 import android.os.Parcel
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.FutureTask
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+
+internal enum class E01RootAccess(val message: String) {
+    AVAILABLE("Root 通道可用。安装更新时仍需核验系统安装权限。"),
+    NOT_ROOT("原厂通道可用，但没有 Root 权限。"),
+    UNAVAILABLE("车机未提供原厂 Root 通道。"),
+    FAILED("Root 检测未通过，原厂通道拒绝请求或返回异常。"),
+    TIMED_OUT("Root 检测超时，请稍后重试。")
+}
 
 /** Explicit maintenance commands through the E01 system service, never through a downloaded helper. */
 internal object E01RootBridge {
     private const val MARKER = "__DIPLAY_RC:"
+    private var pendingProbe: FutureTask<E01RootAccess>? = null
+    private class ServiceUnavailable : IOException("车机未提供 E01 系统权限接口")
+
+    /** Read only. A stuck vendor Binder must not freeze the UI or spawn unlimited callers. */
+    fun probeRoot(timeoutMs: Long = 5000): E01RootAccess {
+        check(Looper.myLooper() != Looper.getMainLooper())
+        val probe = synchronized(this) {
+            pendingProbe?.takeUnless { it.isDone } ?: FutureTask {
+                try {
+                    val output = transact("{ /system/bin/id; } 2>&1; rc=\$?; echo $MARKER\$rc")
+                    val uid = Regex("^uid=([0-9]+)(?:\\(|\\s|$)").find(output)
+                        ?.groupValues?.get(1)?.toIntOrNull()
+                    when (uid) { 0 -> E01RootAccess.AVAILABLE; null -> E01RootAccess.FAILED; else -> E01RootAccess.NOT_ROOT }
+                } catch (_: ServiceUnavailable) { E01RootAccess.UNAVAILABLE }
+                catch (_: Exception) { E01RootAccess.FAILED }
+            }.also {
+                pendingProbe = it
+                Thread(it, "diplay-root-probe").apply { isDaemon = true }.start()
+            }
+        }
+        return try { probe.get(timeoutMs, TimeUnit.MILLISECONDS) }
+        catch (_: TimeoutException) { E01RootAccess.TIMED_OUT }
+        catch (_: InterruptedException) { Thread.currentThread().interrupt(); E01RootAccess.FAILED }
+    }
     fun execute(script: File, action: String, current: String = "none", background: Boolean = false): String {
         check(Looper.myLooper() != Looper.getMainLooper())
         val command = command(script.absolutePath, action, current, android.os.Process.myPid(), background)
@@ -30,7 +65,7 @@ internal object E01RootBridge {
         val binder = runCatching {
             Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
                 .invoke(null, "ExtraUtilsService") as? IBinder
-        }.getOrNull() ?: throw IOException("车机未提供 E01 系统权限接口")
+        }.getOrNull() ?: throw ServiceUnavailable()
         val request = Parcel.obtain()
         val reply = Parcel.obtain()
         try {

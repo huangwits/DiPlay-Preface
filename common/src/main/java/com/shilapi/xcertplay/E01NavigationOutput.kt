@@ -12,8 +12,8 @@ internal class E01NavigationOutput(private val context: Context) {
     private var started = false
     private var previous: CarPlayHudGuidance? = null
 
-    fun update(guidance: CarPlayHudGuidance?) {
-        if (!enabled(context) || guidance == null) { clear(); return }
+    fun update(guidance: CarPlayHudGuidance?, requiredByMap: Boolean = false) {
+        if ((!enabled(context) && !requiredByMap) || guidance == null) { clear(); return }
         if (!available(context)) { clear(); return }
         if (started && previous == guidance) return
         if (!started) {

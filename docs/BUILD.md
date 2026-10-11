@@ -57,8 +57,8 @@ failure, and perform local signing. Robolectric uses API 23 with the API 22 code
 this does not replace an actual vehicle/iPhone test. Verify the requested APK package,
 versionName/versionCode, signing certificate and file hash before local installation. Follow
 [VERSIONING.md](VERSIONING.md): the upstream version plus local revision must match APK
-versionName, current documentation and filename. Current delivery: `0.2.16.7` / code `51`,
-filename `DiPlay-Preface-v0.2.16.7.apk`. Historical `v.0.2.13.2.1` artifacts retain their old
+versionName, current documentation and filename. Current release: `0.2.16.14` / code `58`,
+filename `DiPlay-Preface-v0.2.16.14.apk`. Historical `v.0.2.13.2.1` artifacts retain their old
 `0.2.13.2` / `36` metadata; that split convention no longer applies to new builds. Preserve
 the existing signer and monotonically increase versionCode. The first `.preface` build
 is a separate installation from `.e01legacy`.

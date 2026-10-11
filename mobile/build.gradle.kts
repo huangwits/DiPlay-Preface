@@ -44,14 +44,25 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 51
+        versionCode = 58
         // Carlito upstream version plus the Preface maintenance revision; see docs/VERSIONING.md.
-        versionName = "0.2.16.7"
+        versionName = "0.2.16.14"
 
     }
 
 
     androidResources { localeFilters += listOf("zh-rCN") }
+
+    // No Picnic, CertPathReviewer or desktop coroutine agent is used by the app.
+    // R8 removes their code but dependency resources otherwise survive in the APK.
+    packaging.resources.excludes += setOf(
+        "org/bouncycastle/pqc/crypto/picnic/lowmcL1.bin.properties",
+        "org/bouncycastle/pqc/crypto/picnic/lowmcL3.bin.properties",
+        "org/bouncycastle/pqc/crypto/picnic/lowmcL5.bin.properties",
+        "org/bouncycastle/x509/CertPathReviewerMessages.properties",
+        "org/bouncycastle/x509/CertPathReviewerMessages_de.properties",
+        "DebugProbesKt.bin",
+    )
 
     localAuthenticationAssets?.let { sourceSets.getByName("main").assets.srcDir(it) }
 

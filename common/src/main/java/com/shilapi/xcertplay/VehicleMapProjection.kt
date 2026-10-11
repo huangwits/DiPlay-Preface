@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
@@ -84,6 +85,7 @@ internal object VehicleMapProjection {
     private var sink: AndroidMediaSink? = null
     private var plan: VehicleMapPlan? = null
     private var bridge: VehicleProjectionClient? = null
+    private var native: E01NativeMapControl? = null
     private var manager: WindowManager? = null
     private var root: FrameLayout? = null
     private var texture: ClusterVideoTexture? = null
@@ -112,20 +114,65 @@ internal object VehicleMapProjection {
             if (controller === next) return@post
             closeNow()
             app = context.applicationContext; controller = next; sink = renderer; plan = selection
-            if (selection.vehicleMode) bridge = VehicleProjectionClient(context)
+            if (selection.vehicleMode) {
+                if (E01NativeMapControl.supported(context)) {
+                    native = E01NativeMapControl(context.applicationContext, prepareGesture = {
+                        val token = controller?.clusterProjectionSessionToken()
+                        syncSessionState(token, CarPlayGlance.snapshot().maneuverType != null)
+                        native?.sync(app?.let { nativeSessionReady(it, token) } == true)
+                        token != null
+                    }) { show -> flyNavigation(show) }
+                } else bridge = VehicleProjectionClient(context)
+            }
             main.post(poll)
         }
     }
     fun owns(expected: CarPlayController?) = expected != null && controller === expected
     fun mapVisible() = outputVisible
     fun menuAllowsZoom(): Boolean = zoomAllowed
+    fun usesFactoryGestures(): Boolean = native?.usesFactoryGestures() == true
     fun close(expected: CarPlayController?) = main.post { if (expected == null || controller === expected) closeNow() }
 
-    fun flyNavigation(): Int {
-        if (controller?.clusterProjectionSessionToken() == null) return R.string.vehicle_map_reconnect
-        if (outputVisible || requested && !suppressed) { manual = false; hidden = true; hide() }
-        else { hidden = false; suppressed = false; manual = true; bridge?.resetLease(); refresh() }
-        return if (hidden) R.string.projection_navigation_hidden else R.string.vehicle_map_waiting
+    fun flyNavigation(show: Boolean? = null): Int {
+        val current = controller ?: return R.string.vehicle_map_reconnect
+        val nextPhone = current.clusterProjectionSessionToken() ?: return R.string.vehicle_map_reconnect
+        val context = app ?: return R.string.vehicle_map_reconnect
+        syncSessionState(nextPhone, CarPlayGlance.snapshot().maneuverType != null)
+        native?.sync(nativeSessionReady(context, nextPhone))
+        if (show == false || show == null && (outputVisible || requested && !suppressed)) {
+            native?.request(false)
+            manual = false; hidden = true; hide()
+            return R.string.projection_navigation_hidden
+        }
+        val failure = when {
+            native != null && GeelyHudProjection.currentGuidance() == null -> R.string.projection_no_guidance
+            !com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context) -> R.string.projection_permission_required
+            VehicleMapSettings.screen(context) == null -> R.string.vehicle_map_display_unavailable
+            else -> null
+        }
+        if (failure != null) { native?.request(false); return failure }
+        native?.request(true)
+        hidden = false; suppressed = false; manual = true; bridge?.resetLease(); refresh()
+        return when {
+            hidden -> R.string.projection_navigation_hidden
+            stage == "WINDOW_REJECTED" -> R.string.projection_open_failed
+            stage == "DISPLAY_UNAVAILABLE" -> R.string.vehicle_map_display_unavailable
+            else -> R.string.vehicle_map_waiting
+        }
+    }
+
+    private fun syncSessionState(nextPhone: Any?, route: Boolean) {
+        if (routeSeen && !route) { native?.request(false); suppressed = false; hidden = false; manual = false }
+        routeSeen = route
+        if (phone != nextPhone) {
+            hide(); native?.request(false); phone = nextPhone; manual = false; hidden = false; suppressed = false
+        }
+    }
+
+    private fun nativeSessionReady(context: Context, token: Any?): Boolean {
+        val selected = VehicleMapSettings.screen(context) ?: return false
+        return token != null && selected.id == plan?.screen?.id && selected.name == plan?.screen?.name &&
+            com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context)
     }
 
     private fun refresh() {
@@ -133,12 +180,9 @@ internal object VehicleMapProjection {
         val current = controller ?: return
         val selection = plan ?: return
         val route = CarPlayGlance.snapshot().maneuverType != null
-        if (routeSeen && !route) { suppressed = false; hidden = false; manual = false }
-        routeSeen = route
         val nextPhone = current.clusterProjectionSessionToken()
-        if (phone != nextPhone) {
-            hide(); phone = nextPhone; manual = false; hidden = false; suppressed = false
-        }
+        syncSessionState(nextPhone, route)
+        native?.sync(nativeSessionReady(context, nextPhone))
         // carlito | Re-read the logical target size; an OEM can resize a display without replacing its ID.
         val screen = GeelyHudProjection.availableDisplays(context).firstOrNull {
             it.id == selection.screen.id && it.name == selection.screen.name
@@ -146,6 +190,7 @@ internal object VehicleMapProjection {
         val display = screen?.let { context.systemService(DisplayManager::class.java, "display")?.getDisplay(it.id) }
         val available = screen != null && screen.width > 0 && screen.height > 0 && display != null
         val wanted = VehicleMapSettings.enabled(context) && !hidden && !suppressed && available &&
+            (native == null || native?.usesFactoryGestures() == true && native?.desired == true) &&
             com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context) && nextPhone != null && (route || manual)
         if (!wanted) { hide(); if (!available) stage = "DISPLAY_UNAVAILABLE"; return }
         if (root != null && attachedScreen != screen) {
@@ -153,7 +198,9 @@ internal object VehicleMapProjection {
             // A replacement Surface must deliver a new frame before native mode/zoom can resume.
             hide()
         }
-        if (root == null && !createWindow(context, display!!, screen!!, selection)) { stage = "WINDOW_REJECTED"; return }
+        if (root == null && !createWindow(context, display!!, screen!!, selection)) {
+            native?.outputLost(); stage = "WINDOW_REJECTED"; return
+        }
         if (!requested && surface?.isValid == true) {
             requested = true; delivered = false; firstFrame = false
             val generation = ++command
@@ -168,12 +215,13 @@ internal object VehicleMapProjection {
         val status = bridge?.status()
         bridge?.update(requested, delivered && firstFrame)
         if (status?.getBoolean("suppressed") == true) { hide(); suppressed = true; stage = "EXTERNAL_EXIT"; return }
-        val ready = delivered && firstFrame && (!selection.vehicleMode || status?.getBoolean("ready") == true)
+        val nativeRequested = delivered && firstFrame && native?.frameReady() == true
+        val ready = delivered && firstFrame && (!selection.vehicleMode || nativeRequested || status?.getBoolean("ready") == true)
         outputVisible = ready
         texture?.alpha = if (ready) 1f else 0f
         current.setDashboardMapOutputVisible(ready)
         zoomAllowed = ready && (!selection.vehicleMode || status?.getBoolean("menuAllowsZoom") == true)
-        if (ready) stage = "ACTIVE"
+        if (ready) stage = if (native != null) "NATIVE_MODE_REQUESTED" else "ACTIVE"
         else if (selection.vehicleMode && status?.getBoolean("ready") != true) stage = "WAITING_VEHICLE_MODE"
         // Static maps may legitimately stop updating. Only the initial frame has a deadline.
         if (requested && !firstFrame && SystemClock.elapsedRealtime() - commandAt > 15_000L) {
@@ -198,12 +246,15 @@ internal object VehicleMapProjection {
             surface?.let { old -> sink?.clearSurface(111, old) }
             surface = next
             if (next != null) sink?.setSurface(111, next)
-            else { firstFrame = false; outputVisible = false; controller?.setDashboardMapOutputVisible(false) }
+            else {
+                firstFrame = false; outputVisible = false; native?.outputLost()
+                controller?.setDashboardMapOutputVisible(false)
+            }
         }.apply { alpha = 0f }
         viewport.addView(video, FrameLayout.LayoutParams(viewportWidth, scaledHeight))
         container.addView(viewport, FrameLayout.LayoutParams(viewportWidth, visibleHeight, Gravity.CENTER))
         val params = WindowManager.LayoutParams(screen.width, screen.height,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            windowType(), WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP or Gravity.START; title = "DiPlay Map"
@@ -214,12 +265,17 @@ internal object VehicleMapProjection {
         } catch (_: RuntimeException) { destroyWindow(); false }
     }
 
+    @Suppress("DEPRECATION")
+    internal fun windowType(sdk: Int = Build.VERSION.SDK_INT): Int = if (sdk >= 26)
+        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
+
     private fun hide() {
         outputVisible = false; zoomAllowed = false; texture?.alpha = 0f
         controller?.setDashboardMapOutputVisible(false)
         val wasRequested = requested
         requested = false; delivered = false; firstFrame = false; command++
         bridge?.update(false, false)
+        native?.outputLost()
         if (wasRequested) controller?.setProjectionUiShown(this, false) {}
         destroyWindow()
     }
@@ -231,9 +287,11 @@ internal object VehicleMapProjection {
         main.removeCallbacks(poll)
         hide(); controller?.releaseProjectionUi(this)
         bridge?.close(); bridge = null
+        native?.close(); native = null
         controller = null; sink = null; app = null; plan = null; phone = null
         manual = false; hidden = false; suppressed = false; routeSeen = false; stage = "IDLE"
     }
     fun diagnostics() = "vehicleMap stage=$stage requested=$requested delivered=$delivered firstFrame=$firstFrame " +
-        "visible=$outputVisible menuAllowsZoom=$zoomAllowed target=${plan?.screen?.id} bridge=${bridge?.status()?.getString("stage")}"
+        "visible=$outputVisible menuAllowsZoom=$zoomAllowed target=${plan?.screen?.id} " +
+        "native=${native?.stage} bridge=${bridge?.status()?.getString("stage")}"
 }

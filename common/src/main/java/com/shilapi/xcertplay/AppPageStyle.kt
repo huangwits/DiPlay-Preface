@@ -11,7 +11,7 @@ import android.widget.Button
 import com.shilapi.xcertplay.settings.SettingsTheme
 import kotlin.math.roundToInt
 
-/** Shared home and Bluetooth-tools surfaces and action hierarchy. */
+/** Shared DiPlay page surfaces and action hierarchy, independent of the projected CarPlay theme. */
 internal object AppPageStyle {
     val background = Color.rgb(12, 17, 27)
     val surface = Color.rgb(21, 30, 44)

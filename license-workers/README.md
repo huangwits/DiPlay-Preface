@@ -2,6 +2,8 @@
 
 使用无线 CarPlay 前，请先在车机上完成授权。
 
+授权免费，审核仅用于防止滥用，不收取激活费用。
+
 1. 保持车机联网，进入“连接 → 蓝牙工具”。
 2. 点击“申请激活”，按页面提示提交申请。
 3. 等待审核，或点击“刷新状态”查看结果。
@@ -14,5 +16,7 @@ USB 连接无需软件激活。
 ## English
 
 To use wireless CarPlay, keep the head unit online and submit an activation request from the Bluetooth tools. Refresh the status after approval, then select Connect CarPlay.
+
+Authorization is free. Review is used only to prevent abuse; there is no activation fee.
 
 Approved installations revalidate automatically. Provide the displayed request number if support needs to identify the request. Avoid uninstalling or clearing app data, which may require a new request. USB does not require software activation.

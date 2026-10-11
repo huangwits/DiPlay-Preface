@@ -5,7 +5,7 @@
     <string name="bridge_motion_to_iphone_hint">需要车辆数据桥和已校准的车辆配置，同时开启位置上报。无法读取的车速或挡位不会发送；重新连接 CarPlay 后生效。</string>
     <string name="projection_editor">HUD / 仪表布局</string>
     <string name="projection_three_finger">三指飞屏</string>
-    <string name="projection_three_finger_hint">在 CarPlay 中三指上滑，显示或隐藏导航；三指下滑打开设置。可用于所选副屏，或已开启的原厂 HUD / 仪表导航。</string>
+    <string name="projection_three_finger_hint">三指左滑投出、右滑收回，上滑切换。完整地图需在“地图投屏”中选择仪表并重连；下拉设置沿用所选手指数。</string>
     <string name="projection_no_guidance">请先在 iPhone 上开始导航。</string>
     <string name="projection_permission_required">请先在系统设置中允许显示在其他应用上层。</string>
     <string name="projection_select_display">请先选择投影屏幕，或开启原厂 HUD / 仪表导航。</string>

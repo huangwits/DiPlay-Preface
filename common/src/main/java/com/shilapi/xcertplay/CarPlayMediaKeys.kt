@@ -92,6 +92,7 @@ internal object CarPlayMediaKeys {
     private var lastSentButton = -1
     private var lastSentSource = ""
     private var lastSentAt = 0L
+    private var lastSiriAt: Long? = null
     private val observedKeys = ArrayDeque<String>()
     private val lastSystemTrigger = mutableMapOf<String, Long>()
     private var mediaAudioActive = false
@@ -456,10 +457,25 @@ internal object CarPlayMediaKeys {
             "next" -> send(CarPlayMediaButton.NEXT, source)
             "previous" -> send(CarPlayMediaButton.PREVIOUS, source)
             "siri" -> {
-                val sent = synchronized(this) { controller }?.requestSiri() == true
+                val sent = requestSteeringSiri(source)
                 Log.i(TAG, "Steering voice key source=$source sent=$sent")
             }
         }
+    }
+
+    @Synchronized
+    fun requestSteeringSiri(source: String): Boolean {
+        val context = appContext ?: return false
+        val current = controller ?: return false
+        val now = SystemClock.elapsedRealtime()
+        if (!AirPlayPersistence.loadSteeringSiriEnabled(context) || !current.hasActiveAirPlayAttachment() ||
+            learning != null || now < suppressedUntil) return false
+        // One wheel press can arrive through Android, the factory broadcast and the vehicle bridge.
+        if (lastSiriAt?.let { now - it in 0 until 400L } == true) return true
+        val sent = current.requestSiri()
+        if (sent) lastSiriAt = now
+        Log.i(TAG, "Siri source=$source sent=$sent")
+        return sent
     }
 
     // Another car app (its own Spotify, the radio) took audio focus and with it the steering-wheel
@@ -534,6 +550,7 @@ internal object CarPlayMediaKeys {
         }
         session = null
         callback.reset()
+        lastSiriAt = null
         mediaAudioActive = false
         nowPlaying = CarPlayNowPlaying()
         artwork = null
@@ -589,6 +606,8 @@ internal object CarPlayMediaKeys {
         consumesKey = ::consumesHardwareKey,
         routeKey = ::routeAndroidKey,
         active = { controller?.hasActiveAirPlayAttachment() == true },
+        siriEnabled = { appContext?.let(AirPlayPersistence::loadSteeringSiriEnabled) == true },
+        siri = ::requestSteeringSiri,
     )
 
     /** Whether [next] changes what the media session's metadata shows; position and play state do not. */
@@ -695,6 +714,8 @@ internal class CarPlayMediaCallback(
     private val consumesKey: (Int) -> Boolean = { false },
     private val routeKey: (KeyEvent) -> Boolean = { false },
     private val active: () -> Boolean = { true },
+    private val siriEnabled: () -> Boolean = { false },
+    private val siri: (String) -> Boolean = { false },
 ) : MediaSession.Callback() {
     private data class Press(val code: Int, val action: Int, val down: Long, val time: Long, val device: Int)
     private var lastPress: Press? = null
@@ -715,6 +736,12 @@ internal class CarPlayMediaCallback(
         // Learned Android events must run before suppressing the key's default action.
         if (routeKey(event)) { lastPress = press; return true }
         if (consumesKey(event.keyCode)) return true
+        if (CarPlayMediaButton.opensSiri(event.keyCode)) {
+            if (!siriEnabled()) return false
+            lastPress = press
+            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) siri("android_voice_key")
+            return true
+        }
         if (index == null) return false
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             lastPress = press
@@ -723,8 +750,8 @@ internal class CarPlayMediaCallback(
         return true
     }
 
-    override fun onPlay() = send(CarPlayMediaButton.PLAY, "play")
-    override fun onPause() = send(CarPlayMediaButton.PAUSE, "pause")
-    override fun onSkipToNext() = send(CarPlayMediaButton.NEXT, "next")
-    override fun onSkipToPrevious() = send(CarPlayMediaButton.PREVIOUS, "previous")
+    override fun onPlay() { if (active()) send(CarPlayMediaButton.PLAY, "play") }
+    override fun onPause() { if (active()) send(CarPlayMediaButton.PAUSE, "pause") }
+    override fun onSkipToNext() { if (active()) send(CarPlayMediaButton.NEXT, "next") }
+    override fun onSkipToPrevious() { if (active()) send(CarPlayMediaButton.PREVIOUS, "previous") }
 }

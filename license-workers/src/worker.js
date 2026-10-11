@@ -32,9 +32,9 @@ function randomHex(length) {
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...securityHeaders, 'Content-Type': 'application/json; charset=utf-8' } });
 }
-async function body(request) {
+async function body(request, max = 8192) {
   requireValue(request.headers.get('Content-Type')?.split(';')[0].trim() === 'application/json', 415, 'json_required');
-  requireValue(Number(request.headers.get('Content-Length') || 0) <= 8192, 413, 'body_too_large');
+  requireValue(Number(request.headers.get('Content-Length') || 0) <= max, 413, 'body_too_large');
   const reader = request.body?.getReader();
   requireValue(reader);
   let size = 0; const chunks = [];
@@ -42,7 +42,7 @@ async function body(request) {
     for (;;) {
       const { done, value } = await reader.read(); if (done) break;
       size += value.length;
-      if (size > 8192) { await reader.cancel(); throw new ApiError(413, 'body_too_large'); }
+      if (size > max) { await reader.cancel(); throw new ApiError(413, 'body_too_large'); }
       chunks.push(value);
     }
     const bytes = new Uint8Array(size); let offset = 0;
@@ -108,7 +108,81 @@ function cleanupStatements(db, now) {
     db.prepare('DELETE FROM rates WHERE id IN (SELECT id FROM rates WHERE expires<=? LIMIT 100)').bind(now),
     db.prepare("DELETE FROM devices WHERE device IN (SELECT device FROM devices WHERE status='pending' AND last_seen<? LIMIT 100)").bind(now - 30 * 86400),
     db.prepare('DELETE FROM events WHERE id IN (SELECT id FROM events WHERE at<? LIMIT 100)').bind(now - 180 * 86400),
+    db.prepare('DELETE FROM diagnostic_reports WHERE id IN (SELECT id FROM diagnostic_reports WHERE expires<=? LIMIT 100)').bind(now),
   ];
+}
+
+// Treat report contents as untrusted text. The Android client filters first; the
+// server repeats the main credential/address filters before storing anything.
+export function sanitizeDiagnostic(text) {
+  return text.replace(/\r\n?/g, '\n').split('\n').map(line => {
+    if (/(?:password|passphrase|token|private.?key|certificate|pair.?record|ssid|body|payload|hex)\s*[=:]|-----BEGIN|-----END/i.test(line))
+      return '[filtered sensitive content]';
+    if (/(?:latitude|longitude|coordinates?|next.?road|road.?name|lyrics|artist|album|song.?title|(?:phone|device|peer|host)?name)\s*[=:]/i.test(line))
+      return '[filtered personal content]';
+    return line.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[email]')
+      .replace(/(?:[0-9a-f]{2}:){5}[0-9a-f]{2}/gi, '[address]')
+      .replace(/(?:[0-9a-f]{1,4}:)*[0-9a-f]{0,4}::[0-9a-f:]*(?:%[a-z0-9_.-]+)?|(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}/gi, '[ip]')
+      .replace(/\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g, '[ip]')
+      .replace(/\b[0-9a-f]{24,}\b|\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, '[identifier]')
+      .replace(/[A-Za-z0-9+/]{80,}={0,2}/g, '[opaque]');
+  }).join('\n');
+}
+
+const reportId = /^DPR-[0-9A-F]{16}$/;
+async function uploadDiagnostic(request, env, db, value, now) {
+  await rate(db, env, request, 'diagnostic', 5, now);
+  requireValue(typeof value.document === 'string' && encoder.encode(value.document).length <= 1200 * 1024, 413, 'report_too_large');
+  let document;
+  try { document = JSON.parse(value.document); } catch { throw new ApiError(400, 'invalid_report'); }
+  requireValue(document?.schema === 1 && typeof document.version === 'string' && /^\d+(?:\.\d+){2,4}$/.test(document.version) && document.version.length <= 40);
+  requireValue(typeof document.description === 'string' && document.description.trim().length > 0 && document.description.length <= 2000);
+  requireValue(typeof document.report === 'string' && document.report.length > 0 && encoder.encode(document.report).length <= 1024 * 1024, 413, 'report_too_large');
+  const digest = await sha(encoder.encode(value.document));
+  const device = await authenticate(db, env, value, 'report:' + digest, now);
+  // Diagnostic submission neither approves an installation nor changes its lease.
+  await db.batch(cleanupStatements(db, now));
+  const existing = await db.prepare('SELECT id,expires FROM diagnostic_reports WHERE device=? AND digest=?').bind(device, digest).first();
+  if (existing) return json({ ok: true, receipt: existing.id, expiresAt: existing.expires });
+  const count = await db.prepare('SELECT COUNT(*) AS n FROM diagnostic_reports WHERE device=? AND created_at>?').bind(device, now - 86400).first();
+  requireValue(count.n < 5, 429, 'report_daily_limit');
+  const id = 'DPR-' + randomHex(8).toUpperCase(), expires = now + 7 * 86400;
+  const description = sanitizeDiagnostic(document.description), report = sanitizeDiagnostic(document.report);
+  // SQLite serializes the capacity check and insert. Retention + hard caps bound
+  // storage even when public clients create many installation keys.
+  await db.prepare(`INSERT INTO diagnostic_reports(id,device,digest,version,description,report,created_at,expires)
+    SELECT ?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM diagnostic_reports)<100
+    AND (SELECT COUNT(*) FROM diagnostic_reports WHERE device=? AND created_at>?)<5
+    ON CONFLICT(device,digest) DO NOTHING`)
+    .bind(id, device, digest, document.version, description, report, now, expires, device, now - 86400).run();
+  const saved = await db.prepare('SELECT id,expires FROM diagnostic_reports WHERE device=? AND digest=?').bind(device, digest).first();
+  requireValue(saved, 503, 'report_storage_full');
+  return json({ ok: true, receipt: saved.id, expiresAt: saved.expires });
+}
+
+async function diagnosticAdmin(path, db, value, now) {
+  await db.batch(cleanupStatements(db, now));
+  if (path === '/admin/reports/list') {
+    const query = value.query || '';
+    requireValue(typeof query === 'string' && /^(?:DPR-)?[0-9A-Fa-f]{0,64}$/.test(query));
+    const before = value.before || [Number.MAX_SAFE_INTEGER, 'z'];
+    requireValue(Array.isArray(before) && before.length === 2 && Number.isSafeInteger(before[0]) && typeof before[1] === 'string' && before[1].length <= 32);
+    const { results } = await db.prepare(`SELECT r.id,r.version,r.description,r.created_at,r.expires,d.request_id
+      FROM diagnostic_reports r LEFT JOIN devices d ON d.device=r.device
+      WHERE r.expires>? AND (r.created_at,r.id)<(?,?) AND (instr(r.id,?)>0 OR instr(COALESCE(d.request_id,''),?)>0)
+      ORDER BY r.created_at DESC,r.id DESC LIMIT 21`).bind(now, ...before, query.toUpperCase(), query.toUpperCase()).all();
+    const items = results.slice(0, 20), last = items.at(-1);
+    return json({ items, next: results.length > 20 ? [last.created_at, last.id] : null });
+  }
+  requireValue(typeof value.id === 'string' && reportId.test(value.id));
+  if (path === '/admin/reports/delete') {
+    await db.prepare('DELETE FROM diagnostic_reports WHERE id=?').bind(value.id).run();
+    return json({ ok: true });
+  }
+  const report = await db.prepare('SELECT id,version,description,report,created_at,expires FROM diagnostic_reports WHERE id=? AND expires>?').bind(value.id, now).first();
+  requireValue(report, 404, 'report_not_found');
+  return json(report);
 }
 async function route(request, env) {
   const url = new URL(request.url), path = url.pathname;
@@ -117,14 +191,17 @@ async function route(request, env) {
     return new Response(text, { headers: { ...securityHeaders, 'Content-Type': `${type}; charset=utf-8` } });
   }
   requireValue(request.method === 'POST', 405, 'post_required');
-  requireValue(['/v1/challenge', '/v1/request', '/v1/refresh', '/admin/list', '/admin/decision'].includes(path), 404, 'not_found');
+  requireValue(['/v1/challenge', '/v1/request', '/v1/refresh', '/v1/diagnostics', '/admin/list', '/admin/decision',
+    '/admin/reports/list', '/admin/reports/read', '/admin/reports/delete'].includes(path), 404, 'not_found');
   requireValue(!request.headers.has('Origin') || request.headers.get('Origin') === url.origin, 403, 'origin_rejected');
   requireValue(env.DB && hex64.test(env.ADMIN_TOKEN_HASH || '') && env.ISSUER_PRIVATE_KEY &&
     /^[a-zA-Z0-9_.]{3,150}$/.test(env.APP_PACKAGE || '') && hex64.test(env.APP_SIGNER || ''), 503, 'service_not_configured');
   const db = env.DB.withSession('first-primary'), now = Math.floor(Date.now() / 1000);
   await rate(db, env, request, path.startsWith('/admin/') ? 'admin' : 'device', 60, now);
   if (path.startsWith('/admin/')) await admin(request, env);
-  const value = await body(request);
+  const value = await body(request, path === '/v1/diagnostics' ? 3 * 1024 * 1024 : 8192);
+  if (path === '/v1/diagnostics') return uploadDiagnostic(request, env, db, value, now);
+  if (path.startsWith('/admin/reports/')) return diagnosticAdmin(path, db, value, now);
   if (path === '/v1/challenge') {
     await rate(db, env, request, 'challenge', 30, now);
     const id = randomHex(24), nonce = randomHex(32);

@@ -3,7 +3,10 @@ package com.shilapi.xcertplay.network
 import com.shilapi.xcertplay.compat.systemService
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.wifi.WifiConfiguration
+import android.net.wifi.WifiManager
 import android.os.Bundle
+import android.os.Build
 import android.os.ResultReceiver
 import android.provider.Settings
 import com.shilapi.xcertplay.adb.AdbKeys
@@ -38,14 +41,20 @@ object CarHotspotTethering {
         val deadline = System.nanoTime() + timeoutMillis * 1_000_000L
         val observedAdbState = AtomicReference<Boolean?>()
         val startReflection: (ResultReceiver) -> Unit = { receiver ->
-            val service = ConnectivityManager::class.java.getDeclaredField("mService")
-                .apply { isAccessible = true }
-                .get(context.systemService(ConnectivityManager::class.java, "connectivity"))
-                ?: throw NoSuchMethodException("Connectivity service unavailable")
-            service.javaClass.getMethod(
-                "startTethering", Int::class.javaPrimitiveType, ResultReceiver::class.java,
-                Boolean::class.javaPrimitiveType, String::class.java,
-            ).invoke(service, 0, receiver, false, context.packageName)
+            if (Build.VERSION.SDK_INT < 26) {
+                val wifi = context.systemService(WifiManager::class.java, "wifi")
+                    ?: throw NoSuchMethodException("Wi-Fi service unavailable")
+                if (!startLegacyHotspot(wifi)) receiver.send(1, null)
+            } else {
+                val service = ConnectivityManager::class.java.getDeclaredField("mService")
+                    .apply { isAccessible = true }
+                    .get(context.systemService(ConnectivityManager::class.java, "connectivity"))
+                    ?: throw NoSuchMethodException("Connectivity service unavailable")
+                service.javaClass.getMethod(
+                    "startTethering", Int::class.javaPrimitiveType, ResultReceiver::class.java,
+                    Boolean::class.javaPrimitiveType, String::class.java,
+                ).invoke(service, 0, receiver, false, context.packageName)
+            }
         }
         val startAdb: () -> Boolean = {
             val client = AtomicReference<LocalAdb?>()
@@ -71,6 +80,12 @@ object CarHotspotTethering {
             start = startReflection,
         ).also { log("car hotspot auto-enable: ${it.diagnostic}") }
     }
+
+    // Android 5.1 uses null to load the existing AP configuration. Never synthesize credentials,
+    // disable station Wi-Fi, or change the saved AP; enableUntil still checks actual readiness.
+    internal fun startLegacyHotspot(wifi: Any): Boolean = wifi.javaClass.getMethod(
+        "setWifiApEnabled", WifiConfiguration::class.java, Boolean::class.javaPrimitiveType,
+    ).invoke(wifi, null, true) == true
 
     /** An ADB observation supplements hidden platform status, but never overrides a current off state. */
     internal fun stateWithAdbObservation(

@@ -123,6 +123,8 @@ class BluetoothLicenseLayoutTest {
             val right = row.getChildAt(1) as LicensePanel
             assertEquals(View.VISIBLE, right.visibility)
             assertEquals(View.VISIBLE, right.findViewWithTag<CommunityCard>("license-community-card").visibility)
+            assertEquals("授权免费，审核仅用于防止滥用，不收取激活费用。",
+                right.findViewWithTag<TextView>("license-free-notice").text.toString())
             val connect = left.findViewWithTag<Button>("bluetooth-connect")
             assertTrue(connect.isEnabled)
             assertTrue(left.findViewWithTag<TextView>("bluetooth-license-status").text.contains("授权已通过"))

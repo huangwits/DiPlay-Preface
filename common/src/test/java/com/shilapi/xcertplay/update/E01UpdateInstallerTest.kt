@@ -19,10 +19,24 @@ class E01UpdateInstallerTest {
         val script = E01UpdateInstaller.render(template, base, apk, sha)
         assertTrue(script.contains("APK='$apk'"))
         assertFalse(script.contains("__SHA__"))
+        assertTrue(script.contains("SYSTEM_APP='0'"))
+        assertTrue(E01UpdateInstaller.render(template, base, apk, sha, true).contains("SYSTEM_APP='1'"))
         for (invalid in listOf("$base;reboot", base.replace("preface", "other"), "/data/../$base"))
             assertThrows(IllegalArgumentException::class.java) { E01UpdateInstaller.render(template, invalid, apk, sha) }
         assertThrows(IllegalArgumentException::class.java) { E01UpdateInstaller.render(template, base, "$apk;reboot", sha) }
         assertThrows(IllegalArgumentException::class.java) { E01UpdateInstaller.render(template, base, apk, "x".repeat(64)) }
+    }
+
+    @Test fun diagnosticUsesTheInstalledSystemFlagNotRootAvailabilityOrPathGuessing() {
+        val app = RuntimeEnvironment.getApplication()
+        val info = app.applicationInfo
+        info.flags = 0
+        info.sourceDir = "/system/looks-like-a-system-app.apk"
+        assertFalse(E01UpdateInstaller.systemInstalled(app))
+        info.flags = android.content.pm.ApplicationInfo.FLAG_SYSTEM
+        info.sourceDir = "/data/app/updated-system-app/base.apk"
+        assertTrue(E01UpdateInstaller.systemInstalled(app))
+        assertTrue(E01UpdateInstaller.diagnostics(app).contains("systemApp=true"))
     }
 
     @Test fun previousResultIsReplacedAndStaleProgressDoesNotBlockRetries() {

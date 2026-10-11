@@ -89,6 +89,7 @@ internal object SettingsInformationArchitecture {
 /** DiAuto's visual language, with a connection flow for an independent CarPlay receiver. */
 class DiPlayActivity : ComponentActivity() {
     private val handler = Handler(Looper.getMainLooper())
+    private var updatePanel: com.shilapi.xcertplay.update.UpdatePanel? = null
     private var page = "home"
     private var settingsCategory = SettingsCategory.OVERVIEW
     private var connectionSettingsReturnCategory: SettingsCategory? = null
@@ -120,6 +121,7 @@ class DiPlayActivity : ComponentActivity() {
     private var toneStop: Runnable? = null
     private var exportButton: Button? = null
     private var reportUploadButton: Button? = null
+    private var reportReceiptLabel: TextView? = null
     private var reportIssueInput: EditText? = null
     private var developerVersionTaps = 0
     private var rootScroll: ScrollView? = null
@@ -324,6 +326,7 @@ class DiPlayActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        updatePanel?.resume()
         if (enforceInterfaceSize()) render()
         applyStatusBarPreference()
         if (Build.VERSION.SDK_INT < 33 && "zh-CN" != languagePreferenceAtCreate) {
@@ -335,6 +338,9 @@ class DiPlayActivity : ComponentActivity() {
         if (!initialLaunch && !adbSwitchChangePending && !pausedForAdbSwitchChange &&
             (page == "home" || page == "settings" || page == "connection")) render()
         pausedForAdbSwitchChange = false
+        val bootHotspot = intent.getBooleanExtra("boot_hotspot", false)
+        intent.removeExtra("boot_hotspot")
+        if (!initialLaunch && bootHotspot) startCarHotspotOnLaunch()
         if (initialLaunch) {
             initialLaunch = false
             startCarHotspotOnLaunch()
@@ -346,12 +352,14 @@ class DiPlayActivity : ComponentActivity() {
         }
     }
     override fun onPause() {
+        updatePanel?.pause()
         pausedForAdbSwitchChange = adbSwitchChangePending
         handler.removeCallbacks(tick)
         super.onPause()
     }
 
     override fun onDestroy() {
+        updatePanel?.close()
         cancelUsbPermissionSetup()
         cancelWirelessAdmission()
         super.onDestroy()
@@ -379,6 +387,7 @@ class DiPlayActivity : ComponentActivity() {
         reportIssueDescription = reportIssueInput?.text?.toString() ?: reportIssueDescription
         reportIssueInput = null
         reportUploadButton = null
+        reportReceiptLabel = null
         // A pending assignment belongs to the widgets being replaced, never to another page.
         // A restore still waiting for layout keeps its target: the old page was never laid out.
         val sameDestination = renderedPage == page &&
@@ -1153,7 +1162,7 @@ class DiPlayActivity : ComponentActivity() {
                 val description = reportIssueInput?.text?.toString()?.trim().orEmpty()
                 if (description.isEmpty()) {
                     toast(getString(R.string.describe_problem_before_uploading))
-                } else if (description.length > DiagnosticReportUpload.MAX_DESCRIPTION_LENGTH) {
+                } else if (description.length > CloudDiagnosticUpload.MAX_DESCRIPTION_LENGTH) {
                     toast(getString(R.string.problem_description_too_long))
                 } else {
                     reportIssueDescription = description
@@ -1162,6 +1171,11 @@ class DiPlayActivity : ComponentActivity() {
             }.apply { isEnabled = !reportUploadInProgress }
             card.addView(reportUploadButton, matchButton(12, 60))
             card.addView(label(getString(R.string.report_upload_privacy), 14, MUTED).apply { setPadding(0, dp(12), 0, 0) })
+            reportReceiptLabel = label(cloudReceiptText(), 14, MUTED).apply {
+                setPadding(0, dp(12), 0, 0)
+                setTextIsSelectable(true)
+            }
+            card.addView(reportReceiptLabel)
         }
         filteredSection(content, SettingsSection.AUTOMATIC_CONNECTION, getString(R.string.automatic_connection), R.drawable.ic_dp_automation) { card ->
             toggle(card, getString(R.string.connect_when_diplay_opens), getString(R.string.default_connection_description), DiPlayPreferences.autoConnect(this)) { DiPlayPreferences.saveAutoConnect(this, it) }
@@ -1417,6 +1431,8 @@ class DiPlayActivity : ComponentActivity() {
             wheelKeyControls(card)
         }
         filteredSection(content, SettingsSection.STEERING_IDENTIFICATION, getString(R.string.steering_identification), R.drawable.ic_dp_navigation) { card ->
+            toggle(card, getString(R.string.steering_siri), getString(R.string.steering_siri_hint),
+                AirPlayPersistence.loadSteeringSiriEnabled(this)) { AirPlayPersistence.saveSteeringSiriEnabled(this, it) }
             card.addView(label(getString(R.string.steering_panel_intro), 17, MUTED))
             card.addView(button(getString(R.string.steering_identify), false) {
                 startActivity(Intent(this, SteeringControlsActivity::class.java))
@@ -1456,11 +1472,14 @@ class DiPlayActivity : ComponentActivity() {
         }
         filteredSection(content, SettingsSection.ABOUT, getString(R.string.about), R.drawable.ic_dp_about) { card ->
             card.addView(button(getString(R.string.about_diplay), false) { page = "about"; render() }, matchButton(0, 60))
-            if (packageName == com.shilapi.xcertplay.update.UpdateCatalog.PACKAGE)
-                card.addView(button("检查更新", false) {
-                    startActivity(Intent(this, com.shilapi.xcertplay.update.UpdateActivity::class.java))
-                }, matchButton(8, 56))
+            attachUpdates(card)
         }
+    }
+
+    private fun attachUpdates(card: LinearLayout) {
+        if (packageName != com.shilapi.xcertplay.update.UpdateCatalog.PACKAGE) return
+        val updates = updatePanel ?: com.shilapi.xcertplay.update.UpdatePanel(this).also { updatePanel = it }
+        updates.attachTo(card)
     }
 
     private fun about(content: LinearLayout) {
@@ -1472,10 +1491,7 @@ class DiPlayActivity : ComponentActivity() {
                 developerVersionTaps++
                 if (developerVersionTaps >= 7) { SteeringProfiles.unlockDeveloper(this); render() }
             }, matchButton(12, 56))
-            if (packageName == com.shilapi.xcertplay.update.UpdateCatalog.PACKAGE)
-                card.addView(button("检查更新", false) {
-                    startActivity(Intent(this, com.shilapi.xcertplay.update.UpdateActivity::class.java))
-                }, matchButton(10, 56))
+            attachUpdates(card)
             if (SteeringProfiles.developerUnlocked(this)) card.addView(button(getString(R.string.steering_diagnostics), false) {
                 startActivity(Intent(this, SteeringControlsActivity::class.java).putExtra("developer", true))
             }, matchButton(10, 56))
@@ -1513,6 +1529,7 @@ class DiPlayActivity : ComponentActivity() {
         val controls = column().apply { visibility = View.GONE }
         hotspotAdbControls = controls
         parent.addView(controls)
+        renderHotspotAdbControls(controls, LocalAdb.Access.UNREACHABLE)
         Thread({
             val access = runCatching { CarHotspotSetup.check(applicationContext) }
                 .onFailure { Log.w("DiPlay-Hotspot", "settings ADB check failed", it) }
@@ -1520,10 +1537,7 @@ class DiPlayActivity : ComponentActivity() {
             Log.i("DiPlay-Hotspot", "settings eligibility: adb=$access visible=${CarHotspotSettings.visible(true, access)}")
             runOnUiThread {
                 if (hotspotAdbControls !== controls || isFinishing || isDestroyed) return@runOnUiThread
-                if (CarHotspotSettings.visible(true, access)) {
-                    controls.visibility = View.VISIBLE
-                    renderHotspotAdbControls(controls, access)
-                }
+                if (!adbSwitchChangePending) renderHotspotAdbControls(controls, access)
             }
         }, "diplay-hotspot-adb-check").start()
     }
@@ -1532,8 +1546,7 @@ class DiPlayActivity : ComponentActivity() {
         controls.removeAllViews()
         adbSwitches.keys.retainAll(setOf(R.string.open_after_the_car_starts))
         adbStatus = null
-        controls.visibility = if (CarHotspotSettings.visible(true, access)) View.VISIBLE else View.GONE
-        if (controls.visibility == View.GONE) return
+        controls.visibility = View.VISIBLE
         if (AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) {
             controls.visibility = View.GONE
             return
@@ -1542,20 +1555,22 @@ class DiPlayActivity : ComponentActivity() {
             if (AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL) {
                 adbToggle(card, R.string.auto_car_hotspot_title, R.string.auto_car_hotspot_description,
                     read = { CarHotspotSettings.enabled(this) },
+                    needsAdb = { hotspotStartupPermissions().any { !it.granted(this) } },
                     permissions = {
-                        buildList {
-                            add(CarHotspotSetup.Permission.HOTSPOT)
-                            if (AirPlayPersistence.loadAutoStartOnBoot(this@DiPlayActivity)) {
-                                add(CarHotspotSetup.Permission.BOOT_LAUNCH)
-                            }
-                        }
+                        hotspotStartupPermissions()
                     }) {
                     CarHotspotSettings.setEnabled(this, it)
                     if (!it) startupHotspotCancelled = true
                 }
             }
-            adbStatus = label(getString(if (access == LocalAdb.Access.READY)
-                R.string.adb_access_ready else R.string.adb_not_approved), 14, MUTED).also(card::addView)
+            val status = when {
+                hotspotStartupPermissions().all { it.granted(this) } -> R.string.hotspot_permission_granted
+                access == LocalAdb.Access.READY -> R.string.adb_access_ready
+                access == LocalAdb.Access.NOT_APPROVED -> R.string.adb_not_approved
+                access == LocalAdb.Access.UNSUPPORTED -> R.string.adb_pairing_only
+                else -> R.string.adb_off
+            }
+            adbStatus = label(getString(status), 14, MUTED).also(card::addView)
             val allReady = UsbPermissionSetup.snapshot(this).values.all { it }
             if (!allReady) {
                 card.addView(button(getString(R.string.btn_auto_apply_permissions), false) { autoApplyPermissions() }, matchButton(8, 54))
@@ -1624,7 +1639,15 @@ class DiPlayActivity : ComponentActivity() {
         updatingAdbSwitches = false
     }
 
+    private fun hotspotStartupPermissions() = buildList {
+        add(CarHotspotSetup.Permission.HOTSPOT)
+        if (Build.VERSION.SDK_INT >= 29 || AirPlayPersistence.loadAutoStartOnBoot(this@DiPlayActivity))
+            add(CarHotspotSetup.Permission.BOOT_LAUNCH)
+    }
+
     private fun startCarHotspotOnLaunch() {
+        // onStop marks an interrupted attempt; a later foreground/boot launch gets a fresh attempt.
+        startupHotspotCancelled = false
         if (!startupHotspotEligible()) return
         val app = applicationContext
         Thread({
@@ -2975,6 +2998,7 @@ class DiPlayActivity : ComponentActivity() {
         appendLine("--- HUD projection ---")
         appendLine(GeelyHudProjection.diagnosticReport(appContext))
         appendLine(VehicleMapProjection.diagnostics())
+        appendLine(com.shilapi.xcertplay.update.E01UpdateInstaller.diagnostics(appContext))
         appendLine()
         appendLine("--- Steering controls ---")
         appendLine(CarPlayMediaKeys.steeringDiagnostics())
@@ -2996,39 +3020,51 @@ class DiPlayActivity : ComponentActivity() {
         reportUploadInProgress = true
         reportUploadButton?.apply { isEnabled = false; text = getString(R.string.uploading_to_cloud) }
         val appContext = applicationContext
-        val fileName = reportFileName()
         Thread({
             val result = runCatching {
-                DiagnosticReportUpload.upload(fileName, issueDescription, buildDiagnosticReport(appContext))
+                CloudDiagnosticUpload.upload(appContext, issueDescription, buildDiagnosticReport(appContext))
             }
             runOnUiThread {
                 reportUploadInProgress = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 reportUploadButton?.apply { isEnabled = true; text = getString(R.string.upload_report_to_cloud) }
                 if (result.isSuccess) {
+                    val receipt = result.getOrThrow()
+                    reportReceiptLabel?.text = cloudReceiptText()
                     reportIssueDescription = ""
                     reportIssueInput?.text?.clear()
                     AlertDialog.Builder(this)
                         .setTitle(getString(R.string.report_uploaded))
-                        .setMessage(getString(R.string.report_uploaded_message))
+                        .setMessage(getString(R.string.report_uploaded_message, receipt.id))
                         .setPositiveButton(getString(R.string.done), null)
+                        .setNeutralButton("复制报告编号") { _, _ ->
+                            systemService(android.content.ClipboardManager::class.java, "clipboard")?.setPrimaryClip(
+                                android.content.ClipData.newPlainText("DiPlay report", receipt.id))
+                            toast("报告编号已复制")
+                        }
                         .show()
                 } else {
-                    val tooLarge = result.exceptionOrNull() is DiagnosticReportTooLargeException
+                    val error = result.exceptionOrNull()
+                    val errorMessage = when (error) {
+                        is CloudDiagnosticUpload.Failure -> error.message
+                        is javax.net.ssl.SSLException -> com.shilapi.xcertplay.license.LicenseFailureMessage.describe(error)
+                            .replace("授权服务器", "报告服务器").replace("刷新状态", "重试上传")
+                        else -> getString(R.string.report_upload_failed_message)
+                    }
                     val dialog = AlertDialog.Builder(this)
                         .setTitle(getString(R.string.report_upload_failed))
-                        .setMessage(getString(if (tooLarge) R.string.report_too_large_message else R.string.report_upload_failed_message))
-                    if (tooLarge) {
-                        dialog.setPositiveButton(getString(R.string.close), null)
-                    } else {
-                        dialog.setPositiveButton(getString(R.string.retry_report_upload)) { _, _ -> uploadDiagnostics(issueDescription) }
+                        .setMessage(errorMessage)
+                        .setPositiveButton(getString(R.string.retry_report_upload)) { _, _ -> uploadDiagnostics(issueDescription) }
                         .setNegativeButton(getString(R.string.close), null)
-                    }
                     dialog.show()
                 }
             }
         }, "diplay-report-upload").start()
     }
+
+    private fun cloudReceiptText(): String = CloudDiagnosticUpload.lastReceipt(this)?.let {
+        "最近报告：${it.id}\n保留至 ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(it.expiresAt * 1000))}，长按可复制。"
+    }.orEmpty()
 
     private fun exportDiagnostics(uri: Uri? = null) {
         if (exportInProgress) return

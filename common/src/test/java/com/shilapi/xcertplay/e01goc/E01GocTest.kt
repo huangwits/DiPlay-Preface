@@ -92,6 +92,7 @@ class E01GocTest {
         try {
             val labels = views(activity.get().window.decorView).filterIsInstance<TextView>().map { it.text.toString() }.toList()
             for (label in listOf("检查状态", "连接测试", "安装适配", "还原备份", "停止测试")) assertTrue(label, label in labels)
+            assertFalse("测试 Root 权限" in labels)
             assertFalse(java.io.File(activity.get().filesDir, "e01-goc/manage.sh").exists())
         } finally { activity.pause().stop().destroy() }
     }

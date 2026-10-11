@@ -26,6 +26,7 @@ import java.io.File
 class PreparationLayoutTest {
     @Test fun wirelessPreparationCentersTheSavedPhoneAndKeepsActionsReachableWhenShortOrFailing() {
         val panel = ConnectionWaitingView(RuntimeEnvironment.getApplication(), preparation = true)
+        panel.useAppStyle()
         panel.retry.visibility = View.GONE
         panel.showConnection(true, "我的 iPhone", false)
         panel.stage.text = "正在通过蓝牙连接 iPhone"

@@ -107,6 +107,26 @@ object OnlineLicense {
     internal fun wasActivated(context: Context): Boolean = context.getSharedPreferences("diplay-license", Context.MODE_PRIVATE).getBoolean("activated", false)
     internal fun deviceLabel(context: Context): String = context.getSharedPreferences("diplay-license", Context.MODE_PRIVATE).getString("device", "尚未激活").orEmpty()
 
+    /** Reuses installation identity without requesting activation or changing admission. */
+    internal fun diagnosticIdentity(context: Context): DiagnosticIdentity {
+        val settings = config(context)
+        val origin = settings.getString("url")
+        val url = URL(origin)
+        check(url.protocol == "https" && url.host.isNotEmpty() && url.userInfo == null &&
+            url.query == null && url.ref == null && url.path in listOf("", "/")) { "报告服务地址无效" }
+        @Suppress("DEPRECATION")
+        val signatures = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES).signatures
+        check(signatures != null && signatures.size == 1) { "无法核验安装包签名" }
+        val signer = LicenseProtocol.hash(signatures.single().toByteArray())
+        check(context.packageName == settings.getString("package") && signer == settings.getString("signer")) { "安装包签名不匹配" }
+        val (publicKey, privateKey) = deviceKey(context)
+        return DiagnosticIdentity(origin, context.packageName, signer, publicKey, privateKey)
+    }
+
+    internal data class DiagnosticIdentity(val origin: String, val packageName: String, val signer: String,
+        val publicKey: ByteArray, val privateKey: PrivateKey)
+
+    @Synchronized
     private fun deviceKey(context: Context): Pair<ByteArray, PrivateKey> {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         if (!store.containsAlias(ALIAS)) {

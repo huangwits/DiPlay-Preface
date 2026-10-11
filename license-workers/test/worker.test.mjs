@@ -15,7 +15,7 @@ before(async () => {
       ADMIN_TOKEN_HASH: hash(token), ISSUER_PRIVATE_KEY: issuer.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64') },
   }] }));
   db = await mf.getD1Database('DB');
-  const statements = readFileSync('migrations/0001.sql', 'utf8').split(';').map(s => s.trim()).filter(Boolean);
+  const statements = ['0001.sql', '0002_diagnostic_reports.sql'].flatMap(name => readFileSync('migrations/' + name, 'utf8').split(';').map(s => s.trim()).filter(Boolean));
   for (const sql of statements) await db.prepare(sql).run();
 });
 after(async () => { await mf?.dispose(); });
@@ -193,4 +193,95 @@ test('admin filters search the whole database, distinguish expiry, and paginate 
     for(const value of [{query:'%'},{query:"' OR 1=1"},{query:'a'.repeat(65)},{query:42},{status:'anything'}])assert.equal((await post('/admin/list',value,{admin:true})).code,400);
     assert.equal((await post('/admin/list',{query:'FEFEFEFEFEFE'},{admin:true})).value.items.length,0);
   } finally { await db.batch(fixtures.map(r=>db.prepare('DELETE FROM devices WHERE device=?').bind(r.device))); }
+});
+
+async function reportProof(d, overrides = {}) {
+  const document = JSON.stringify({ schema: 1, version: '0.2.16.13', description: '方向盘下一曲无效', report: 'wheel=NEXT map=requested', ...overrides });
+  return { ...await requestProof(d, 'report:' + hash(document)), document };
+}
+
+test('private diagnostics: receipt, idempotence, admin search/read/delete and no activation side effects', async () => {
+  const d = device(), submission = await reportProof(d);
+  const uploaded = await post('/v1/diagnostics', submission);
+  assert.equal(uploaded.code, 200, JSON.stringify(uploaded.value));
+  assert.match(uploaded.value.receipt, /^DPR-[0-9A-F]{16}$/);
+  assert.ok(Math.abs(uploaded.value.expiresAt - Date.now()/1000 - 7*86400) < 5);
+  assert.equal(await db.prepare('SELECT * FROM devices WHERE device=?').bind(d.id).first(), null);
+  assert.equal((await apply(d, 'refresh')).code, 403);
+  const repeated = await post('/v1/diagnostics', await reportProof(d));
+  assert.equal(repeated.value.receipt, uploaded.value.receipt);
+  const id = uploaded.value.receipt;
+  for (const path of ['/admin/reports/list', '/admin/reports/read', '/admin/reports/delete']) {
+    assert.equal((await post(path, { id })).code, 401);
+    assert.equal((await post(path, { id }, { admin:true, headers:{ Origin:'https://evil.example' } })).code, 403);
+  }
+  const read = await post('/admin/reports/read', { id }, { admin:true });
+  assert.equal(read.value.report, 'wheel=NEXT map=requested');
+  assert.equal(read.headers.get('Cache-Control'), 'no-store');
+  assert.equal(read.value.device, undefined);
+  const list = await post('/admin/reports/list', { query:id }, { admin:true });
+  assert.equal(list.value.items.length, 1); assert.equal(list.value.items[0].id, id);
+  assert.equal(list.value.items[0].report, undefined);
+  assert.equal((await post('/admin/reports/delete', {id}, {admin:true})).code, 200);
+  assert.equal((await post('/admin/reports/read', {id}, {admin:true})).code, 404);
+});
+
+test('diagnostic proofs reject replay, document alteration, wrong action and invalid identity', async () => {
+  const d = device(), value = await reportProof(d);
+  assert.equal((await post('/v1/diagnostics', value)).code, 200);
+  assert.equal((await post('/v1/diagnostics', value)).code, 403);
+  const changed = await reportProof(d);
+  changed.document = changed.document.replace('NEXT', 'PREVIOUS');
+  assert.equal((await post('/v1/diagnostics', changed)).code, 403);
+  const cross = await reportProof(d);
+  assert.equal((await post('/v1/request', cross)).code, 403);
+  assert.equal((await post('/v1/diagnostics', { ...await reportProof(d), signer:'f'.repeat(64) })).code, 403);
+  assert.equal((await post('/v1/diagnostics', { ...await requestProof(d), document:value.document })).code, 403);
+  assert.equal(await db.prepare('SELECT * FROM devices WHERE device=?').bind(d.id).first(), null);
+});
+
+test('diagnostics filter credentials and addresses, keep script text inert, and expire', async () => {
+  const d=device(), result=await post('/v1/diagnostics', await reportProof(d, { report:
+    'Android API=22\npassword=secret-phrase\nphoneName=Private phone\nlatitude=31.2\nnextRoad=Private road\nmail=owner@example.com address=192.168.1.1 mac=aa:bb:cc:dd:ee:ff\n<script>alert(1)</script>' }));
+  const id=result.value.receipt;assert.equal(result.code,200);
+  const saved=await post('/admin/reports/read',{id},{admin:true});
+  for(const secret of ['secret-phrase','Private','31.2','owner@','192.168','aa:bb'])assert.ok(!saved.value.report.includes(secret),secret);
+  assert.ok(saved.value.report.includes('Android API=22'));assert.ok(saved.value.report.includes('<script>alert(1)</script>'));
+  await db.prepare('UPDATE diagnostic_reports SET expires=1 WHERE id=?').bind(id).run();
+  assert.equal((await post('/admin/reports/read',{id},{admin:true})).code,404);
+  assert.equal(await db.prepare('SELECT id FROM diagnostic_reports WHERE id=?').bind(id).first(),null);
+});
+
+test('diagnostic input bounds and quotas reject excess without disrupting existing approval', async () => {
+  const d=device(), pending=await apply(d);await approve(pending.value.requestId);
+  const before=await db.prepare('SELECT status,valid_until FROM devices WHERE device=?').bind(d.id).first();
+  for(const [override,code] of [[{schema:2},400],[{description:''},400],[{description:'x'.repeat(2001)},400], [{report:'x'.repeat(1024*1024+1)},413]]) {
+    assert.equal((await post('/v1/diagnostics',await reportProof(d,override))).code,code);
+  }
+  for(let i=0;i<5;i++)assert.equal((await post('/v1/diagnostics',await reportProof(d,{description:'unique '+i}))).code,200);
+  assert.equal((await post('/v1/diagnostics',await reportProof(d,{description:'excess'}))).code,429);
+  assert.equal((await post('/v1/diagnostics',await reportProof(d,{description:'unique 0'}))).code,200);
+  assert.deepEqual(await db.prepare('SELECT status,valid_until FROM devices WHERE device=?').bind(d.id).first(),before);
+  assert.equal((await apply(d,'refresh')).code,200);
+});
+
+test('report pagination and search have no gaps, capacity is bounded atomically', async () => {
+  const now=Math.floor(Date.now()/1000), d=device();
+  await db.prepare('DELETE FROM diagnostic_reports').run();
+  await db.batch(Array.from({length:99},(_,i)=>db.prepare('INSERT INTO diagnostic_reports(id,device,digest,version,description,report,created_at,expires) VALUES (?,?,?,?,?,?,?,?)')
+    .bind('DPR-'+i.toString(16).padStart(16,'0').toUpperCase(),hash('fixture-'+i),hash('fixture-doc-'+i),'0.2.16.13','fixture','body',now,now+86400)));
+  const ids=[];let cursor;
+  do { const page=await post('/admin/reports/list',{before:cursor},{admin:true});ids.push(...page.value.items.map(r=>r.id));cursor=page.value.next; } while(cursor);
+  assert.equal(ids.length,99);assert.equal(new Set(ids).size,99);
+  const responses=await Promise.all([post('/v1/diagnostics',await reportProof(d,{description:'one'})),post('/v1/diagnostics',await reportProof(d,{description:'two'}))]);
+  assert.deepEqual(responses.map(r=>r.code).sort(),[200,503]);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM diagnostic_reports').first()).n,100);
+  await db.prepare('DELETE FROM diagnostic_reports').run();
+});
+
+test('served admin script compiles and uses text-only report rendering', async () => {
+  const js=await (await mf.dispatchFetch('https://license.example/admin.js')).text();
+  new Function(js);
+  assert.ok(js.includes("el('reportBody').textContent=openedReport.report"));
+  assert.ok(!js.includes('innerHTML'));
 });

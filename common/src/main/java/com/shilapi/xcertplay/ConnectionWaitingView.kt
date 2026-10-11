@@ -195,6 +195,14 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
         retry.visibility = VISIBLE
     }
 
+    fun clearFailure() {
+        failure.text = ""
+        failure.visibility = GONE
+        retry.visibility = GONE
+        confirmed.text = ""
+        confirmed.visibility = GONE
+    }
+
     fun addControlAction(label: String): Button = action(label).also {
         extraButtons += it
         controls.addView(it, controls.indexOfChild(gestureHint), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
@@ -235,7 +243,8 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
     fun setPrimaryAction(button: Button?) {
         if (primaryAction === button) return
         primaryAction = button
-        if (appStyle) extraButtons.forEach { AppPageStyle.action(it, it === button) }
+        if (appStyle) (listOf(retry, settings, recovery, back) + extraButtons)
+            .forEach { AppPageStyle.action(it, it === button) }
     }
 
     fun applyTheme(night: Boolean) {
@@ -259,7 +268,11 @@ internal class ConnectionWaitingView(context: Context, private var showLogPanel:
             it.backgroundTintList = android.content.res.ColorStateList.valueOf(
                 if (night) Color.rgb(42, 56, 77) else Color.rgb(213, 225, 243))
         }
-        if (appStyle) extraButtons.forEach { AppPageStyle.action(it, it === primaryAction) }
+        if (appStyle) {
+            (listOf(retry, settings, recovery, back, copy, follow) + extraButtons)
+                .forEach { AppPageStyle.action(it, it === primaryAction) }
+            logPanel.background = AppPageStyle.card(context)
+        }
     }
 
     private fun action(label: String) = Button(context).apply {

@@ -538,7 +538,7 @@
     <string name="settings_gesture_fingers_option">%1$d 指</string>
     <string name="settings_gesture_fingers_hint">选择车机没有占用的手指数，避免与原厂手势冲突。</string>
     <string name="auto_car_hotspot_title">自动开启热点</string>
-    <string name="auto_car_hotspot_description">DiPlay 启动时开启车机热点。打开开关会自动通过 ADB 申请所需权限，请允许车机上的授权提示。配合“车辆启动后打开”可随开机启动。保留热点名称和密码，不会自动关闭热点。</string>
+    <string name="auto_car_hotspot_description">车机启动后自动开启已保存的车机热点。打开开关会通过 ADB 申请权限，请允许车机提示；需要时会自动启动 DiPlay。保留热点名称和密码，不会自动关闭热点。</string>
     <string name="hotspot_control_missing">缺少热点控制权限。请通过 ADB 授权，或在车机设置中手动开启热点。</string>
     <string name="hotspot_permission_granted">授权成功。</string>
     <string name="hotspot_permission_failed">未获得所请求的权限。请检查车机设置后重试。</string>
@@ -618,9 +618,9 @@
     <string name="uploading_to_cloud">正在上传到云端…</string>
     <string name="describe_problem_before_uploading">请先填写故障描述。</string>
     <string name="problem_description_too_long">故障描述不能超过 2000 个字符。</string>
-    <string name="report_upload_privacy">仅在点击按钮后上传，故障描述会和已脱敏的诊断报告一起发送。</string>
+    <string name="report_upload_privacy">点击后将故障描述、设备摘要和最近日志发送到 Preface 诊断服务，仅管理员可见，保留 7 天。已过滤常见密钥和地址；请勿在描述中填写个人信息。不会自动上传。</string>
     <string name="report_uploaded">报告已上传</string>
-    <string name="report_uploaded_message">云端已收到故障描述和诊断报告。</string>
+    <string name="report_uploaded_message">报告编号：%1$s\n\n请将编号发给维护者，以便分析问题。云端保留 7 天。</string>
     <string name="report_upload_failed">报告上传失败</string>
     <string name="report_upload_failed_message">请检查车机网络后重试。</string>
     <string name="retry_report_upload">重试</string>

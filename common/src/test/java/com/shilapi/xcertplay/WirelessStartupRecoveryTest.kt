@@ -91,4 +91,16 @@ class WirelessStartupRecoveryTest {
         report()
         assertEquals(0, budget().retries)
     }
+
+    @Test fun firstTcpTimeoutUsesChineseAndSuccessfulConnectionClearsOldFailure() {
+        val viewport = ConnectionWaitingView(activity)
+        ReflectionHelpers.setField(activity, "connectionWaitingView", viewport)
+        report(status = failure.copy(message = "No AirPlay TCP after CarPlay StartSession"))
+        assertEquals(View.VISIBLE, viewport.failure.visibility)
+        assertFalse(viewport.failure.text.contains("No AirPlay TCP"))
+        report(status = CarPlayStatus.WirelessActive)
+        assertEquals(View.GONE, viewport.failure.visibility)
+        assertEquals(View.GONE, viewport.retry.visibility)
+        assertEquals("", viewport.failure.text.toString())
+    }
 }

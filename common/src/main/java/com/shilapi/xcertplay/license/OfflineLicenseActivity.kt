@@ -10,6 +10,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.shilapi.xcertplay.AppPageStyle
 
 class OfflineLicenseActivity : Activity() {
     private lateinit var message: TextView
@@ -30,14 +31,16 @@ class OfflineLicenseActivity : Activity() {
         super.onCreate(state)
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            background = AppPageStyle.card(this@OfflineLicenseActivity)
             val pad = (24 * resources.displayMetrics.density).toInt(); setPadding(pad, pad, pad, pad)
         }
         fun text(value: String, size: Float = 16f) = TextView(this).apply {
-            text = value; textSize = size; setPadding(0, 8, 0, 18)
+            text = value; textSize = size; setTextColor(AppPageStyle.text); setPadding(0, 8, 0, 18)
             column.addView(this, LinearLayout.LayoutParams(-1, -2))
         }
         fun button(label: String, action: () -> Unit): Button {
             val control = Button(this).apply { text = label; isAllCaps = false; setOnClickListener { action() } }
+            AppPageStyle.action(control, label == "激活本机")
             column.addView(control, LinearLayout.LayoutParams(-1, -2)); actions += control
             return control
         }
@@ -55,6 +58,7 @@ class OfflineLicenseActivity : Activity() {
         device = text("", 14f).apply { setTextIsSelectable(true) }
         button("复制设备码") { copy("设备码", deviceCode) }
         code = EditText(this).apply {
+            setTextColor(AppPageStyle.text); setHintTextColor(AppPageStyle.muted)
             hint = "粘贴完整激活码"; minLines = 2; maxLines = 5
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             if (android.os.Build.VERSION.SDK_INT >= 26) importantForAutofill = android.view.View.IMPORTANT_FOR_AUTOFILL_NO
@@ -82,7 +86,7 @@ class OfflineLicenseActivity : Activity() {
         }
         button("返回 DiPlay") { finish() }
         text("激活码仅用于本次安装。卸载、清除数据或更换设备后可能需要重新签发；正常覆盖更新会保留授权。原厂蓝牙恢复工具仍可使用。", 13f)
-        page = ScrollView(this).apply { addView(column) }
+        page = ScrollView(this).apply { addView(column); setBackgroundColor(AppPageStyle.background) }
         setContentView(page)
         if (!OfflineLicense.enabled(this)) {
             phoneButton.visibility = android.view.View.GONE

@@ -2,11 +2,8 @@ package com.shilapi.xcertplay
 
 import android.app.AlertDialog
 import android.content.Context
-import android.content.res.ColorStateList
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -397,9 +394,9 @@ class SteeringControlsActivity : ComponentActivity() {
         if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
     private fun button(value: String, primary: Boolean = false, click: () -> Unit) = Button(this).apply {
-        text = value; isAllCaps = false; textSize = 17f; minHeight = dp(56)
-        setTextColor(if (primary) BG else TEXT); setPadding(dp(14), dp(8), dp(14), dp(8))
-        background = RippleDrawable(ColorStateList.valueOf(0x336F9FD9), rounded(if (primary) ACCENT else SURFACE), null)
+        text = value
+        AppPageStyle.action(this, primary)
+        minHeight = dp(56)
         setOnClickListener { click() }
     }
     private fun Button.enable(value: Boolean) { isEnabled = value; alpha = if (value) 1f else 0.45f }
@@ -411,11 +408,11 @@ class SteeringControlsActivity : ComponentActivity() {
     private fun toast(resource: Int) { Toast.makeText(this, resource, Toast.LENGTH_LONG).show() }
 
     companion object {
-        private val BG = Color.rgb(12, 17, 27)
-        private val SURFACE = Color.rgb(21, 30, 44)
-        private val BORDER = Color.rgb(42, 56, 75)
-        private val ACCENT = Color.rgb(166, 200, 255)
-        private val TEXT = Color.rgb(241, 245, 252)
-        private val MUTED = Color.rgb(168, 182, 202)
+        private val BG = AppPageStyle.background
+        private val SURFACE = AppPageStyle.surface
+        private val BORDER = AppPageStyle.border
+        private val ACCENT = AppPageStyle.accent
+        private val TEXT = AppPageStyle.text
+        private val MUTED = AppPageStyle.muted
     }
 }
