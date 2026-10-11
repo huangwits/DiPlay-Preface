@@ -26,6 +26,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.provider.Settings
 import android.text.Editable
 import android.text.InputType
 import android.text.TextUtils
@@ -394,6 +395,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private var manualHotspotChannel = 0
     private var manualHotspotSecurity = ManualHotspotSecurity.OPEN
     private var awaitingVpnConsent = false
+    private var vpnSettingsFallbackPending = false
     private var awaitingWirelessPermissions = false
     private var awaitingLocationPermission = false
     private var vpnReady = false
@@ -742,7 +744,29 @@ class CarPlayHostActivity : ComponentActivity() {
             "component=${consent?.component?.flattenToString() ?: "none"}"
         Log.w(TAG, diagnostic, error)
         appendLog(diagnostic)
-        setStatus(getString(R.string.vpn_authorization_unavailable))
+        if (!openVpnSettingsFallback(operation)) {
+            setStatus(getString(R.string.vpn_authorization_unavailable))
+        }
+    }
+
+    /** Some Android 5.1 head units ship without the standard VPN confirmation activity. */
+    private fun openVpnSettingsFallback(operation: String): Boolean {
+        val intent = Intent(Settings.ACTION_VPN_SETTINGS)
+        return try {
+            vpnSettingsFallbackPending = true
+            appendLog("VPN consent fallback=settings operation=$operation")
+            startActivity(intent)
+            setStatus(getString(R.string.vpn_authorization_settings_fallback))
+            true
+        } catch (error: ActivityNotFoundException) {
+            vpnSettingsFallbackPending = false
+            Log.w(TAG, "VPN settings unavailable", error)
+            false
+        } catch (error: SecurityException) {
+            vpnSettingsFallbackPending = false
+            Log.w(TAG, "VPN settings blocked", error)
+            false
+        }
     }
 
     private fun requestWirelessPermissions() {
@@ -864,6 +888,12 @@ class CarPlayHostActivity : ComponentActivity() {
             requestLocationPermission()
         }
         wirelessPermissionsReady = !wirelessEnabled || hasRequiredWirelessPermissions()
+        if (!menuOpen && vpnSettingsFallbackPending && !wirelessEnabled && controller == null) {
+            // Old OEM builds may omit com.android.vpndialogs. Re-check after the user returns
+            // from the system VPN page instead of treating that page as a grant.
+            vpnSettingsFallbackPending = false
+            requestVpnConsent()
+        }
         advancedAudioChannelMapping =
             advancedAudioChannelMappingSupported &&
                 AirPlayPersistence.loadAdvancedAudioChannelMapping(this)
