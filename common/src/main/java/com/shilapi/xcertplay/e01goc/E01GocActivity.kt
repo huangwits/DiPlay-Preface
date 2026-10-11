@@ -40,6 +40,7 @@ class E01GocActivity : Activity() {
     private lateinit var cancelButton: Button
     private lateinit var setupTitle: TextView
     private lateinit var setupHint: TextView
+    private lateinit var recoveryButton: Button
     private val setupButtons = mutableListOf<Button>()
     // Guidance only; manager.inspect/test/install still enforce the real maintenance checks.
     private var setupStep = 0
@@ -69,9 +70,6 @@ class E01GocActivity : Activity() {
             actions += view
             factoryViews += view
             if (title != "还原备份") setupButtons += view
-        }
-        fun factoryText(text: String, size: Float = 13f) {
-            factoryViews += panel.addControlText(text, size)
         }
         modeButton = panel.addControlAction("").apply {
             tag = "bluetooth-mode"
@@ -120,13 +118,33 @@ class E01GocActivity : Activity() {
             }
         }
         button("安装适配") {
-            confirm("安装适配", "将备份并替换蓝牙组件，需先通过连接测试。备份仅包含原程序；电话、音乐和重启后的效果需另行确认。安装期间请保持供电，不要重启。") { work { manager.install(); runOnUiThread { setupStep = 3; updateSetupGuide() } } }
+            if (!allowConnectionTest()) return@button
+            confirm("安装适配", "将备份并替换蓝牙组件，需先通过连接测试。备份仅包含原程序；电话、音乐和重启后的效果需另行确认。安装期间请保持供电，不要重启。") {
+                if (!allowConnectionTest()) return@confirm
+                work { manager.install(); runOnUiThread { setupStep = 3; updateSetupGuide() } }
+            }
         }
-        factoryText("恢复 · 仅在需要时使用", 16f)
-        factoryText("还原备份会恢复原版系统蓝牙组件。")
-        button("还原备份") {
-            confirm("还原备份", "将暂停 CarPlay，还原已校验的原版组件并重启蓝牙。") { work { manager.restore(); runOnUiThread { setupStep = 0; updateSetupGuide() } } }
+        recoveryButton = panel.addControlAction("还原备份").apply {
+            tag = "bluetooth-restore"
+            actions += this
+            factoryViews += this
+            setOnClickListener {
+                confirm("还原备份", "将暂停 CarPlay，还原已校验的原版组件并重启蓝牙。") {
+                    work { manager.restore(); runOnUiThread { setupStep = 0; updateSetupGuide() } }
+                }
+            }
         }
+        val recovery = panel.addControlAction("恢复选项").apply {
+            tag = "bluetooth-recovery-toggle"
+            actions += this
+            factoryViews += this
+            setOnClickListener {
+                recoveryButton.visibility = if (recoveryButton.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                text = if (recoveryButton.visibility == View.VISIBLE) "收起恢复选项" else "恢复选项"
+            }
+        }
+        panel.controls.removeView(recovery)
+        panel.controls.addView(recovery, panel.controls.indexOfChild(recoveryButton))
         cancelButton = panel.addControlAction("停止测试").apply { visibility = View.GONE }
         cancelButton.setOnClickListener {
             if (temporary) { manager.cancelled = true; showStatus("正在结束测试并恢复蓝牙…") }
@@ -169,6 +187,8 @@ class E01GocActivity : Activity() {
     private fun updateModeLayout() {
         val factory = E01GocPreferences.enabled(this)
         factoryViews.forEach { it.visibility = if (factory) View.VISIBLE else View.GONE }
+        recoveryButton.visibility = View.GONE
+        panel.findViewWithTag<Button>("bluetooth-recovery-toggle").text = "恢复选项"
         androidViews.forEach { it.visibility = if (factory) View.GONE else View.VISIBLE }
         modeButton.text = "当前模式：${if (factory) "原厂蓝牙" else "安卓蓝牙"}（切换）"
         panel.instructions.visibility = if (factory) View.GONE else View.VISIBLE
@@ -237,10 +257,17 @@ class E01GocActivity : Activity() {
         controls.addView(setupTitle, insertAt)
         controls.addView(steps, insertAt + 1, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gap })
         controls.addView(setupHint, insertAt + 2)
+        controls.removeView(cancelButton)
+        controls.addView(cancelButton, controls.indexOfChild(setupTitle))
         factoryViews += steps
         // Phone selection precedes the real connection action in both Bluetooth modes.
         controls.removeView(phoneButton)
-        controls.addView(phoneButton, controls.indexOfChild(connectButton))
+        val dailyIndex = controls.indexOfChild(connectButton)
+        controls.removeView(connectButton)
+        val daily = LinearLayout(this).apply { tag = "bluetooth-daily-actions" }
+        daily.addView(phoneButton, LinearLayout.LayoutParams(0, -2, 1f))
+        daily.addView(connectButton, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = gap })
+        controls.addView(daily, dailyIndex, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gap })
         // Keep operation results with setup, before phone selection and daily connection.
         listOf(panel.confirmed, panel.failure).forEachIndexed { index, result ->
             controls.removeView(result)
@@ -261,9 +288,14 @@ class E01GocActivity : Activity() {
             setupStep == 2 -> "测试已通过，原服务已恢复。下一步：安装适配。"
             else -> "重新连接车机电话和音乐，选择手机，再连接 CarPlay。"
         }
+        // The manager rechecks admission and the tested component pair; buttons are guidance only.
+        val idle = !working && !E01GocManager.isBusy()
+        setupButtons[0].isEnabled = idle
+        setupButtons[1].isEnabled = idle && allowed && setupStep in 1..2 && DiPlayPreferences.phoneAddress(this) != null
+        setupButtons[2].isEnabled = idle && allowed && setupStep == 2
         val primary = when {
-            working -> null
-            !factory -> connectButton
+            !idle || !allowed -> null
+            !factory -> if (DiPlayPreferences.phoneAddress(this) == null) phoneButton else connectButton
             setupStep == 1 && DiPlayPreferences.phoneAddress(this) == null -> phoneButton
             setupStep == 3 -> connectButton
             else -> setupButtons[setupStep]
@@ -429,6 +461,7 @@ class E01GocActivity : Activity() {
         actions.forEach { it.isEnabled = false }
         panel.stage.text = "处理中…"
         panel.stage.visibility = View.VISIBLE
+        panel.controlScroll.scrollTo(0, 0)
         updateSetupGuide()
         panel.confirmed.text = ""
         panel.confirmed.visibility = android.view.View.GONE

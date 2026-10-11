@@ -62,7 +62,9 @@ class PrefaceMaintenanceTest {
             assertTrue(controls.indexOfChild(panel.failure) >
                 controls.indexOfChild(panel.findViewWithTag<View>("bluetooth-setup-hint")))
             assertTrue(controls.indexOfChild(panel.failure) <
-                controls.indexOfChild(panel.findViewWithTag<View>("bluetooth-connect")))
+                controls.indexOfChild(panel.findViewWithTag<View>("bluetooth-daily-actions")))
+            assertSame(panel.findViewWithTag<View>("bluetooth-daily-actions"),
+                panel.findViewWithTag<View>("bluetooth-connect").parent)
         } finally { host.pause().stop().destroy() }
     }
 }

@@ -9,7 +9,8 @@ import com.shilapi.xcertplay.DiPlayActivity
 class UpdateActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        startActivity(Intent(this, DiPlayActivity::class.java).putExtra("page", "about")
+        startActivity(Intent(this, DiPlayActivity::class.java).putExtra("page", "settings")
+            .putExtra("settings_category", "OVERVIEW")
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
         finish()
     }

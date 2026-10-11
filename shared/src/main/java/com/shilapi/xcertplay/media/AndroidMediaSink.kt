@@ -93,12 +93,14 @@ class AndroidMediaSink(
         audioOwnershipListener = listener
         listener?.invoke(ownsAudio)
     }
+    private val communicationRoute = CommunicationAudioRoute(appContext, onAudioDiagnostic)
     private val audioFocusCoordinator = AudioFocusCoordinator(
         appContext,
         audioFocusEnabled,
         onAudioDiagnostic,
         factoryRouting = factoryAudio != null,
         onOwnershipChanged = { owned -> ownsAudio = owned; audioOwnershipListener?.invoke(owned) },
+        isExternalCall = communicationRoute::externalCall,
     )
     private val screenStateLock = Any()
     private val activeScreenTypes = mutableSetOf<Int>()
@@ -127,7 +129,6 @@ class AndroidMediaSink(
     private val pendingMicrophones = ConcurrentHashMap<AudioStreamId, PendingMicrophone>()
     private val microphoneUplinks = ConcurrentHashMap<AudioStreamId, ActiveMicrophone>()
     private val audioRouteWorker = Executors.newSingleThreadScheduledExecutor { Thread(it, "carplay-audio-route").apply { isDaemon = true } }
-    private val communicationRoute = CommunicationAudioRoute(appContext, onAudioDiagnostic)
     private var scoRegistered = false
     private val audioDeviceCallback = if (Build.VERSION.SDK_INT >= 23) object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(devices: Array<out AudioDeviceInfo>) = deviceRoutesChanged()

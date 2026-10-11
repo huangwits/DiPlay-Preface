@@ -56,13 +56,13 @@ class UpdateActivityFlowTest {
         CarPlayBackgroundSession.clear()
     }
 
-    private fun aboutHost() = Robolectric.buildActivity(DiPlayActivity::class.java,
-        Intent(RuntimeEnvironment.getApplication(), DiPlayActivity::class.java).putExtra("page", "about")).setup()
+    private fun settingsHost() = Robolectric.buildActivity(DiPlayActivity::class.java,
+        Intent(RuntimeEnvironment.getApplication(), DiPlayActivity::class.java).putExtra("page", "settings")).setup()
 
     private fun updates(activity: DiPlayActivity): UpdatePanel = ReflectionHelpers.getField(activity, "updatePanel")
 
-    @Test fun openingAboutDoesNotCheckOrDownloadAndLegacyEntryReturnsToAbout() {
-        val host = aboutHost()
+    @Test fun openingSettingsDoesNotCheckOrDownloadAndLegacyEntryReturnsToOverview() {
+        val host = settingsHost()
         try {
             val button = host.get().window.decorView.findViewWithTag<Button>("update-action")
             assertTrue(button.isEnabled); assertEquals("检查更新", button.text)
@@ -70,17 +70,25 @@ class UpdateActivityFlowTest {
             assertFalse(File(host.get().filesDir, "app-update/install.sh").exists())
             val status = host.get().window.decorView.findViewWithTag<TextView>("update-status")
             assertEquals(View.GONE, status.visibility)
+            ReflectionHelpers.setField(host.get(), "page", "about")
+            ReflectionHelpers.callInstanceMethod<Unit>(host.get(), "render")
+            assertNull(host.get().window.decorView.findViewWithTag<Button>("update-action"))
+            val project = views(host.get().window.decorView).filterIsInstance<Button>()
+                .single { it.text == host.get().getString(com.shilapi.xcertplay.host.R.string.ui_open_preface_source) }
+            project.performClick()
+            assertEquals(UpdateCatalog.REPOSITORY, shadowOf(host.get()).nextStartedActivity.dataString)
         } finally { host.pause().stop().destroy() }
         val legacy = Robolectric.buildActivity(UpdateActivity::class.java).create()
         val intent = shadowOf(legacy.get()).nextStartedActivity
         assertEquals(DiPlayActivity::class.java.name, intent.component?.className)
-        assertEquals("about", intent.getStringExtra("page"))
+        assertEquals("settings", intent.getStringExtra("page"))
+        assertEquals("OVERVIEW", intent.getStringExtra("settings_category"))
         assertTrue(legacy.get().isFinishing)
         legacy.destroy()
     }
 
     @Test fun checkingStaysInlineAndSurvivesSettingsRerenderWithoutDuplicateRequests() {
-        val host = aboutHost()
+        val host = settingsHost()
         val activity = host.get()
         val requested = java.util.concurrent.CountDownLatch(1)
         val respond = java.util.concurrent.CountDownLatch(1)
@@ -104,6 +112,9 @@ class UpdateActivityFlowTest {
             ReflectionHelpers.callInstanceMethod<Unit>(activity, "render")
             assertSame(button, activity.window.decorView.findViewWithTag<Button>("update-action"))
             assertFalse(button.isEnabled)
+            ReflectionHelpers.setField(activity, "page", "about")
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "render")
+            assertNull(activity.window.decorView.findViewWithTag<Button>("update-action"))
             ReflectionHelpers.setField(activity, "page", "settings")
             ReflectionHelpers.callInstanceMethod<Unit>(activity, "render")
             assertSame(button, activity.window.decorView.findViewWithTag<Button>("update-action"))
@@ -119,7 +130,7 @@ class UpdateActivityFlowTest {
     }
 
     @Test fun checksDownloadsCachesRevalidatesAndOpensLegacyInstallerWithoutAdb() {
-        val host = aboutHost()
+        val host = settingsHost()
         val activity = host.get()
         try {
             val bytes = "fixture payload, package identity supplied by PackageManager shadow".toByteArray()
@@ -213,7 +224,7 @@ class UpdateActivityFlowTest {
             }
         }
         com.shilapi.xcertplay.e01goc.RootServiceShadow.factory = binder
-        val host = aboutHost()
+        val host = settingsHost()
         try {
             val activity = host.get()
             val status = activity.window.decorView.findViewWithTag<TextView>("update-status")
@@ -254,7 +265,7 @@ class UpdateActivityFlowTest {
             "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk", 6, sha,
             "新增应用内检查更新和下载。\n支持 E01 车机覆盖安装，保留设置和授权信息。")
         File(directory, "pending.json").writeText(release.json().toString())
-        val host = aboutHost()
+        val host = settingsHost()
         try {
             val root = host.get().findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
             for ((width, height) in listOf(1280 to 480, 960 to 360, 480 to 800)) {

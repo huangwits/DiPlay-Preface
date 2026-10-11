@@ -373,6 +373,68 @@ class BluetoothLicenseLayoutTest {
         }
     }
 
+    @Test fun installConfirmationAndManagerBothRejectExpiredAdmission() {
+        val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
+        try {
+            val activity = host.get()
+            com.shilapi.xcertplay.e01goc.E01GocPreferences.select(activity, true)
+            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
+            ReflectionHelpers.setField(activity, "setupStep", 2)
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "updateModeLayout")
+            val install = views(activity.window.decorView).filterIsInstance<Button>().single { it.text == "安装适配" }
+            assertTrue(install.isEnabled)
+            install.performClick()
+            val confirmation = ShadowDialog.getLatestDialog() as android.app.AlertDialog
+            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
+            confirmation.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+            assertFalse(ReflectionHelpers.getField<Boolean>(activity, "working"))
+            val manager = com.shilapi.xcertplay.e01goc.E01GocManager(activity) {}
+            assertThrows(IllegalStateException::class.java) { manager.install() }
+            assertThrows(IllegalStateException::class.java) { manager.test("00:11:22:33:44:55") }
+            assertFalse(File(activity.filesDir, "e01-goc/manage.sh").exists())
+            assertFalse(com.shilapi.xcertplay.e01goc.E01GocManager.isBusy())
+        } finally {
+            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
+            host.pause().stop().destroy()
+        }
+    }
+
+    @Test fun setupButtonsFollowPrerequisitesAndRecoveryIsAnExplicitAction() {
+        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
+        ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
+        val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
+        try {
+            val activity = host.get()
+            val root = activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+            val buttons = views(root).filterIsInstance<Button>().associateBy { it.text.toString() }
+            assertTrue(buttons.getValue("检查状态").isEnabled)
+            assertFalse(buttons.getValue("连接测试").isEnabled)
+            assertFalse(buttons.getValue("安装适配").isEnabled)
+            val restore = root.findViewWithTag<Button>("bluetooth-restore")
+            assertEquals(View.GONE, restore.visibility)
+            root.findViewWithTag<Button>("bluetooth-recovery-toggle").performClick()
+            assertEquals(View.VISIBLE, restore.visibility)
+            assertFalse(File(activity.filesDir, "e01-goc/manage.sh").exists())
+            ReflectionHelpers.setField(activity, "setupStep", 1)
+            com.shilapi.xcertplay.DiPlayPreferences.savePhone(activity, "00:11:22:33:44:55", "我的 iPhone")
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "updateModeLayout")
+            assertTrue(buttons.getValue("连接测试").isEnabled)
+            assertFalse(buttons.getValue("安装适配").isEnabled)
+            ReflectionHelpers.setField(activity, "setupStep", 2)
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "updateSetupGuide")
+            assertTrue(buttons.getValue("安装适配").isEnabled)
+            for ((width,height) in listOf(960 to 360, 1280 to 480, 480 to 800)) {
+                layout(root,width,height)
+                val daily = root.findViewWithTag<View>("bluetooth-daily-actions")
+                assertTrue(daily.width > 0)
+                screenshot(root,"setup-ready-${width}x${height}",width,height)
+            }
+        } finally {
+            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
+            host.pause().stop().destroy()
+        }
+    }
+
     private fun layout(view: View, width: Int, height: Int) {
         repeat(3) {
             views(view).forEach { it.forceLayout() }

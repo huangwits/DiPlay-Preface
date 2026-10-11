@@ -2,6 +2,8 @@ plugins {
     id("com.android.library")
 }
 
+apply(from = rootProject.file("scripts/seal-bluetooth.gradle"))
+
 android {
     namespace = "com.shilapi.xcertplay.host"
     compileSdk {

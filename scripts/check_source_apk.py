@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 with zipfile.ZipFile(sys.argv[1]) as apk:
     blocked = [name for name in apk.namelist()
                if name.startswith('assets/') and (
+                   name in {'assets/e01-goc/component.enc', 'assets/e01-goc/gocsdk-spp-uuid128-v2'} or
                    'offline-mfi' in PurePosixPath(name).parts or
                    PurePosixPath(name).suffix.lower() in {
                        '.pk8', '.p7b', '.key', '.pem', '.p12', '.pfx', '.jks', '.keystore'

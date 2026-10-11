@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / 'common/src/main/assets/e01-goc/manage.sh'
+SCRIPT = ROOT / 'common/src/main/bluetooth/manage.sh'
 REAL_SHA = 'e2b71f11ae17f701469f3b60982dbc7a273bcab947f18fd1979e43df6428c54c'
 
 
@@ -125,7 +125,9 @@ sync() {{ :; }}
             run = root / 'manage.sh'
             run.write_text(prelude + code, encoding='utf8', newline='\n')
             result = subprocess.run([shell, run.as_posix(), action, expected, '55555'],
-                                    capture_output=True, text=True, encoding='utf8', timeout=15)
+                                    # Git Bash process creation is slower during Android builds on Windows.
+                                    # This is the fixture watchdog, not the shipped maintenance timeout.
+                                    capture_output=True, text=True, encoding='utf8', timeout=45 if os.name == 'nt' else 15)
             state = (root / 'state').read_text() if (root / 'state').exists() else ''
             ops = (root / 'ops').read_text() if (root / 'ops').exists() else ''
             return dict(code=result.returncode, state=state, ops=ops,

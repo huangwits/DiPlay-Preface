@@ -35,6 +35,10 @@ class PublicDistributionTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             public.check_entry('../outside.txt', b'x')
 
+    def test_generated_bluetooth_ciphertext_cannot_enter_public_source(self):
+        with self.assertRaises(ValueError):
+            public.check_entry('innocent.bin', b'DPG1' + b'x' * 64)
+
     def test_no_git_snapshot_checks_untracked_files_but_omits_build_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

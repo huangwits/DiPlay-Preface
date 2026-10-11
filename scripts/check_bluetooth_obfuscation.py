@@ -64,16 +64,21 @@ def audit(apk, mapping):
     assert not re.search(r'^\s*-(dontobfuscate|dontoptimize)\b', configuration, re.M)
     names = dict(re.findall(r'^([^ #\s][^ ]+) -> ([^:]+):$', mapping_text, re.M))
     with zipfile.ZipFile(apk) as archive:
-        assert not any(Path(n).name in {'mapping.txt', 'configuration.txt'} for n in archive.namelist())
+        assert not any(Path(n).name in {'mapping.txt', 'configuration.txt', 'key.bin', 'BluetoothAssetKey.java'} for n in archive.namelist())
         definitions = {}
         for name in archive.namelist():
             if re.fullmatch(r'classes\d*\.dex', name):
                 definitions.update(dex_definitions(archive.read(name)))
         assert definitions
-        readable = [name for name in archive.namelist() if name.startswith('assets/e01-goc/')]
-        assert 'assets/e01-goc/manage.sh' in readable
-        script = archive.read('assets/e01-goc/manage.sh')
-        assert script.startswith(b'#!/system/bin/sh')
+        bluetooth_assets = [name for name in archive.namelist() if name.startswith('assets/e01-goc/')]
+        assert 'assets/e01-goc/manage.sh' not in bluetooth_assets
+        assert 'assets/e01-goc/gocsdk-spp-uuid128-v2' not in bluetooth_assets
+        encrypted = ['assets/e01-goc/manage.enc', 'assets/e01-goc/component.enc']
+        for asset in encrypted:
+            payload = archive.read(asset)
+            assert payload[:4] == b'DPG1' and len(payload) > 32
+            assert b'#!/system/bin/sh' not in payload and b'ExtraUtilsService' not in payload
+        assert 'assets/e01-goc/NOTICE.txt' in bluetooth_assets
 
     prefix = 'com.shilapi.xcertplay.'
     business = {
@@ -84,6 +89,11 @@ def audit(apk, mapping):
         'network.E01ConnectedPhones': {'connected', 'supported'},
         'transport.GocSppTransport': {'connect'},
         'E01BluetoothSwitchIntegration': {'prepare', 'beginFactory', 'endFactory'},
+        'e01goc.BluetoothAssets': {'read', 'decode'},
+        'e01goc.BluetoothAssetKey': {'material'},
+        'license.AppLicense': {'canStart', 'requireActivation'},
+        'license.OnlineLicense': {'canStart', 'refresh'},
+        'license.LicenseProtocol': {'verify', 'proof'},
     }
     rows = []
     for suffix, methods in business.items():
@@ -112,8 +122,12 @@ def audit(apk, mapping):
         'activityInternalMethodsObfuscated': True,
         'preservedAndroidEntryClass': activity,
         'mappingEmbedded': False,
-        'extractableBluetoothAssets': readable,
-        'maintenanceScriptReadable': True,
+        'bluetoothAssets': bluetooth_assets,
+        'encryptedBluetoothAssets': encrypted,
+        'assetCipher': 'AES-256-GCM, random 96-bit nonce, asset/signer-associated context, bounded GZIP',
+        'maintenanceScriptReadable': False,
+        'clientKeyRecoverable': True,
+        'runtimePlaintextRequired': True,
         'nonReversibilityGuaranteed': False,
         'scope': 'Checks DEX definitions and R8 mapping, not resistance to decompilation, debugging or extraction.',
     }

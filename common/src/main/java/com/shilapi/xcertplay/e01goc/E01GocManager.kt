@@ -2,6 +2,7 @@ package com.shilapi.xcertplay.e01goc
 
 import android.content.Context
 import com.shilapi.xcertplay.E01BluetoothSwitchIntegration
+import com.shilapi.xcertplay.license.AppLicense
 import com.shilapi.xcertplay.iap2.session.Iap2Session
 import com.shilapi.xcertplay.network.E01ConnectedPhones
 import com.shilapi.xcertplay.transport.GocSppTransport
@@ -52,6 +53,7 @@ internal class E01GocManager(context: Context, private val log: (String) -> Unit
     }
 
     fun test(address: String) {
+        requireAdmission()
         File(base, "proof").delete()
         val before = inspect()
         check(before.maintenance != "busy") { "上次维护仍在运行，请等待恢复完成" }
@@ -62,6 +64,7 @@ internal class E01GocManager(context: Context, private val log: (String) -> Unit
         var linkReady = false
         var restoreConfirmed = false
         check(!cancelled) { "测试已取消" }
+        requireAdmission()
         try {
             launch("test", before.current)
             await(45_000, stopOnCancel = true) { it["stage"] == "ready" }
@@ -98,6 +101,7 @@ internal class E01GocManager(context: Context, private val log: (String) -> Unit
     }
 
     fun install() {
+        requireAdmission()
         val snapshot = inspect()
         check(snapshot.maintenance != "busy") { "上次维护仍在运行，请等待完成" }
         check(snapshot.installable(File(base, "proof").takeIf { it.isFile }?.readText().orEmpty())) {
@@ -105,6 +109,7 @@ internal class E01GocManager(context: Context, private val log: (String) -> Unit
         }
         prepareCandidate()
         check(E01BluetoothSwitchIntegration.prepare()) { "CarPlay 尚未停止，请重试" }
+        requireAdmission()
         launch("install", snapshot.current)
         await(150_000, false) { it["stage"] == "completed" }
         val after = inspect()
@@ -135,17 +140,34 @@ internal class E01GocManager(context: Context, private val log: (String) -> Unit
         check(base.isDirectory || base.mkdirs()) { "无法准备维护目录" }
         // Do not overwrite an active watchdog's script or state.
         if (!File(base, "lock").exists()) {
-            app.assets.open("e01-goc/manage.sh").use { input -> script.outputStream().use { input.copyTo(it) } }
+            val bytes = BluetoothAssets.read(app, "e01-goc/manage.enc")
+            try { writePrivate(script, bytes) } finally { bytes.fill(0) }
         }
     }
 
     private fun prepareCandidate() {
-        val bytes = try { app.assets.open("e01-goc/gocsdk-spp-uuid128-v2").use { it.readBytes() } }
-        catch (error: IOException) { throw IOException("此安装包未包含本地 E01 兼容组件", error) }
-        check(bytes.size == 2_841_668 && sha(bytes) == CANDIDATE_SHA) { "E01 兼容组件校验失败" }
-        val candidate = File(base, "gocsdk-spp-uuid128-v2")
-        candidate.writeBytes(bytes)
-        check(candidate.setExecutable(true, true) && sha(candidate.readBytes()) == CANDIDATE_SHA) { "无法准备 E01 兼容组件" }
+        val bytes = try { BluetoothAssets.read(app, "e01-goc/component.enc") }
+        catch (error: java.io.FileNotFoundException) { throw IOException("此安装包未包含本地 E01 兼容组件", error) }
+        try {
+            check(bytes.size == 2_841_668 && sha(bytes) == CANDIDATE_SHA) { "E01 兼容组件校验失败" }
+            val candidate = File(base, "gocsdk-spp-uuid128-v2")
+            writePrivate(candidate, bytes)
+            check(candidate.setExecutable(true, true) && sha(candidate.readBytes()) == CANDIDATE_SHA) { "无法准备 E01 兼容组件" }
+        } finally { bytes.fill(0) }
+    }
+
+    /** Recovery/inspection are intentionally not admission-gated. */
+    private fun requireAdmission() {
+        check(AppLicense.canStart(app)) { "授权尚未通过或已过期，请返回蓝牙工具刷新授权" }
+    }
+
+    private fun writePrivate(target: File, bytes: ByteArray) {
+        val pending = File(target.parentFile, target.name + ".new")
+        try {
+            pending.writeBytes(bytes)
+            android.system.Os.chmod(pending.path, 384) // 0600; root service can still read it.
+            check(pending.renameTo(target)) { "无法保存蓝牙资源" }
+        } finally { pending.delete() }
     }
 
     private fun launch(action: String, current: String) {

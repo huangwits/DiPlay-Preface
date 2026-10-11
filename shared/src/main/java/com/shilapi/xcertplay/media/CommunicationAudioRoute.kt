@@ -11,6 +11,7 @@ import java.io.Closeable
 
 internal class CommunicationAudioRoute(context: Context?, private val report: (String) -> Unit) : Closeable {
     private val manager = context?.systemService(AudioManager::class.java, "audio")
+    private val factoryPhone = context?.let(com.shilapi.xcertplay.network.E01ConnectedPhones::supported) == true
     private var output: AudioOutputDevice? = null
     private var input: AudioOutputDevice? = null
     private var selectedDevice: Int? = null
@@ -27,6 +28,7 @@ internal class CommunicationAudioRoute(context: Context?, private val report: (S
     fun externalCall(): Boolean {
         val mode = runCatching { manager?.mode }.getOrNull() ?: return false
         return mode == AudioManager.MODE_IN_CALL ||
+            mode == AudioManager.MODE_RINGTONE && factoryPhone ||
             mode == AudioManager.MODE_IN_COMMUNICATION && !held()
     }
 
@@ -35,7 +37,7 @@ internal class CommunicationAudioRoute(context: Context?, private val report: (S
         if (closed || owner != null && owner !== this || externalCall()) return false
         if (owner == null) {
             try {
-                // The same phone may already be ringing over HFP; active calls remain protected.
+                // Factory HFP ringing is protected by externalCall(); ordinary CarPlay may take its own ringing route.
                 val mode = audio.mode
                 if (mode != AudioManager.MODE_NORMAL && mode != AudioManager.MODE_RINGTONE) return false
                 modeBefore = mode

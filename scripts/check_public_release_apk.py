@@ -8,7 +8,7 @@ import zipfile
 apk_path, mapping_path = map(Path, sys.argv[1:3])
 with zipfile.ZipFile(apk_path) as apk:
     names = apk.namelist()
-    for name in ("assets/e01-goc/gocsdk-spp-uuid128-v2", "assets/e01-bluetooth/mtk-su", "assets/license/server.json"):
+    for name in ("assets/e01-goc/gocsdk-spp-uuid128-v2", "assets/e01-goc/component.enc", "assets/e01-bluetooth/mtk-su", "assets/license/server.json"):
         assert name not in names, "Public APK contains a private helper or online activation config"
     assert not any("issuer-private" in name or "admin-token" in name or "signing-private" in name for name in names)
     config = json.loads(apk.read("assets/offline-license/public.json"))
