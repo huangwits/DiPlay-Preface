@@ -487,7 +487,9 @@ class AndroidMediaSink(
             (audioRenderers.values + closing).any { it.format.audioType.equals("speechrecognition", true) }
         val assistantVoiceDevice = audioOutputRoutes.assistant?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
             audioOutputRoutes.assistantMicrophone?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-        val needCommunication = phone || assistant && assistantVoiceDevice
+        // Android 5.1 OEM audio policies often expose no SCO device even though their
+        // CarPlay voice path only captures correctly in communication mode.
+        val needCommunication = phone || assistant && (assistantVoiceDevice || Build.VERSION.SDK_INT < 23)
         val hadCommunication = communicationRoute.held()
         val external = communicationRoute.externalCall()
         if (needCommunication && !external) communicationRoute.acquire(

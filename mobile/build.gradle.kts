@@ -44,9 +44,9 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 61
+        versionCode = 62
         // Carlito upstream version plus the Preface maintenance revision; see docs/VERSIONING.md.
-        versionName = "0.2.16.17"
+        versionName = "0.2.16.18"
 
     }
 
