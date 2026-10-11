@@ -245,7 +245,7 @@ class DiPlayActivity : ComponentActivity() {
         }
         pendingCarHotspotSetup = savedInstanceState?.getBoolean("pending_car_hotspot") ?: false
         reportIssueDescription = savedInstanceState?.getString("report_issue_description").orEmpty()
-        settingsCategory = savedInstanceState?.getString("settings_category")
+        settingsCategory = (savedInstanceState?.getString("settings_category") ?: intent.getStringExtra("settings_category"))
             ?.let { runCatching { SettingsCategory.valueOf(it) }.getOrNull() }
             ?: SettingsCategory.OVERVIEW
         connectionSettingsReturnCategory = savedInstanceState?.getString("connection_settings_return_category")
@@ -269,6 +269,9 @@ class DiPlayActivity : ComponentActivity() {
         // CarPlay carry a "page" extra, which isLauncherIntent rejects.
         if (isLauncherIntent(intent) && CarPlayBackgroundSession.hasSession() && CarPlayBackgroundSession.active) {
             page = "home"; render(); openProjection(); return
+        }
+        intent.getStringExtra("settings_category")?.let {
+            settingsCategory = runCatching { SettingsCategory.valueOf(it) }.getOrDefault(SettingsCategory.OVERVIEW)
         }
         page = intent.getStringExtra("page") ?: "home"; render()
         handleWirelessRecovery()
@@ -1491,7 +1494,6 @@ class DiPlayActivity : ComponentActivity() {
                 developerVersionTaps++
                 if (developerVersionTaps >= 7) { SteeringProfiles.unlockDeveloper(this); render() }
             }, matchButton(12, 56))
-            attachUpdates(card)
             if (SteeringProfiles.developerUnlocked(this)) card.addView(button(getString(R.string.steering_diagnostics), false) {
                 startActivity(Intent(this, SteeringControlsActivity::class.java).putExtra("developer", true))
             }, matchButton(10, 56))
@@ -1500,6 +1502,10 @@ class DiPlayActivity : ComponentActivity() {
             card.addView(label(getString(R.string.receiver_based_on_xcertplay_licensed_under_gpl_3_0_diplay), 16, MUTED))
         }
         section(content, getString(R.string.ui_project_source)) { card ->
+            card.addView(button(getString(R.string.ui_open_preface_source), false) {
+                openProjectLink(com.shilapi.xcertplay.update.UpdateCatalog.REPOSITORY)
+            }, matchButton(8, 56))
+            card.addView(label(com.shilapi.xcertplay.update.UpdateCatalog.REPOSITORY, 16, MUTED))
             card.addView(label(getString(R.string.ui_carlito_modification_credit), 16, MUTED))
             card.addView(button(getString(R.string.ui_open_upstream_source), false) {
                 openProjectLink("https://github.com/shihabal3amri/DiPlay")

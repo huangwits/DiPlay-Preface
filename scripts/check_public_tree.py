@@ -67,11 +67,14 @@ def check_entry(name, data, depth=0):
     if path.is_absolute() or '..' in path.parts or ':' in name:
         raise ValueError('Unsafe archive path: ' + name)
     if (path.suffix.lower() in BLOCKED or '.private' in parts or
+            path.name.lower() in {'bluetoothassetkey.java', 'key.bin'} or
             path.name.lower().startswith(('.env', '.dev.vars')) or
             any(mark in path.name.lower() for mark in ('issuer-private', 'signing-private', 'admin-token', 'server-secrets', 'gocsdk-spp', 'mtk-su'))):
         raise ValueError('Private or installable file: ' + name)
     if PRIVATE.search(data):
         raise ValueError('Private-key block: ' + name)
+    if data.startswith(b'DPG1'):
+        raise ValueError('Generated encrypted runtime asset: ' + name)
     if 'site' in parts and path.suffix == '.html' and DOWNLOAD.search(data):
         raise ValueError('Website links to an installable package: ' + name)
     if path.suffix.lower() == '.zip':

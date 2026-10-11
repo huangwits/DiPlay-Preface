@@ -44,9 +44,9 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 58
+        versionCode = 60
         // Carlito upstream version plus the Preface maintenance revision; see docs/VERSIONING.md.
-        versionName = "0.2.16.14"
+        versionName = "0.2.16.16"
 
     }
 
@@ -66,9 +66,7 @@ android {
 
     localAuthenticationAssets?.let { sourceSets.getByName("main").assets.srcDir(it) }
 
-    for (variant in listOf("e01", "e01Licensed")) {
-        localGocAssets?.let { sourceSets.maybeCreate(variant).assets.srcDir(it) }
-    }
+    // GOC runtime payloads are generated as authenticated encrypted assets below.
     localLicenseAssets?.let { sourceSets.maybeCreate("e01Licensed").assets.srcDir(it) }
 
     signingConfigs {
@@ -139,6 +137,8 @@ dependencies {
     // jmdns uses SLF4J 1.7; select its explicit no-op binding instead of a missing reflective binder.
     runtimeOnly("org.slf4j:slf4j-nop:${libs.versions.slf4j.get()}")
 }
+
+apply(from = rootProject.file("scripts/seal-bluetooth.gradle"))
 
 // No implicit import. Only the two explicitly selected local runtime assets are allowed.
 val credentialAssets = files(android.sourceSets.flatMap { source ->
@@ -242,7 +242,7 @@ tasks.register("assembleStandaloneE01Public") {
                 check(MessageDigest.isEqual(actual, authentication.resolve("offline-mfi/$name").readBytes()))
             }
             check(apk.getEntry("assets/offline-license/public.json") != null)
-            for (name in listOf("assets/e01-goc/gocsdk-spp-uuid128-v2", "assets/e01-bluetooth/mtk-su", "assets/license/server.json")) {
+            for (name in listOf("assets/e01-goc/gocsdk-spp-uuid128-v2", "assets/e01-goc/component.enc", "assets/e01-bluetooth/mtk-su", "assets/license/server.json")) {
                 check(apk.getEntry(name) == null) { "Public APK contains a personal-only payload or online license configuration" }
             }
         }

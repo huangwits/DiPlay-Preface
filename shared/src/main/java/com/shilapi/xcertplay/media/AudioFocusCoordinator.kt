@@ -18,6 +18,7 @@ internal class AudioFocusCoordinator(
     private val report: (String) -> Unit = {},
     private val factoryRouting: Boolean = false,
     private val onOwnershipChanged: (Boolean) -> Unit = {},
+    private val isExternalCall: (() -> Boolean)? = null,
 ) : Closeable {
     private data class Entry(val channel: AudioChannel, val attributes: AudioAttributes)
     private val manager = context?.systemService(AudioManager::class.java, "audio")
@@ -117,6 +118,7 @@ internal class AudioFocusCoordinator(
 
     private fun refreshRequest() {
         if (closed || !enabled || manager == null) return
+        refreshExternalCall()
         if (externalCall) { applyVolumes(); return }
         val primary = (active.values + captures.values).filter {
             it.channel != AudioChannel.NAVIGATION && (it.channel != AudioChannel.MEDIA || !mediaSuppressed && mediaPlaying != false)
@@ -142,6 +144,7 @@ internal class AudioFocusCoordinator(
     }
 
     private fun requestCurrentFocus() {
+        refreshExternalCall()
         if (externalCall || closed) return
         val result = runCatching {
             if (Build.VERSION.SDK_INT >= 26) manager?.requestAudioFocus(request ?: return)
@@ -151,6 +154,15 @@ internal class AudioFocusCoordinator(
         focusVolume = if (focusHeld) 1f else 0f
         applyVolumes()
         runCatching { report("Audio: focus requested channel=$requestedChannel granted=$result activeTracks=${active.size}") }
+    }
+
+    private fun refreshExternalCall() {
+        // OEM HFP may disconnect its audio on focus loss, before the next route poll.
+        val current = isExternalCall?.invoke() ?: return
+        if (current == externalCall) return
+        externalCall = current
+        if (current) { abandonRequest(); applyVolumes() }
+        runCatching { report("Audio: external call owns route=$current") }
     }
 
     private fun applyVolumes() {
