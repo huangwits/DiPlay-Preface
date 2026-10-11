@@ -88,14 +88,20 @@ internal class MicrophoneUplink(
             return false
         }
         val bufferSize = maxOf(minBuffer * 2, config.frameBytes * 4)
-        // Preserve the vehicle source first, then the standard source and Siri's communication fallback.
-        val sources = listOfNotNull(factorySource, source,
+        // Preserve the vehicle source first. Some Android 5.1 ROMs initialise VOICE_RECOGNITION
+        // but return silence, so try the plain MIC path before the communication fallback there.
+        val legacySpeech = source == MediaRecorder.AudioSource.VOICE_RECOGNITION &&
+            android.os.Build.VERSION.SDK_INT < 23
+        val sources = if (legacySpeech) listOfNotNull(
+            factorySource,
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            source,
+        ) else listOfNotNull(
+            factorySource,
+            source,
             MediaRecorder.AudioSource.VOICE_COMMUNICATION.takeIf { source == MediaRecorder.AudioSource.VOICE_RECOGNITION },
-            // Several Android 5.1 head units reject both specialised presets for CarPlay Siri.
-            // The plain MIC preset is the last resort and remains scoped to that legacy path.
-            MediaRecorder.AudioSource.MIC.takeIf {
-                source == MediaRecorder.AudioSource.VOICE_RECOGNITION && android.os.Build.VERSION.SDK_INT < 23
-            })
+        )
         val nextRecorder = sources.distinct().firstNotNullOfOrNull { candidate ->
             stats.useCaptureSource(when (candidate) {
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION -> "VOICE_COMMUNICATION"
