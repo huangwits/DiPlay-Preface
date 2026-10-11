@@ -46,6 +46,29 @@ class E01MediaKeysTest {
         assertFalse(callback.dispatchHardwareKey(KeyEvent(KeyEvent.ACTION_DOWN, 87)))
         assertFalse(callback.onMediaButtonEvent(Intent(Intent.ACTION_MEDIA_BUTTON)
             .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, 89))))
+        callback.onSkipToNext()
+        callback.onSkipToPrevious()
+        callback.onPlay()
+        callback.onPause()
+    }
+
+    @Test fun voiceKeyUsesTheSameSwitchForForegroundAndMediaSession() {
+        var enabled = true
+        var requests = 0
+        val callback = CarPlayMediaCallback({ _, _ -> fail("Voice key became a media key") },
+            siriEnabled = { enabled }, siri = { requests++; true })
+        for (code in listOf(219, 231)) {
+            assertTrue(callback.dispatchHardwareKey(KeyEvent(1, 1, KeyEvent.ACTION_DOWN, code, 0)))
+            assertTrue(callback.dispatchHardwareKey(KeyEvent(1, 2, KeyEvent.ACTION_DOWN, code, 1)))
+            val release = KeyEvent(1, 3, KeyEvent.ACTION_UP, code, 0)
+            assertTrue(callback.dispatchHardwareKey(release))
+            assertTrue(callback.onMediaButtonEvent(Intent(Intent.ACTION_MEDIA_BUTTON).putExtra(Intent.EXTRA_KEY_EVENT, release)))
+        }
+        assertEquals(2, requests)
+        enabled = false
+        assertFalse(callback.dispatchHardwareKey(KeyEvent(4, 4, KeyEvent.ACTION_DOWN, 231, 0)))
+        assertFalse(callback.dispatchHardwareKey(KeyEvent(4, 5, KeyEvent.ACTION_UP, 231, 0)))
+        assertEquals(2, requests)
     }
 
     @Test fun learnedMappingTakesPriorityAndBridgeOwnedKeysDoNotRepeat() {

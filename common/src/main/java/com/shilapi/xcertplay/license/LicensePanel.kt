@@ -88,6 +88,7 @@ internal class LicensePanel(
         column.setPadding(dp(16), dp(16), dp(16), dp(16))
         addView(column, LayoutParams(-1, -2))
         heading = text("软件授权", 22f, true)
+        text("授权免费，审核仅用于防止滥用，不收取激活费用。", 14f).tag = "license-free-notice"
         applicationHelp = text("申请激活后，联系管理员核对申请号并等待批准。", 14f)
         message = text(if (client.configured) "申请激活或刷新授权。" else "授权预览版：未配置服务，暂不可激活。", 16f)
         message.accessibilityLiveRegion = ACCESSIBILITY_LIVE_REGION_POLITE
@@ -115,6 +116,17 @@ internal class LicensePanel(
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        community.fitThumbnail(dp(160))
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        if (compactWhenApproved && state == LicensePanelState.AUTHORIZED && measuredHeight > 0) {
+            val overflow = (column.measuredHeight - measuredHeight).coerceAtLeast(0)
+            if (overflow > 0) {
+                community.fitThumbnail((dp(160) - overflow).coerceAtLeast(dp(96)))
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            }
+        }
+    }
     private fun text(value: String, size: Float, bold: Boolean = false): TextView = TextView(context).apply {
         text = value; textSize = size; setTextColor(if (bold) primary else secondary)
         if (bold) setTypeface(typeface, Typeface.BOLD)
@@ -190,6 +202,7 @@ internal class LicensePanel(
         networkRow?.visibility = if (approved) GONE else VISIBLE
         identifier.visibility = if (approved) GONE else VISIBLE
         applicationHelp.visibility = if (approved) GONE else VISIBLE
+        message.visibility = if (approved) GONE else VISIBLE
         footnotes.forEach { it.visibility = if (approved) GONE else VISIBLE }
         heading.text = if (approved) "授权已通过" else "软件授权"
         if (approved) message.text = "可连接 CarPlay，也可扫码加入交流群。"

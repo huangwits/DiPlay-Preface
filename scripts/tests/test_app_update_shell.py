@@ -26,6 +26,7 @@ class AppUpdateShellTest(unittest.TestCase):
                 (root / 'lock/pid').write_text('123')
             code = SCRIPT.read_text(encoding='utf8').replace('__BASE__', root.as_posix())
             code = code.replace('__APK__', apk.as_posix()).replace('__SHA__', digest)
+            code = code.replace('__SYSTEM_APP__', '1' if case == 'invalid_system' else '0')
             for name in ['getprop', 'pm', 'am']:
                 code = code.replace('/system/bin/' + name, name)
             prelude = f'''
@@ -35,6 +36,7 @@ id() {{ if [ "$CASE" = no_root ]; then echo 2000; else echo 0; fi; }}
 getprop() {{ case "$1" in
   ro.product.model) if [ "$CASE" = wrong_car ]; then echo Other; else echo E01; fi ;;
   ro.board.platform) if [ "$CASE" = wrong_platform ]; then echo mt9999; else echo mt6735; fi ;;
+  ro.product.device) if [ "$CASE" = invalid_other ]; then echo E01; else echo FS11GQJ; fi ;;
 esac; }}
 busybox() {{ [ "$CASE" != no_hash ] || return 1; command "$@"; }}
 kill() {{ [ "$CASE" = busy ]; }}
@@ -43,11 +45,18 @@ pm() {{
   case "$1" in
     install-create)
       [ "$CASE" != create_failed ] || return 1
+      if [ "$CASE" = read_only ]; then echo 'java.io.IOException: Read-only file system'; return 1; fi
+      if [ "$CASE" = denied ]; then echo 'java.lang.SecurityException: denied'; return 1; fi
       if [ "$CASE" = bad_id ]; then echo 'Success: created install session [7;reboot]'; else echo 'Success: created install session [7]'; fi ;;
-    install-write) [ "$CASE" != write_failed ] || return 1; echo 'Success: streamed bytes' ;;
+    install-write)
+      [ "$CASE" != write_failed ] || return 1
+      if [ "$CASE" = no_space ]; then echo 'No space left on device'; return 1; fi
+      echo 'Success: streamed bytes' ;;
     install-commit)
+      case "$CASE" in invalid_*) echo 'Failure [INSTALL_FAILED_INVALID_APK]'; return 0 ;; esac
       if [ "$CASE" = pm_failed ]; then echo Failure; return 1; fi
       if [ "$CASE" = pm_rejected ]; then echo 'Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]'; return 0; fi
+      if [ "$CASE" = downgrade ]; then echo 'Failure [INSTALL_FAILED_VERSION_DOWNGRADE]'; return 0; fi
       echo Success ;;
     install-abandon) echo Success ;;
     *) return 1 ;;
@@ -88,14 +97,20 @@ am() {{ echo "$*" >> "$ROOT/launch"; }}
                 self.assertEqual('', result['launch'])
 
     def test_package_manager_failure_is_reported_without_relaunch(self):
-        for case in ['pm_failed', 'pm_rejected', 'write_failed', 'create_failed', 'bad_id']:
+        for case, state in [('pm_failed', 'commit-failed'), ('pm_rejected', 'install-signature'),
+                            ('write_failed', 'write-failed'), ('create_failed', 'create-failed'),
+                            ('bad_id', 'create-failed'), ('read_only', 'install-read-only'),
+                            ('denied', 'install-denied'), ('no_space', 'install-space'),
+                            ('downgrade', 'install-version'), ('invalid_user', 'install-oem-auth'),
+                            ('invalid_system', 'install-invalid'), ('invalid_other', 'install-invalid')]:
             with self.subTest(case=case):
                 result = self.run_case(case)
                 self.assertNotEqual(0, result['code'], result)
-                self.assertEqual('install-failed', result['state'])
+                self.assertEqual(state, result['state'])
                 self.assertEqual('', result['launch'])
                 self.assertFalse(result['lock'])
-                if case in ['pm_failed', 'pm_rejected', 'write_failed']:
+                if case in ['pm_failed', 'pm_rejected', 'write_failed', 'no_space', 'downgrade',
+                            'invalid_user', 'invalid_system', 'invalid_other']:
                     self.assertTrue(result['ops'].endswith('install-abandon 7'), result)
 
 

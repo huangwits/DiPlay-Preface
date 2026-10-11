@@ -686,6 +686,14 @@ object AirPlayPersistence {
             .getBoolean(KEY_GEELY_STEERING_ENABLED,
                 com.shilapi.xcertplay.vehicleprobe.VehicleSteeringClient.installed(context) || GeelySteeringKeyCodes.enabledByDefault())
 
+    fun loadSteeringSiriEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("steering_siri_enabled", true)
+
+    fun saveSteeringSiriEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("steering_siri_enabled", enabled).apply()
+    }
+
     fun saveGeelySteeringEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_GEELY_STEERING_ENABLED, enabled)

@@ -106,9 +106,7 @@ class E01GocActivity : Activity() {
                 setupStep = if (snapshot.installed) 3 else 1
                 updateSetupGuide()
             }
-            showStatus(manager.describe(snapshot) + if (snapshot.installed)
-                "\n下一步：重新连接车机蓝牙，选择手机，再点击“连接 CarPlay”。无需重复测试或安装。"
-            else "\n下一步：选择手机 → 连接测试。测试通过并恢复原服务后，才可安装适配。")
+            showStatus(manager.describe(snapshot))
         } }
         button("连接测试") {
             val address = DiPlayPreferences.phoneAddress(this)
@@ -243,10 +241,10 @@ class E01GocActivity : Activity() {
         // Phone selection precedes the real connection action in both Bluetooth modes.
         controls.removeView(phoneButton)
         controls.addView(phoneButton, controls.indexOfChild(connectButton))
-        // Detailed results stay below the daily controls; they must not push the next step off-screen.
+        // Keep operation results with setup, before phone selection and daily connection.
         listOf(panel.confirmed, panel.failure).forEachIndexed { index, result ->
             controls.removeView(result)
-            controls.addView(result, controls.indexOfChild(connectButton) + 1 + index)
+            controls.addView(result, controls.indexOfChild(setupHint) + 1 + index)
         }
     }
 
@@ -257,9 +255,9 @@ class E01GocActivity : Activity() {
         setupTitle.text = if (setupStep == 3) "已安装适配 · 日常连接" else "首次适配 · 按顺序完成"
         setupTitle.setTextColor(com.shilapi.xcertplay.AppPageStyle.text)
         setupHint.text = when {
-            !allowed -> "审批通过后，从第 1 步开始；已安装过适配也可检查状态。"
+            !allowed -> "授权后先检查状态。"
             setupStep == 0 -> "下一步：检查状态。已安装适配时，无需重复测试或安装。"
-            setupStep == 1 -> "下一步：选择手机，再进行连接测试。测试结束后会恢复原服务。"
+            setupStep == 1 -> "下一步：选择手机，再进行连接测试。"
             setupStep == 2 -> "测试已通过，原服务已恢复。下一步：安装适配。"
             else -> "重新连接车机电话和音乐，选择手机，再连接 CarPlay。"
         }

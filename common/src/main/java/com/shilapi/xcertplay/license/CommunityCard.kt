@@ -76,6 +76,9 @@ internal class CommunityCard(context: Context) : LinearLayout(context) {
     }
 
     fun closeViewer() { dialog?.dismiss(); dialog = null }
+    internal fun fitThumbnail(height: Int) {
+        if (thumbnail.layoutParams.height != height) thumbnail.layoutParams = thumbnail.layoutParams.apply { this.height = height }
+    }
     override fun onDetachedFromWindow() { closeViewer(); super.onDetachedFromWindow() }
     private fun label(value: String, size: Float, bold: Boolean = false) = TextView(context).apply {
         text = value; textSize = size; setPadding(0, 0, 0, dp(6))

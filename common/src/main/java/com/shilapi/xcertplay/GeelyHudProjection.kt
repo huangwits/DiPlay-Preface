@@ -57,6 +57,8 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     private var guidance: CarPlayHudGuidance? = null
     private var navigationHidden = false
     private var factoryNavigation: E01NavigationOutput? = null
+    private var factoryNavigationOwner: Any? = null
+    private var beforeFactoryNavigationEnds: (() -> Unit)? = null
     private val expireGuidance = Runnable {
         guidance = null
         refresh()
@@ -68,6 +70,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
                 detachWindow()
                 stopVehicleReader()
                 displayManager?.unregisterDisplayListener(this)
+                beforeFactoryNavigationEnds?.invoke()
                 factoryNavigation?.clear()
                 factoryNavigation = E01NavigationOutput(activity.applicationContext)
                 activityRef = WeakReference(activity)
@@ -88,6 +91,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
             navigationHidden = false
             displayManager?.unregisterDisplayListener(this)
             displayManager = null
+            beforeFactoryNavigationEnds?.invoke()
             factoryNavigation?.clear()
             factoryNavigation = null
             activityRef = null
@@ -164,20 +168,33 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
 
     fun applyLayout() = mainHandler.post(::refresh)
     fun currentGuidance(): CarPlayHudGuidance? = guidance
+    internal fun claimFactoryNavigation(owner: Any, beforeEnd: () -> Unit) {
+        if (factoryNavigationOwner !== owner) beforeFactoryNavigationEnds?.invoke()
+        factoryNavigationOwner = owner
+        beforeFactoryNavigationEnds = beforeEnd
+        refresh()
+    }
+    internal fun releaseFactoryNavigation(owner: Any) {
+        if (factoryNavigationOwner !== owner) return
+        beforeFactoryNavigationEnds?.invoke()
+        factoryNavigationOwner = null
+        beforeFactoryNavigationEnds = null
+        refresh()
+    }
     fun currentVehicleFrame(): ProjectionVehicleFrame = vehicleFrame
 
     fun threeFingerEnabled(context: Context) = context.getSharedPreferences("geely_projection_layout", Context.MODE_PRIVATE)
-        .getBoolean("three_finger_navigation", false)
+        .getBoolean("three_finger_navigation", true)
     fun setThreeFingerEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences("geely_projection_layout", Context.MODE_PRIVATE).edit()
             .putBoolean("three_finger_navigation", enabled).apply()
     }
 
     /** carlito | Switch only the guidance element; vehicle cards keep their own visibility. */
-    fun flyNavigation(activity: Activity): Int {
+    fun flyNavigation(activity: Activity, show: Boolean? = null): Int {
         if (guidance == null) return com.shilapi.xcertplay.host.R.string.projection_no_guidance
         if (E01NavigationOutput.enabled(activity) && E01NavigationOutput.available(activity) && selectedDisplay(activity) == null) {
-            navigationHidden = !navigationHidden
+            navigationHidden = show?.not() ?: !navigationHidden
             refresh()
             return if (navigationHidden) com.shilapi.xcertplay.host.R.string.projection_navigation_hidden
                 else com.shilapi.xcertplay.host.R.string.projection_navigation_shown
@@ -187,7 +204,7 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
         if (selected == null) return com.shilapi.xcertplay.host.R.string.projection_select_display
         if (GeelyProjectionLayout.load(activity).none { it.field == ProjectionField.NAVIGATION && it.visible })
             return com.shilapi.xcertplay.host.R.string.projection_add_navigation
-        navigationHidden = AirPlayPersistence.loadGeelyHudEnabled(activity) && !navigationHidden
+        navigationHidden = show?.not() ?: (AirPlayPersistence.loadGeelyHudEnabled(activity) && !navigationHidden)
         if (!navigationHidden) AirPlayPersistence.saveGeelyHudEnabled(activity, true)
         refresh()
         return if (!navigationHidden && hudView == null) com.shilapi.xcertplay.host.R.string.projection_open_failed
@@ -202,11 +219,13 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
         return buildString {
             append("enabled=${AirPlayPersistence.loadGeelyHudEnabled(context)} ")
             append("overlayPermission=${com.shilapi.xcertplay.compat.ContextCompat.canDrawOverlays(context)} ")
-            append("selectedId=$selectedId selectedName=${selectedName.ifBlank { "automatic" }} ")
+            append("selectedId=$selectedId ")
             append("scale=${AirPlayPersistence.loadGeelyHudScalePercent(context)}% ")
             append("attachedId=$attachedDisplayId attachedSize=${attachedWidth}x$attachedHeight")
             append(" stage=$windowStage vehicle=${vehicleReader?.stage ?: "IDLE"}")
             appendLine()
+            // Keep names separate so privacy filtering retains the useful display state.
+            appendLine("selectedName=${selectedName.ifBlank { "automatic" }}")
             append("availableDisplays=")
             if (displays.isEmpty()) append("none") else append(
                 displays.joinToString { "${it.id}:${it.name}:${it.width}x${it.height}" },
@@ -223,10 +242,13 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
         if (activity == null || activity.isFinishing || activity.isDestroyed) {
             detachWindow()
             stopVehicleReader()
+            beforeFactoryNavigationEnds?.invoke()
             factoryNavigation?.clear()
             return
         }
-        factoryNavigation?.update(guidance.takeUnless { navigationHidden })
+        if (guidance == null) beforeFactoryNavigationEnds?.invoke()
+        factoryNavigation?.update(guidance.takeUnless { navigationHidden && factoryNavigationOwner == null },
+            requiredByMap = factoryNavigationOwner != null)
         if (!AirPlayPersistence.loadGeelyHudEnabled(activity)) {
             windowStage = "DISABLED"
             detachWindow()

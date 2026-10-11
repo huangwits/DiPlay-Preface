@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
@@ -37,13 +38,17 @@ class VehicleMapProjectionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(16), dp(24), dp(24)) }
-        val scroll = ScrollView(this).apply { addView(content); setBackgroundColor(Color.rgb(12, 17, 27)) }
+        content.background = AppPageStyle.card(this)
+        val scroll = ScrollView(this).apply { addView(content); setBackgroundColor(AppPageStyle.background) }
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
             val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime())
             view.setPadding(safe.left, safe.top, safe.right, safe.bottom); insets
         }
-        fun text(resource: Int, size: Float = 16f) = TextView(this).apply { setText(resource); textSize = size; setTextColor(Color.WHITE) }
-        fun button(resource: Int, action: () -> Unit) = Button(this).apply { setText(resource); isAllCaps = false; minHeight = dp(56); setOnClickListener { action() } }
+        fun text(resource: Int, size: Float = 16f) = TextView(this).apply { setText(resource); textSize = size; setTextColor(AppPageStyle.text) }
+        fun button(resource: Int, action: () -> Unit) = Button(this).apply {
+            setText(resource); AppPageStyle.action(this, resource == R.string.projection_save)
+            minHeight = dp(56); setOnClickListener { action() }
+        }
         content.addView(text(R.string.vehicle_map_title, 26f))
         content.addView(text(R.string.vehicle_map_setup_hint), params())
         content.addView(Switch(this).apply {
@@ -66,9 +71,12 @@ class VehicleMapProjectionActivity : ComponentActivity() {
             isChecked = VehicleMapSettings.vehicleMode(this@VehicleMapProjectionActivity)
             setOnCheckedChangeListener { _, value -> VehicleMapSettings.setVehicleMode(this@VehicleMapProjectionActivity, value) }
         }, params())
-        content.addView(text(R.string.vehicle_map_native_hint), params())
+        content.addView(text(if (E01NativeMapControl.supported(this)) R.string.vehicle_map_e01_native_hint
+            else R.string.vehicle_map_native_hint), params())
         content.addView(button(R.string.vehicle_map_permission) {
-            runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
+            val action = if (Build.VERSION.SDK_INT >= 23) Settings.ACTION_MANAGE_OVERLAY_PERMISSION
+                else Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+            runCatching { startActivity(Intent(action, Uri.parse("package:$packageName"))) }
         }, params())
         preview = MapViewportPreview(this) { visible -> inputs[2].setText(visible.toString()) }
         content.addView(preview, LinearLayout.LayoutParams(-1, dp(220)).apply { topMargin = dp(16) })

@@ -3,8 +3,6 @@ package com.shilapi.xcertplay
 
 import android.app.AlertDialog
 import android.content.Context
-import android.content.res.ColorStateList
-import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -207,9 +205,9 @@ class GeelyProjectionEditorActivity : ComponentActivity() {
         setText(resource); textSize = size; setTextColor(color)
     }
     private fun button(resource: Int, primary: Boolean = false, action: () -> Unit) = Button(this).apply {
-        setText(resource); isAllCaps = false; textSize = 17f; minHeight = dp(56)
-        setTextColor(if (primary) BG else TEXT)
-        backgroundTintList = ColorStateList.valueOf(if (primary) ACCENT else SURFACE)
+        setText(resource)
+        AppPageStyle.action(this, primary)
+        minHeight = dp(56)
         setOnClickListener { action() }
     }
     private fun row() = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -217,10 +215,10 @@ class GeelyProjectionEditorActivity : ComponentActivity() {
     private fun params(top: Int = 0) = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     companion object {
-        private val BG = Color.rgb(12, 17, 27)
-        private val SURFACE = Color.rgb(21, 30, 44)
-        private val ACCENT = Color.rgb(166, 200, 255)
-        private val TEXT = Color.rgb(241, 245, 252)
-        private val MUTED = Color.rgb(168, 182, 202)
+        private val BG = AppPageStyle.background
+        private val SURFACE = AppPageStyle.surface
+        private val ACCENT = AppPageStyle.accent
+        private val TEXT = AppPageStyle.text
+        private val MUTED = AppPageStyle.muted
     }
 }

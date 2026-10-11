@@ -42,7 +42,7 @@ internal class E01GocManager(context: Context, private val log: (String) -> Unit
     }
 
     fun inspect(): GocSnapshot {
-        check(E01ConnectedPhones.supported(app)) { "未发现 E01 原厂蓝牙系统服务" }
+        check(E01ConnectedPhones.supported(app)) { "未发现 E01 原厂蓝牙服务" }
         prepareScript()
         val values = fields(E01RootBridge.execute(script, "check"))
         val current = values["current"].orEmpty()
