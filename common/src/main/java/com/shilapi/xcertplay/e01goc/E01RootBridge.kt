@@ -21,7 +21,9 @@ internal enum class E01RootAccess(val message: String) {
 internal object E01RootBridge {
     private const val MARKER = "__DIPLAY_RC:"
     private var pendingProbe: FutureTask<E01RootAccess>? = null
-    private class ServiceUnavailable : IOException("车机未提供 E01 系统权限接口")
+    private class ServiceUnavailable : IOException(
+        "车机未提供 E01 系统权限接口（ExtraUtilsService）。此车型/固件不能使用原厂蓝牙维护，请切换安卓蓝牙；临时 root 只能用于诊断。",
+    )
 
     /** Read only. A stuck vendor Binder must not freeze the UI or spawn unlimited callers. */
     fun probeRoot(timeoutMs: Long = 5000): E01RootAccess {
