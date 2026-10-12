@@ -1,13 +1,10 @@
 package com.shilapi.xcertplay
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
-import android.provider.Settings
 import android.util.Log
 import com.shilapi.xcertplay.adb.AdbKeys
 import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.network.CarHotspotSettings
-import com.shilapi.xcertplay.orchestration.ManualHotspotValidation
 
 /** Each grant is requested explicitly from settings; startup never calls this authorization path. */
 internal object CarHotspotSetup {
@@ -43,8 +40,7 @@ internal object CarHotspotSetup {
         }
 
     fun shouldStartOnLaunch(context: Context, hasSession: Boolean): Boolean =
-        !hasSession && CarHotspotSettings.shouldEnable(context,
-            AirPlayPersistence.loadWirelessEnabled(context), AirPlayPersistence.loadWirelessHotspotMode(context)) &&
-            ManualHotspotValidation.error(AirPlayPersistence.loadManualHotspotSsid(context),
-                AirPlayPersistence.loadManualHotspotPassphrase(context)) == null
+        // Boot uses the car's saved AP configuration, independently of CarPlay's connection mode
+        // and copied credentials. Do not change radios underneath an active projection session.
+        !hasSession && CarHotspotSettings.enabled(context)
 }

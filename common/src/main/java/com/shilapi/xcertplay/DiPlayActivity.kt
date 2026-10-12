@@ -346,11 +346,17 @@ class DiPlayActivity : ComponentActivity() {
         if (!initialLaunch && bootHotspot) startCarHotspotOnLaunch()
         if (initialLaunch) {
             initialLaunch = false
-            startCarHotspotOnLaunch()
-            if (setupError == null && !CarPlayBackgroundSession.hasSession() &&
-                DiPlayPreferences.autoConnect(this) && intent.getStringExtra("page") == null &&
-                !intent.getBooleanExtra("authorization_return", false)) {
-                handler.post { connect(DiPlayPreferences.autoConnectWireless(this)) }
+            // Connection startup cancels hotspot preparation when it takes over. Finish the
+            // independently requested factory hotspot first, including for USB auto-connect.
+            startCarHotspotOnLaunch {
+                if (setupError == null && !CarPlayBackgroundSession.hasSession() &&
+                    DiPlayPreferences.autoConnect(this) && intent.getStringExtra("page") == null &&
+                    !intent.getBooleanExtra("authorization_return", false)) {
+                    handler.post {
+                        if (!startupHotspotCancelled && !isFinishing && !isDestroyed)
+                            connect(DiPlayPreferences.autoConnectWireless(this))
+                    }
+                }
             }
         }
     }
@@ -581,7 +587,7 @@ class DiPlayActivity : ComponentActivity() {
         card.addView(label(connectionHint, 15, MUTED).apply { setPadding(0, dp(14), 0, 0) })
         val startupProblem = hotspotStartupResult?.takeIf {
             it != CarHotspotTethering.Result.READY && it != CarHotspotTethering.Result.CANCELLED &&
-                CarHotspotSettings.shouldEnable(this, true, AirPlayPersistence.loadWirelessHotspotMode(this)) &&
+                CarHotspotSettings.enabled(this) &&
                 com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(this) != true
         }
         if (startupProblem != null) {
@@ -1194,7 +1200,7 @@ class DiPlayActivity : ComponentActivity() {
                 R.string.availability_depends_on_your_head_unit_s_startup_settings,
                 read = { AirPlayPersistence.loadAutoStartOnBoot(this) },
                 needsAdb = { CarHotspotSettings.enabled(this) &&
-                    AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL },
+                    !CarHotspotSetup.Permission.BOOT_LAUNCH.granted(this) },
                 permissions = { listOf(CarHotspotSetup.Permission.BOOT_LAUNCH) }) {
                 AirPlayPersistence.saveAutoStartOnBoot(this, it)
             }
@@ -1523,7 +1529,6 @@ class DiPlayActivity : ComponentActivity() {
             !(CarHotspotSettings.enabled(this) && CarHotspotTethering.permitted(this))
 
     private fun hotspotAdbSettings(parent: LinearLayout) {
-        if (AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) return
         if (searchIndexSink != null) {
             // Index discoverable names without starting the asynchronous permission probe.
             searchIndexSink?.addAll(listOf(
@@ -1553,21 +1558,13 @@ class DiPlayActivity : ComponentActivity() {
         adbSwitches.keys.retainAll(setOf(R.string.open_after_the_car_starts))
         adbStatus = null
         controls.visibility = View.VISIBLE
-        if (AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) {
-            controls.visibility = View.GONE
-            return
-        }
         section(controls, getString(R.string.geely_hotspot_permissions), R.drawable.ic_dp_permissions) { card ->
-            if (AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL) {
-                adbToggle(card, R.string.auto_car_hotspot_title, R.string.auto_car_hotspot_description,
-                    read = { CarHotspotSettings.enabled(this) },
-                    needsAdb = { hotspotStartupPermissions().any { !it.granted(this) } },
-                    permissions = {
-                        hotspotStartupPermissions()
-                    }) {
-                    CarHotspotSettings.setEnabled(this, it)
-                    if (!it) startupHotspotCancelled = true
-                }
+            adbToggle(card, R.string.auto_car_hotspot_title, R.string.auto_car_hotspot_description,
+                read = { CarHotspotSettings.enabled(this) },
+                needsAdb = { hotspotStartupPermissions().any { !it.granted(this) } },
+                permissions = { hotspotStartupPermissions() }) {
+                CarHotspotSettings.setEnabled(this, it)
+                if (!it) startupHotspotCancelled = true
             }
             val status = when {
                 hotspotStartupPermissions().all { it.granted(this) } -> R.string.hotspot_permission_granted
@@ -1651,10 +1648,13 @@ class DiPlayActivity : ComponentActivity() {
             add(CarHotspotSetup.Permission.BOOT_LAUNCH)
     }
 
-    private fun startCarHotspotOnLaunch() {
+    private fun startCarHotspotOnLaunch(onComplete: () -> Unit = {}) {
         // onStop marks an interrupted attempt; a later foreground/boot launch gets a fresh attempt.
         startupHotspotCancelled = false
-        if (!startupHotspotEligible()) return
+        if (!startupHotspotEligible()) {
+            onComplete()
+            return
+        }
         val app = applicationContext
         Thread({
             val result = CarHotspotTethering.enable(app,
@@ -1662,9 +1662,11 @@ class DiPlayActivity : ComponentActivity() {
                 log = { Log.i("DiPlay-Hotspot", it) },
             )
             runOnUiThread {
-                if (isFinishing || isDestroyed || result == CarHotspotTethering.Result.CANCELLED) return@runOnUiThread
+                if (isFinishing || isDestroyed || startupHotspotCancelled ||
+                    result == CarHotspotTethering.Result.CANCELLED) return@runOnUiThread
                 hotspotStartupResult = result
                 if (page == "home") render()
+                onComplete()
             }
         }, "diplay-hotspot-startup").start()
     }
@@ -2850,14 +2852,21 @@ class DiPlayActivity : ComponentActivity() {
             return false
         }
         if (!adapter.isEnabled) {
-            AlertDialog.Builder(this).setTitle(getString(R.string.turn_on_bluetooth))
-                .setMessage(getString(R.string.enable_the_car_s_bluetooth_and_pair_your_iphone_first))
-                .setPositiveButton(getString(R.string.open_bluetooth)) { _, _ -> openSystem(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
-                .setNegativeButton(getString(R.string.later), null).show()
+            showAndroidBluetoothHelp()
             return false
         }
         return true
     }
+    private fun showAndroidBluetoothHelp() {
+        AlertDialog.Builder(this).setTitle("当前使用安卓蓝牙")
+            .setMessage("安卓蓝牙尚未开启。若 iPhone 已连接原车电话和音乐，请进入蓝牙工具核对是否应使用原厂蓝牙模式。")
+            .setPositiveButton("打开安卓蓝牙") { _, _ -> openSystem(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
+            .setNeutralButton("蓝牙工具") { _, _ ->
+                startActivity(Intent(this, com.shilapi.xcertplay.e01goc.E01GocActivity::class.java))
+            }
+            .setNegativeButton(getString(R.string.later), null).show()
+    }
+
     private fun openProjection() {
         startActivity(Intent(this, CarPlayHostActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
     }
@@ -2872,10 +2881,7 @@ class DiPlayActivity : ComponentActivity() {
         }
         val adapter = systemService(BluetoothManager::class.java, "bluetooth")?.adapter
         if (adapter == null || !adapter.isEnabled) {
-            AlertDialog.Builder(this).setTitle(getString(R.string.turn_on_bluetooth))
-                .setMessage(getString(R.string.enable_the_car_s_bluetooth_and_pair_your_iphone_first))
-                .setPositiveButton(getString(R.string.open_bluetooth)) { _, _ -> openSystem(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
-                .setNegativeButton(getString(R.string.later), null).show(); return
+            showAndroidBluetoothHelp(); return
         }
         val devices = runCatching { adapter.bondedDevices.sortedBy { it.name ?: "" } }.getOrDefault(emptyList())
         if (devices.isEmpty()) {

@@ -44,9 +44,9 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 63
+        versionCode = 64
         // Carlito upstream version plus the Preface maintenance revision; see docs/VERSIONING.md.
-        versionName = "0.2.16.19"
+        versionName = "0.2.16.20"
 
     }
 
@@ -268,6 +268,9 @@ val verifyLicenseConfiguration by tasks.registering {
         if (preview) check(origin.isEmpty()) { "Preview requires an empty URL and cannot activate" }
         else {
             val uri = URI(origin)
+            check(!uri.host.equals("diplay-preface-license.huangwits.workers.dev", ignoreCase = true)) {
+                "Retired Preface Worker configuration selected; use the existing Pages client configuration"
+            }
             check(uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.rawUserInfo == null &&
                 uri.rawQuery == null && uri.rawFragment == null && uri.path in listOf("", "/")) {
                 "Production licensing requires an HTTPS origin"
@@ -280,6 +283,8 @@ val verifyLicenseConfiguration by tasks.registering {
         check(issuer.modulus.bitLength() in 3072..4096) { "Issuer RSA key must be 3072 to 4096 bits" }
     }
 }
+
+tasks.matching { it.name == "preE01LicensedBuild" }.configureEach { dependsOn(verifyLicenseConfiguration) }
 
 tasks.register("assembleStandaloneE01Licensed") {
     group = "build"
