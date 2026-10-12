@@ -4429,9 +4429,9 @@ class CarPlayHostActivity : ComponentActivity() {
                     // Keep consuming until every finger lifts, avoiding a partial iPhone touch sequence.
                     gestureTracking = false
                     navigationGestureUsed = true
-                    // The factory monitor may also emit its broadcast, but forwarding the gesture
-                    // here keeps the action working when that monitor is absent or races this view.
-                    // SHOW/HIDE are idempotent, so a duplicate factory broadcast cannot toggle twice.
+                    // FS11 recognizes horizontal gestures in its global input monitor, before
+                    // this Activity. Follow that broadcast instead of issuing a second switch.
+                    if (fly != NavigationFlyGesture.TOGGLE && VehicleMapProjection.usesFactoryGestures()) return true
                     val show = when (fly) {
                         NavigationFlyGesture.SHOW -> true
                         NavigationFlyGesture.HIDE -> false

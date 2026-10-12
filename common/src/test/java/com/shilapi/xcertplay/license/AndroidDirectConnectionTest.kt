@@ -153,6 +153,32 @@ class AndroidDirectConnectionTest {
         assertFalse(E01GocPreferences.enabled(app))
     }
 
+    @Test fun factorySelectionSurvivesReturningHomeWithAndroidAdapterOff() {
+        host.pause().stop()
+        E01GocPreferences.select(app, true)
+        DiPlayPreferences.savePhone(app, "11:22:33:44:55:66", "原厂 iPhone")
+        shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_OFF)
+        host.start().resume()
+        lease(true)
+        connect()
+        assertProjection(true)
+        assertTrue(E01GocPreferences.enabled(app))
+        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))
+        assertNull(ShadowAlertDialog.getLatestAlertDialog())
+    }
+
+    @Test fun disabledAndroidBluetoothOffersToolsWithoutSilentlyChangingTransport() {
+        lease(true)
+        shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_OFF)
+        connect()
+        ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_NEUTRAL).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(com.shilapi.xcertplay.e01goc.E01GocActivity::class.java.name,
+            shadowOf(activity).nextStartedActivity?.component?.className)
+        assertFalse(E01GocPreferences.enabled(app))
+        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))
+    }
+
     @Test fun firstPhoneIsSelectedInTheNormalAndroidPickerThenConnects() {
         lease(true)
         app.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().remove("phone_address").commit()

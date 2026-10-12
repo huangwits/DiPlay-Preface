@@ -39,30 +39,30 @@ class CarHotspotSetupTest {
         assertTrue(eligible())
     }
 
-    @Test fun startupNeedsValidCredentialsAndNoExistingSession() {
+    @Test fun startupUsesFactoryCredentialsButProtectsExistingSession() {
         CarHotspotSettings.setEnabled(context, true)
-        assertFalse(eligible())
+        assertTrue(eligible())
         configureHotspot()
         assertTrue(eligible())
         assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = true))
         AirPlayPersistence.saveManualHotspotPassphrase(context, "short")
-        assertFalse(eligible())
+        assertTrue(eligible())
     }
 
-    @Test fun wiredModeNeverPreparesAHotspotEvenWhenTheChoiceIsSaved() {
+    @Test fun bootCanStartFactoryHotspotInUsbModeWithoutChangingConnectionPreparation() {
         configureHotspot()
         CarHotspotSettings.setEnabled(context, true)
         AirPlayPersistence.saveWirelessEnabled(context, false)
-        assertFalse(eligible())
+        assertTrue(eligible())
         assertFalse(CarHotspotSettings.shouldEnable(context, false, WirelessHotspotMode.MANUAL))
         assertTrue(CarHotspotSettings.enabled(context))
     }
 
-    @Test fun wifiDirectAndLocalOnlyHotspotAreNotAutomaticallyManaged() {
+    @Test fun bootChoiceIsIndependentOfWirelessModeButConnectionPreparationIsNot() {
         configureHotspot()
         CarHotspotSettings.setEnabled(context, true)
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.WIFI_P2P)
-        assertFalse(eligible())
+        assertTrue(eligible())
         assertFalse(CarHotspotSettings.shouldEnable(context, true, WirelessHotspotMode.LOCAL_ONLY_HOTSPOT))
     }
 

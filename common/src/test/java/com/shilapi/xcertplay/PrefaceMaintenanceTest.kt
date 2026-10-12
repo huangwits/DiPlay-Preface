@@ -28,7 +28,7 @@ class PrefaceMaintenanceTest {
         CarPlayBackgroundSession.clear()
     }
 
-    @Test fun savedHotspotCanStartAtBootIndependentlyOfAppStartupAndIgnoresOtherModes() {
+    @Test fun factoryHotspotBootChoiceWorksWithoutAppStartupOrCarPlayCredentials() {
         CarHotspotSettings.setEnabled(app, true)
         AirPlayPersistence.saveWirelessEnabled(app, true)
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.MANUAL)
@@ -44,10 +44,19 @@ class PrefaceMaintenanceTest {
         launch = null
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.EXISTING_WIFI)
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
-        assertNull(launch)
+        assertTrue(launch!!.getBooleanExtra("boot_hotspot", false))
+        launch = null
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.MANUAL)
+        AirPlayPersistence.saveWirelessEnabled(app, false)
         AirPlayPersistence.saveManualHotspotSsid(app, "")
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
+        assertTrue(launch!!.getBooleanExtra("boot_hotspot", false))
+        launch = null
+        CarHotspotSettings.setEnabled(app, false)
+        BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
+        assertNull(launch)
+        CarHotspotSettings.setEnabled(app, true)
+        BootReceiver().onReceive(context, Intent("unrelated.action"))
         assertNull(launch)
     }
 

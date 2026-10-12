@@ -168,7 +168,7 @@ class E01NativeMapControlTest {
         ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", 22)
         assertTrue(E01NativeMapControl.supported(app))
         ShadowBuild.setDevice("OTHER_E01")
-        assertFalse(E01NativeMapControl.supported(app))
+        assertTrue(E01NativeMapControl.supported(app))
         ShadowBuild.setDevice("FS11GQJ")
         shadowOf(app.packageManager).removePackage("com.neusoft.extraservice")
         assertFalse(E01NativeMapControl.supported(app))

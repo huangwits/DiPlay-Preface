@@ -116,7 +116,10 @@ internal class E01NativeMapControl(
 
         @Suppress("DEPRECATION")
         fun supported(context: Context): Boolean = Build.VERSION.SDK_INT == 22 &&
-            Build.DEVICE.orEmpty().uppercase().contains("FS11G") && E01NavigationOutput.available(context) && runCatching {
+            // Do not key this on a build name: E01 variants expose the same factory
+            // gesture receiver under different ro.product.device values. The exported
+            // receiver pair is the capability signal we can verify at runtime.
+            E01NavigationOutput.available(context) && runCatching {
                 val receiver = context.packageManager.getReceiverInfo(RECEIVER, 0)
                 receiver.enabled && receiver.exported && receiver.applicationInfo.enabled &&
                     (receiver.permission == null || context.checkCallingOrSelfPermission(receiver.permission) == PackageManager.PERMISSION_GRANTED)
