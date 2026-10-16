@@ -2,8 +2,12 @@ package com.shilapi.xcertplay
 
 import android.view.View
 import android.view.ViewGroup
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.os.SystemClock
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.shilapi.xcertplay.host.R
 import org.junit.Assert.*
@@ -29,7 +33,7 @@ class HomeCompactLayoutTest {
     }
 
     @Config(sdk = [23], qualifiers = "zh-rCN-w1280dp-h480dp-land")
-    @Test fun shortFullHomeKeepsTheWholePhonePickerInsideItsCard() {
+    @Test fun shortCompactHomeKeepsItsActionsReachable() {
         val controller = Robolectric.buildActivity(DiPlayActivity::class.java).setup()
         val activity = controller.get()
         ReflectionHelpers.setField(activity, "setupError", null)
@@ -39,8 +43,19 @@ class HomeCompactLayoutTest {
         root.measure(View.MeasureSpec.makeMeasureSpec((1280 * metrics.density).toInt(), View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec((480 * metrics.density).toInt(), View.MeasureSpec.EXACTLY))
         root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+        assertFalse("A short landscape window should use the compact home", descendants(root)
+            .filterIsInstance<TextView>().any { it.text == activity.getString(R.string.a_familiar_drive) })
         val picker = descendants(root).filterIsInstance<Button>()
             .single { it.text == activity.getString(R.string.choose_iphone) }
+        val usb = descendants(root).filterIsInstance<Button>()
+            .single { it.text == activity.getString(R.string.connect_with_usb) }
+        val settings = descendants(root).filterIsInstance<Button>()
+            .single { it.text == activity.getString(R.string.settings) }
+        listOf(picker, usb, settings).forEach { action ->
+            val visible = android.graphics.Rect()
+            assertTrue("${action.text} must remain reachable on the short home", action.getGlobalVisibleRect(visible))
+            assertEquals("${action.text} must not be clipped", action.height, visible.height())
+        }
         val card = picker.parent as ViewGroup
         assertTrue("Phone picker bottom ${picker.bottom} exceeds card content ${card.height - card.paddingBottom}",
             picker.bottom <= card.height - card.paddingBottom)
@@ -54,12 +69,40 @@ class HomeCompactLayoutTest {
         root.measure(View.MeasureSpec.makeMeasureSpec(root.width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec((250 * metrics.density).toInt(), View.MeasureSpec.EXACTLY))
         root.layout(0, 0, root.measuredWidth, root.measuredHeight)
-        val scroll = descendants(root).filterIsInstance<android.widget.ScrollView>().single()
+        val scroll = descendants(root).filterIsInstance<ScrollView>().single()
         assertTrue("Overflowing home must scroll", scroll.getChildAt(0).height > scroll.height)
         scroll.scrollTo(0, scroll.getChildAt(0).height - scroll.height)
         val visible = android.graphics.Rect()
         assertTrue(picker.getGlobalVisibleRect(visible))
         assertEquals("Scroll must reveal the full picker", picker.height, visible.height())
+        controller.pause().stop().destroy()
+    }
+
+    @Config(sdk = [23], qualifiers = "zh-rCN-w1280dp-h480dp-land")
+    @Test fun overflowingCompactHomeRespondsToFingerDrag() {
+        val controller = Robolectric.buildActivity(DiPlayActivity::class.java).setup()
+        val activity = controller.get()
+        val root = activity.window.decorView
+        val metrics = activity.resources.displayMetrics
+        root.measure(View.MeasureSpec.makeMeasureSpec((1280 * metrics.density).toInt(), View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec((200 * metrics.density).toInt(), View.MeasureSpec.EXACTLY))
+        root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+
+        val scroll = descendants(root).filterIsInstance<ScrollView>().single()
+        assertTrue("A constrained home must have vertical overflow", scroll.getChildAt(0).height > scroll.height)
+        val scrollLocation = IntArray(2).also(scroll::getLocationInWindow)
+        val x = scrollLocation[0] + scroll.width / 2f
+        val downY = scrollLocation[1] + scroll.height * 0.8f
+        val upY = scrollLocation[1] + scroll.height * 0.2f
+        val downTime = SystemClock.uptimeMillis()
+        fun touch(action: Int, eventTime: Long, y: Float) = MotionEvent.obtain(
+            downTime, eventTime, action, x, y, 0,
+        ).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+        root.dispatchTouchEvent(touch(MotionEvent.ACTION_DOWN, downTime, downY))
+        root.dispatchTouchEvent(touch(MotionEvent.ACTION_MOVE, downTime + 120, upY))
+        root.dispatchTouchEvent(touch(MotionEvent.ACTION_UP, downTime + 180, upY))
+
+        assertTrue("A finger drag must move an overflowing home", scroll.scrollY > 0)
         controller.pause().stop().destroy()
     }
 

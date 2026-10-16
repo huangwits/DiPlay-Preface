@@ -996,10 +996,15 @@ class CarPlayHostActivity : ComponentActivity() {
         vehicleMapPlan?.let { selection ->
             recordMapDiagnostic("Map plan: target=${selection.screen.id} canvas=${selection.width}x${selection.height} " +
                 "factoryNative=${selection.factoryNative} ${E01FactoryMapTarget.diagnostics()}")
-            MapMirrors.streamAspect = selection.width.toDouble() / selection.height
-            return selection.config()
+            if (!selection.factoryNative) {
+                MapMirrors.streamAspect = selection.width.toDouble() / selection.height
+                return selection.config()
+            }
+            // FS11 mirrors stream 110. Only request an independent scene when the
+            // owner separately enabled the centre/launcher map feature below.
+            recordMapDiagnostic("Map plan: videoStream=110 source=centre-screen mirror=true")
         }
-        recordMapDiagnostic("Map plan: target=none nativeSupported=$nativeSupported " +
+        if (vehicleMapPlan == null) recordMapDiagnostic("Map plan: target=none nativeSupported=$nativeSupported " +
             "${E01NativeMapControl.capabilityReason(this)} threeFinger=${GeelyHudProjection.threeFingerEnabled(this)} " +
             E01FactoryMapTarget.diagnostics())
         if (!AirPlayPersistence.loadClusterMapEnabled(this)) return null
@@ -4156,7 +4161,7 @@ class CarPlayHostActivity : ComponentActivity() {
             onScreenStreamActiveChanged = { type, active ->
                 onScreenStreamStateChanged(controllerGeneration, type, active)
             },
-            mediaBufferMillis = AirPlayPersistence.loadMediaBufferMillis(this, wireless = wirelessEnabled),
+            mediaBufferMillis = AirPlayPersistence.loadMediaBufferMillis(this),
             onAudioDiagnostic = { message ->
                 if (message.startsWith("Microphone: ")) {
                     AsyncDiagnosticLog.append(diagnosticLog, message)

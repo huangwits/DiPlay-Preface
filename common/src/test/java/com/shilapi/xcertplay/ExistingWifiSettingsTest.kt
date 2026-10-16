@@ -47,7 +47,6 @@ class ExistingWifiSettingsTest {
             assertEquals("Car hotspot", AirPlayPersistence.loadManualHotspotSsid(app))
             assertEquals("car-password", AirPlayPersistence.loadManualHotspotPassphrase(app))
         }
-        CarHotspotSettings.setEnabled(app, true)
         assertFalse(CarHotspotSettings.shouldEnable(app, true, WirelessHotspotMode.EXISTING_WIFI))
     }
 

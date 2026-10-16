@@ -5,13 +5,13 @@ import org.junit.Test
 
 class MediaAudioBufferTest {
     @Test
-    fun `default music buffer covers ordinary wireless gaps without delaying prompts`() {
-        assertEquals(500, MediaAudioBuffer.DEFAULT_MILLIS)
+    fun `default music buffer absorbs larger wireless gaps without delaying prompts`() {
+        assertEquals(300, MediaAudioBuffer.DEFAULT_MILLIS)
 
         val music = MediaAudioBuffer.plan(true, 48_000, 2, minBufferBytes = 7_680,
             mediaMillis = MediaAudioBuffer.DEFAULT_MILLIS)
-        assertEquals(500, music.startBytes * 1000L / (48_000 * 4))
-        assertEquals(700, music.trackBufferBytes * 1000L / (48_000 * 4))
+        assertEquals(300, music.startBytes * 1000L / (48_000 * 4))
+        assertEquals(500, music.trackBufferBytes * 1000L / (48_000 * 4))
 
         val prompt = MediaAudioBuffer.plan(false, 16_000, 1, minBufferBytes = 1_280,
             mediaMillis = MediaAudioBuffer.DEFAULT_MILLIS)
@@ -50,13 +50,11 @@ class MediaAudioBufferTest {
     @Test
     fun `unknown delay falls back to the default`() {
         assertEquals(MediaAudioBuffer.DEFAULT_MILLIS, MediaAudioBuffer.sanitize(250))
-        assertEquals(96_000, MediaAudioBuffer.plan(true, 48_000, 2, 7_680, mediaMillis = 42).startBytes)
+        assertEquals(57_600, MediaAudioBuffer.plan(true, 48_000, 2, 7_680, mediaMillis = 42).startBytes)
     }
 
-    @Test fun `all hundred millisecond steps reach the renderer without falling back`() {
-        for (duration in 100..1000 step 100) {
-            assertEquals(duration * 192, MediaAudioBuffer.plan(true, 48_000, 2, 7_680, duration).startBytes)
-        }
+    @Test fun `buffer choices match the Preface baseline`() {
+        assertEquals((100..1000 step 100).toList(), MediaAudioBuffer.presets)
     }
 
     @Test

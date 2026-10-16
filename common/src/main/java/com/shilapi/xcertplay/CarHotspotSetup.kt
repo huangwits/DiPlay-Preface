@@ -6,10 +6,6 @@ import android.provider.Settings
 import android.util.Log
 import com.shilapi.xcertplay.adb.AdbKeys
 import com.shilapi.xcertplay.adb.LocalAdb
-import com.shilapi.xcertplay.network.CarHotspotSettings
-import com.shilapi.xcertplay.network.CarHotspotTethering
-import com.shilapi.xcertplay.orchestration.ManualHotspotValidation
-import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 
 /** Each grant is requested explicitly from settings; startup never calls this authorization path. */
 internal object CarHotspotSetup {
@@ -49,17 +45,13 @@ internal object CarHotspotSetup {
             access
         }
 
-    /** The hotspot switch is independent of opening DiPlay and selected wireless backend. */
     fun startupEligibility(context: Context, hasSession: Boolean): String {
         if (hasSession) return "active-session"
-        if (!CarHotspotSettings.enabled(context)) return "auto-start-disabled"
-        // This switch controls the vehicle AP itself. It must still run when the
-        // last selected CarPlay transport was USB or an existing external Wi-Fi.
-        if (!CarHotspotTethering.gkuiLegacySoftApSupported(context) &&
-            AirPlayPersistence.loadWirelessHotspotMode(context) == WirelessHotspotMode.MANUAL &&
-            ManualHotspotValidation.error(AirPlayPersistence.loadManualHotspotSsid(context),
-                AirPlayPersistence.loadManualHotspotPassphrase(context)) != null
-        ) return "manual-config-invalid"
+        if (!AirPlayPersistence.loadAutoStartOnBoot(context)) return "auto-start-disabled"
+        if (AirPlayPersistence.loadWirelessHotspotMode(context) !=
+            com.shilapi.xcertplay.orchestration.WirelessHotspotMode.AUTOMATIC) {
+            return "automatic-hotspot-not-selected"
+        }
         return "eligible"
     }
 

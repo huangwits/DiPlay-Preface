@@ -173,6 +173,8 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     fun currentGuidance(): CarPlayHudGuidance? = guidance
     fun navigationActive(): Boolean = guidance != null ||
         com.shilapi.xcertplay.glance.CarPlayGlance.snapshot().navigationActive
+    internal fun factoryRouteStatePublished(): Boolean = factoryRouteActive && navigationActive() &&
+        factoryNavigation?.routeStatePublished() == true
 
     internal fun refreshFactoryNavigation() {
         val visible = !(navigationHidden && factoryNavigationOwner == null)

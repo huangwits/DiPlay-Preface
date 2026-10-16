@@ -48,6 +48,7 @@ object ConnectionSettingsSection {
         onSelected: (WirelessHotspotMode) -> Unit,
     ): SettingsWidgets.ChoiceRowResult<WirelessHotspotMode> {
         val modes = buildList {
+            add(WirelessHotspotMode.AUTOMATIC to context.getString(R.string.hotspot_mode_auto))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 add(WirelessHotspotMode.WIFI_P2P to context.getString(R.string.wi_fi_p2p_5_ghz))
             }
@@ -58,8 +59,7 @@ object ConnectionSettingsSection {
             context = context,
             label = context.getString(R.string.wi_fi_session),
             options = modes,
-            selected = selected.takeUnless { it == WirelessHotspotMode.AUTOMATIC }
-                ?: WirelessHotspotMode.MANUAL,
+            selected = selected,
             theme = theme,
             onSelected = onSelected,
         )

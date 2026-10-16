@@ -2,10 +2,10 @@ package com.shilapi.xcertplay
 
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
-import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -13,7 +13,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import org.robolectric.shadows.ShadowBuild
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29], manifest = Config.NONE)
@@ -25,62 +24,50 @@ class CarHotspotSetupTest {
         context.getSharedPreferences("xcertplay_airplay", 0).edit().clear().commit()
     }
 
-    @Test fun freshInstallAndExistingHotspotConfigurationRemainOptedOut() {
+    @Test fun legacySwitchValueDoesNotControlWirelessCarHotspotStartup() {
+        CarHotspotSettings.setEnabled(context, true)
+
         assertFalse(CarHotspotSettings.enabled(context))
-        configureHotspot()
-        assertFalse(eligible())
-    }
+        assertTrue(CarHotspotSettings.shouldEnable(context, true, WirelessHotspotMode.MANUAL))
 
-    @Test fun losingAdbHidesTheSettingWithoutClearingOrDisablingTheSavedChoice() {
-        configureHotspot()
-        CarHotspotSettings.setEnabled(context, true)
-        assertFalse(CarHotspotSettings.visible(true, LocalAdb.Access.UNREACHABLE))
-        assertTrue(CarHotspotSettings.enabled(context))
-        assertTrue(eligible())
-    }
-
-    @Test fun startupNeedsValidCredentialsAndNoExistingSession() {
-        AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
-        CarHotspotSettings.setEnabled(context, true)
-        assertFalse(eligible())
-        configureHotspot()
-        assertTrue(eligible())
-        assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = true))
-        AirPlayPersistence.saveManualHotspotPassphrase(context, "short")
-        assertFalse(eligible())
-    }
-
-    @Test fun wiredModeStillStartsTheExplicitlySavedCarHotspot() {
-        configureHotspot()
-        CarHotspotSettings.setEnabled(context, true)
-        AirPlayPersistence.saveWirelessEnabled(context, false)
-        assertTrue(eligible())
-        assertFalse(CarHotspotSettings.shouldEnable(context, false, WirelessHotspotMode.MANUAL))
-        assertTrue(CarHotspotSettings.enabled(context))
-    }
-
-    @Test fun savedChoiceStartsTheCarHotspotRegardlessOfSelectedWirelessBackend() {
-        configureHotspot()
-        CarHotspotSettings.setEnabled(context, true)
-        for (mode in listOf(WirelessHotspotMode.AUTOMATIC, WirelessHotspotMode.WIFI_P2P, WirelessHotspotMode.EXISTING_WIFI)) {
-            AirPlayPersistence.saveWirelessHotspotMode(context, mode)
-            assertTrue("mode=$mode", eligible())
-        }
-        assertFalse(CarHotspotSettings.shouldEnable(context, true, WirelessHotspotMode.WIFI_P2P))
-    }
-
-    @Test fun disablingTheChoiceCancelsFutureStartupWithoutChangingConnectionSettings() {
-        configureHotspot()
-        CarHotspotSettings.setEnabled(context, true)
-        assertTrue(eligible())
         CarHotspotSettings.setEnabled(context, false)
-        assertFalse(eligible())
-        assertEquals("Car hotspot", AirPlayPersistence.loadManualHotspotSsid(context))
-        assertEquals("12345678", AirPlayPersistence.loadManualHotspotPassphrase(context))
-        assertEquals(WirelessHotspotMode.MANUAL, AirPlayPersistence.loadWirelessHotspotMode(context))
+        assertTrue(CarHotspotSettings.shouldEnable(context, true, WirelessHotspotMode.MANUAL))
     }
 
-    private fun eligible() = CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false)
+    @Test fun onlyWirelessManualModeUsesTheCarHotspot() {
+        for (mode in WirelessHotspotMode.entries) {
+            assertTrue("mode=$mode", CarHotspotSettings.shouldEnable(context, true, mode) ==
+                (mode == WirelessHotspotMode.MANUAL))
+            assertFalse("wired mode=$mode", CarHotspotSettings.shouldEnable(context, false, mode))
+        }
+    }
+
+    @Test fun hotspotIsNotStartedIndependentlyAtAppLaunch() {
+        AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
+        AirPlayPersistence.saveManualHotspotSsid(context, "Car hotspot")
+        AirPlayPersistence.saveManualHotspotPassphrase(context, "12345678")
+        CarHotspotSettings.setEnabled(context, true)
+
+        assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
+        assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = true))
+    }
+
+    @Test fun defaultAutomaticModeStartsSavedHotspotWhenBootStartupIsEnabled() {
+        assertTrue(AirPlayPersistence.loadAutoStartOnBoot(context))
+        assertTrue(AirPlayPersistence.loadWirelessHotspotMode(context) == WirelessHotspotMode.AUTOMATIC)
+        assertTrue(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
+        assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = true))
+        AirPlayPersistence.saveAutoStartOnBoot(context, false)
+        assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
+    }
+
+    @Test fun onlyTheSystemCarSettingsPackageIdentifiesTheBydHeadUnit() {
+        installPackage("com.byd.carsettings", system = false)
+        assertFalse(CarHotspotSetup.isBydHeadUnit(context))
+
+        installPackage("com.byd.carsettings", system = true)
+        assertTrue(CarHotspotSetup.isBydHeadUnit(context))
+    }
 
     private fun installPackage(name: String, system: Boolean) {
         shadowOf(context.packageManager).installPackage(PackageInfo().apply {
@@ -90,12 +77,5 @@ class CarHotspotSetupTest {
                 flags = if (system) ApplicationInfo.FLAG_SYSTEM else 0
             }
         })
-    }
-
-    private fun configureHotspot() {
-        AirPlayPersistence.saveWirelessEnabled(context, true)
-        AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
-        AirPlayPersistence.saveManualHotspotSsid(context, "Car hotspot")
-        AirPlayPersistence.saveManualHotspotPassphrase(context, "12345678")
     }
 }

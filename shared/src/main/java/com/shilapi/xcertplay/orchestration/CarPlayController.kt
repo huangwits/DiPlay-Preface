@@ -572,6 +572,9 @@ class CarPlayController(
     /** Immutable stream geometry retained when a new host adopts this background controller. */
     fun configuredClusterSize(): Pair<Int, Int>? = airPlayConfig.cluster?.let { it.widthPixels to it.heightPixels }
 
+    /** Canvas of stream 110, also used by the FS11 mirror of the centre screen. */
+    fun configuredMainSize(): Pair<Int, Int> = airPlayConfig.main.let { it.widthPixels to it.heightPixels }
+
     /** carlito | Phone and active cluster stream identity, including when its map is hidden. */
     fun clusterProjectionSessionToken(): Any? {
         if (closed) return null
@@ -2416,13 +2419,15 @@ class CarPlayController(
         ) {
             val result = com.shilapi.xcertplay.network.CarHotspotTethering.enable(
                 appContext,
-                isCancelled = { isStaleWirelessRun(generation) ||
-                    !com.shilapi.xcertplay.network.CarHotspotSettings.enabled(appContext) },
+                isCancelled = { isStaleWirelessRun(generation) },
                 timeoutMillis = ((readyDeadline - System.nanoTime()) / 1_000_000).coerceAtLeast(1),
                 log = { debugLog("generation=$generation atNs=${System.nanoTime()} $it; awaiting hotspot interface") },
             )
-            val manualFallback = result == com.shilapi.xcertplay.network.CarHotspotTethering.Result.UNSUPPORTED &&
-                com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(appContext) == null
+            val hotspotStateUnknown = com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(appContext) == null
+            val manualFallback = hotspotStateUnknown && (
+                result == com.shilapi.xcertplay.network.CarHotspotTethering.Result.UNSUPPORTED ||
+                    result == com.shilapi.xcertplay.network.CarHotspotTethering.Result.TIMED_OUT
+                )
             if (result != com.shilapi.xcertplay.network.CarHotspotTethering.Result.READY && !manualFallback) {
                 throw WirelessStartupException(
                     if (result == com.shilapi.xcertplay.network.CarHotspotTethering.Result.TIMED_OUT ||
