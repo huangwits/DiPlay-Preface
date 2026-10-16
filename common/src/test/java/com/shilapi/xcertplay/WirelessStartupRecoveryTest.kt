@@ -17,7 +17,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter.from
-import java.util.concurrent.atomic.AtomicBoolean
+import com.geelyplay.preface.CarPlayShutdownGate
+import com.geelyplay.preface.ConnectionWaitingView
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29], qualifiers = "en", manifest = Config.NONE)
@@ -83,10 +84,10 @@ class WirelessStartupRecoveryTest {
         report()
         assertEquals(0, budget().retries)
         ReflectionHelpers.setField(activity, "menuOpen", false)
-        ReflectionHelpers.getField<AtomicBoolean>(activity, "shuttingDown").set(true)
+        ReflectionHelpers.getField<CarPlayShutdownGate>(activity, "shuttingDown").begin(terminate = false)
         report()
         assertEquals(0, budget().retries)
-        ReflectionHelpers.getField<AtomicBoolean>(activity, "shuttingDown").set(false)
+        ReflectionHelpers.setField(activity, "shuttingDown", CarPlayShutdownGate())
         ReflectionHelpers.setField(CarPlayBackgroundSession, "owner", Any())
         report()
         assertEquals(0, budget().retries)

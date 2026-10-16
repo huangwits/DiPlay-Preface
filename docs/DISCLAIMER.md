@@ -14,7 +14,7 @@
 
 ## 隐私与许可
 
-在线授权会处理安装标识、申请号、授权状态及查询时间；服务基础设施也会处理连接 IP。反馈问题前请检查日志，避免公开个人信息、配对记录或凭据。
+在线授权会处理由硬件序列号派生的哈希设备标识（不可用时由 Android ID 派生）、申请号、授权状态及查询时间；服务基础设施也会处理连接 IP。原始序列号不会上传。该标识在普通应用重装后保持不变；使用硬件序列号时恢复出厂后也保持不变，使用 Android ID 兜底时恢复出厂可能改变。反馈问题前请检查日志，避免公开个人信息、配对记录或凭据。
 
 使用、修改和再分发请遵守 [LICENSE](../LICENSE) 及相关第三方许可证，保留必要署名。本文不授予第三方商标或认证权利，也不排除适用法律规定不得排除的权利或责任。
 
@@ -24,4 +24,4 @@ This is an unofficial community adaptation with no Apple or Geely affiliation or
 
 Compatibility depends on the head unit, firmware, permissions and iOS version. The software is provided as-is without guarantees of reliability, future compatibility or continued service availability. Wireless connections require approval and online revalidation; USB does not require software activation.
 
-Online authorization processes installation identifiers, request numbers, authorization status and query times; the service infrastructure also processes connection IPs. Review logs before sharing them. Preserve attribution and comply with the project and third-party licenses. This notice does not exclude rights or liabilities that cannot be excluded under applicable law.
+Online authorization processes a hashed device identifier derived from the hardware serial (Android ID is the fallback), request numbers, authorization status and query times; the service infrastructure also processes connection IPs. The raw serial is not uploaded. The identifier survives app reinstalls, and a serial based identifier also survives factory reset; the Android ID fallback may change after reset. Review logs before sharing them. Preserve attribution and comply with the project and third-party licenses. This notice does not exclude rights or liabilities that cannot be excluded under applicable law.

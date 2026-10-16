@@ -1,14 +1,38 @@
 package com.shilapi.xcertplay.media
 
-/** Probe the encoder actually used by this build without opening a microphone or audio focus. */
+import android.media.MediaCodecList
+import android.media.MediaFormat
+
+/**
+ * Whether this head unit can encode Opus for the CarPlay microphone uplink.
+ *
+ * The platform codec list alone is not the capability: the bundled software encoder also works on
+ * head units without a platform Opus encoder. Probe it before advertising the microphone formats,
+ * without opening the microphone or changing the audio mode.
+ */
 object OpusEncoderSupport {
-    private val available: Boolean by lazy {
-        runCatching {
-            OpusEncoder(48_000).use { encoder ->
-                encoder.available && encoder.encode(ByteArray(OpusEncoder.FRAME_BYTES)).any { it.isNotEmpty() }
+    fun isAvailable(): Boolean = isAvailable(
+        platformAvailable = ::platformAvailable,
+        software = { SoftwareOpusEncoder(bitrate = 48_000) },
+    )
+
+    internal fun isAvailable(
+        platformAvailable: () -> Boolean,
+        software: () -> MicrophoneOpusEncoder,
+    ): Boolean {
+        if (runCatching(platformAvailable).getOrDefault(false)) return true
+        return runCatching {
+            software().use { encoder ->
+                encoder.available && encoder.encode(ByteArray(SoftwareOpusEncoder.FRAME_BYTES))
+                    .any { it.isNotEmpty() }
             }
         }.getOrDefault(false)
     }
 
-    fun isAvailable(): Boolean = available
+    private fun platformAvailable(): Boolean =
+        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
+            info.isEncoder && info.supportedTypes.any {
+                it.equals(MediaFormat.MIMETYPE_AUDIO_OPUS, ignoreCase = true)
+            }
+        }
 }

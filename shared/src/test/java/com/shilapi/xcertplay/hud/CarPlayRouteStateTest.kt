@@ -4,8 +4,27 @@ import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import com.geelyplay.preface.hud.CarPlayRouteChange
+import com.geelyplay.preface.hud.CarPlayRouteState
+import com.geelyplay.preface.hud.HudGuidance
 
 class CarPlayRouteStateTest {
+    @Test fun `arrival survives no-route teardown for five seconds without extending on repeats`() {
+        var time = 0L
+        val state = CarPlayRouteState(nanoTime = { time })
+        state.accept(CarPlayRouteState.ROUTE_GUIDANCE_UPDATE, tlvs(tlv(0x01, 1)))
+        state.accept(CarPlayRouteState.ROUTE_GUIDANCE_UPDATE, tlvs(tlv(0x01, 2)))
+        org.junit.Assert.assertTrue(state.arrivalActive())
+        org.junit.Assert.assertFalse(state.isNavigating())
+        time = 4_000_000_000L
+        state.accept(CarPlayRouteState.ROUTE_GUIDANCE_UPDATE, tlvs(tlv(0x01, 0)))
+        state.accept(CarPlayRouteState.ROUTE_GUIDANCE_UPDATE, tlvs(tlv(0x01, 2)))
+        org.junit.Assert.assertTrue(state.arrivalActive())
+        time = 5_000_000_000L
+        org.junit.Assert.assertFalse(state.arrivalActive())
+        state.accept(CarPlayRouteState.ROUTE_GUIDANCE_UPDATE, tlvs(tlv(0x01, 1)))
+        org.junit.Assert.assertTrue(state.isNavigating())
+    }
     @Test
     fun `combines maneuver and route updates`() {
         val state = CarPlayRouteState()

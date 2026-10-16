@@ -15,6 +15,7 @@
     <!-- carlito | Playback remains an eligible audio focus owner while another app is visible. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Optional, user-authorized installation of a released update APK. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
@@ -27,10 +28,10 @@
     <queries>
         <package android:name="ecarx.bluetooth.service" />
         <package android:name="com.neusoft.extraservice" />
+        <package android:name="com.autonavi.amapauto" />
         <package android:name="com.autolink.carplay" />
         <package android:name="com.autolink.carplay.app" />
         <package android:name="com.geely.service.oneosapi" />
-        <package android:name="com.anwsdk.service" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
@@ -41,22 +42,22 @@
         </intent>
     </queries>
     <application>
-        <activity android:name="com.shilapi.xcertplay.update.UpdateActivity"
+        <activity android:name="com.geelyplay.preface.update.UpdateActivity"
             android:exported="false" android:launchMode="singleTop"
             android:configChanges="orientation|screenSize" android:theme="@style/Theme.Xcertplay" />
-        <provider android:name="com.shilapi.xcertplay.update.UpdateApkProvider"
+        <provider android:name="com.geelyplay.preface.update.UpdateApkProvider"
             android:authorities="${applicationId}.update-apks"
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_apk_paths" />
         </provider>
-        <activity android:name="com.shilapi.xcertplay.license.OfflineLicenseActivity"
+        <activity android:name="com.geelyplay.preface.license.OfflineLicenseActivity"
             android:enabled="@bool/config_offline_license"
             android:exported="false" android:launchMode="singleTop"
             android:theme="@style/Theme.Xcertplay" />
-        <activity android:name="com.shilapi.xcertplay.license.LicenseActivity"
+        <activity android:name="com.geelyplay.preface.license.LicenseActivity"
             android:exported="false" android:launchMode="singleTop"
             android:theme="@style/Theme.Xcertplay" />
-        <activity android:name="com.shilapi.xcertplay.e01goc.E01GocActivity"
+        <activity android:name="com.geelyplay.preface.e01goc.E01GocActivity"
             android:exported="false" android:theme="@style/Theme.Xcertplay"
             android:configChanges="orientation|screenSize" />
         <!-- carlito | Generic instrument map viewport settings. -->

@@ -44,7 +44,7 @@ internal class UpdateClient(private val connect: (URL) -> HttpURLConnection = { 
                 connection.readTimeout = 30_000
                 connection.instanceFollowRedirects = false
                 connection.useCaches = false
-                connection.setRequestProperty("User-Agent", "DiPlay-Preface-Updater")
+        connection.setRequestProperty("User-Agent", "GeelyPlay-Updater")
                 connection.setRequestProperty("Accept", if (binary) "application/octet-stream" else "application/vnd.github+json")
                 connection.setRequestProperty("Accept-Encoding", "identity")
                 val status = connection.responseCode

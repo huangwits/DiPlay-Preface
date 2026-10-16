@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent

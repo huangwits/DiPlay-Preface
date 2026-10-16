@@ -28,6 +28,8 @@ import androidx.core.view.WindowInsetsCompat
 import com.shilapi.xcertplay.host.R
 import kotlin.math.min
 import kotlin.math.roundToInt
+import com.geelyplay.preface.AppPageStyle
+import com.geelyplay.preface.E01NativeMapControl
 
 class VehicleMapProjectionActivity : ComponentActivity() {
     override fun attachBaseContext(newBase: Context) = super.attachBaseContext(AppLocale.wrap(newBase))
@@ -37,6 +39,19 @@ class VehicleMapProjectionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (E01NativeMapControl.supported(this)) {
+            val native = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(24), dp(24), dp(24), dp(24))
+                setBackgroundColor(AppPageStyle.background)
+                addView(navigationHeader())
+                addView(TextView(context).apply {
+                    setText(R.string.e01_native_map_hint); textSize = 18f; setTextColor(AppPageStyle.text)
+                })
+            }
+            setContentView(native)
+            return
+        }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(16), dp(24), dp(24)) }
         content.background = AppPageStyle.card(this)
         val scroll = ScrollView(this).apply { addView(content); setBackgroundColor(AppPageStyle.background) }
@@ -49,7 +64,7 @@ class VehicleMapProjectionActivity : ComponentActivity() {
             setText(resource); AppPageStyle.action(this, resource == R.string.projection_save)
             minHeight = dp(56); setOnClickListener { action() }
         }
-        content.addView(text(R.string.vehicle_map_title, 26f))
+        content.addView(navigationHeader())
         content.addView(text(R.string.vehicle_map_setup_hint), params())
         content.addView(Switch(this).apply {
             setText(R.string.vehicle_map_enabled); setTextColor(Color.WHITE); minHeight = dp(56)
@@ -96,8 +111,18 @@ class VehicleMapProjectionActivity : ComponentActivity() {
         }
         content.addView(button(R.string.projection_apply_geometry) { applyGeometry(save = false) }, params())
         content.addView(button(R.string.projection_save) { if (applyGeometry(save = true)) finish() }, params())
-        content.addView(button(R.string.back) { finish() }, params())
         updateTarget(); applyGeometry(save = false); setContentView(scroll)
+    }
+
+    private fun navigationHeader() = LinearLayout(this).apply {
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        addView(Button(context).apply {
+            setText(R.string.back); AppPageStyle.action(this, false); setOnClickListener { finish() }
+        }, LinearLayout.LayoutParams(-2, dp(56)))
+        addView(TextView(context).apply {
+            setText(R.string.vehicle_map_title); textSize = 26f; setTextColor(AppPageStyle.text)
+            setPadding(dp(12), 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
     }
 
     private fun updateTarget() {

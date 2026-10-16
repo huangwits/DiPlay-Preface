@@ -18,6 +18,7 @@ import android.os.Looper
 import android.view.View
 import com.shilapi.xcertplay.orchestration.CarPlayStatus
 import java.time.Duration
+import com.geelyplay.preface.ConnectionWaitingView
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29])

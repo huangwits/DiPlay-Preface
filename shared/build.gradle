@@ -38,8 +38,8 @@ dependencies {
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
     compileOnly libs.androidx.annotation
     implementation libs.bouncycastle
-    implementation libs.concentus
-    // Vendored JmDNS 3.6.3 with the Android multicast-socket ordering and API 22 Java compatibility fixes.
+    // Vendored Concentus sources now supply Opus; do not package the duplicate Maven classes.
+    // JmDNS keeps the API 22 multicast-socket compatibility fixes.
     api project(':jmdns')
     testImplementation libs.junit
     testImplementation 'org.robolectric:robolectric:4.17'

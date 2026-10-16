@@ -21,8 +21,17 @@
     <string name="vehicle_map_viewport">地图显示区域</string>
     <string name="vehicle_map_geometry_invalid">请填写 0 或 64～4096 的整数。可见高度不能超过地图高度。</string>
     <string name="vehicle_map_reconnect">请先选择地图屏幕并重新连接手机</string>
+    <string name="vehicle_map_setup_required">请在“地图投屏”中开启完整地图、选择仪表屏幕，再重新连接手机。</string>
+    <string name="e01_native_map_hint">使用原车三指飞屏：左滑投出、右滑收回。仪表通道随原厂配置自动接入；开启后重新连接 CarPlay。</string>
+    <string name="e01_native_map_unavailable">原厂飞屏通道尚未就绪，请重新连接 CarPlay；仍无画面时请保存诊断报告。</string>
+    <string name="e01_native_map_config_unavailable">未能读取原车导航的飞屏配置，请保存诊断报告。</string>
+    <string name="e01_native_map_display_unavailable">暂未找到原厂仪表屏幕，请保存诊断报告。</string>
     <string name="vehicle_map_waiting">正在等待导航地图</string>
     <string name="vehicle_map_display_unavailable">未找到所选仪表屏幕，请检查地图投屏设置</string>
+    <string name="e01_map_waiting_stream">已收到飞屏操作，正在等待 iPhone 提供仪表地图画面。</string>
+    <string name="e01_map_waiting_factory">已收到地图画面，但原车尚未确认仪表显示。请用原车三指左滑；转向提示由 iPhone 地图应用提供。</string>
+    <string name="e01_map_without_guidance">地图已显示，但尚未收到 iPhone 转向提示数据；仪表导航指示可能不可用。</string>
+    <string name="e01_map_stream_unavailable">未收到 iPhone 仪表地图画面。请确认 CarPlay 正在显示地图；若仍无画面，请保存诊断报告。</string>
     <string name="steering_siri">方向盘唤醒 Siri</string>
     <string name="steering_siri_hint">通过语音键唤醒 Siri。关闭后不影响切歌、通话和 iPhone 自身的 Siri。</string>
     <string name="vehicle_map_key_input">选择按键来源</string>

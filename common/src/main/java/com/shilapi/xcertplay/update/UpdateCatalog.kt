@@ -30,6 +30,7 @@ internal data class UpdateRelease(val version: String, val apkName: String, val 
 }
 
 internal object UpdateCatalog {
+    private const val APK_PREFIX = "GeelyPlay"
     const val PACKAGE = "com.shihab.diplay.preface"
     const val REPOSITORY = "https://github.com/huangwits/DiPlay-Preface"
     const val RELEASES_URL = "https://api.github.com/repos/huangwits/DiPlay-Preface/releases?per_page=20"
@@ -44,7 +45,7 @@ internal object UpdateCatalog {
         val release = stable.firstOrNull() ?: throw IOException("暂未找到可用的星瑞正式版，请稍后重试。")
         val tag = release.getString("tag_name")
         val version = tag.removePrefix("v")
-        val name = "DiPlay-Preface-v$version.apk"
+        val name = "$APK_PREFIX-v$version.apk"
         val assets = release.optJSONArray("assets") ?: throw IOException("新版安装包尚未准备好，请稍后重试。")
         val matches = (0 until assets.length()).mapNotNull(assets::optJSONObject).filter { it.optString("name") == name }
         val asset = matches.singleOrNull() ?: throw IOException("新版安装包尚未准备好，请稍后重试。")
@@ -64,7 +65,7 @@ internal object UpdateCatalog {
 
     private fun validate(release: UpdateRelease, tag: String = "v${release.version}"): UpdateRelease {
         require(UpdateVersion.parse(release.version) != null && !release.version.startsWith("v"))
-        require(release.apkName == "DiPlay-Preface-v${release.version}.apk")
+        require(release.apkName == "$APK_PREFIX-v${release.version}.apk")
         require(release.apkUrl == "$REPOSITORY/releases/download/$tag/${release.apkName}")
         release.assetApiUrl?.let {
             val url = java.net.URL(it)

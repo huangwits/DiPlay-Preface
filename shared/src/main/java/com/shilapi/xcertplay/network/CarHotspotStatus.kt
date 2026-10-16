@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay.network
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.content.Context
 import android.content.IntentFilter
 import android.content.Intent
@@ -22,6 +22,14 @@ object CarHotspotStatus {
      * while tethering is off.
      */
     fun isEnabled(context: Context): Boolean? {
+        // carlito | Android SoftAP cannot disprove the separate factory AP. Its presence alone
+        // does not prove readiness: ManualHotspotInterfaces still requires an actual client route.
+        return androidEnabled(context).takeUnless {
+            it == false && EcarxHotspotReader.available(context)
+        }
+    }
+
+    internal fun androidEnabled(context: Context): Boolean? {
         val app = context.applicationContext
         val wifi = app.systemService(WifiManager::class.java, "wifi")
         return read(

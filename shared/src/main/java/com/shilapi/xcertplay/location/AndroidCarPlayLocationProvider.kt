@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay.location
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location

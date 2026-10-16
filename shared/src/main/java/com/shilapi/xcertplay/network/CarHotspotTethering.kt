@@ -1,8 +1,7 @@
 package com.shilapi.xcertplay.network
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.content.Context
-import android.net.ConnectivityManager
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.os.Bundle
@@ -16,6 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
+import com.geelyplay.preface.network.GkuiLegacySoftAp
 
 /** Uses the car's saved hotspot configuration. This never stops or reconfigures the hotspot. */
 object CarHotspotTethering {
@@ -24,12 +24,18 @@ object CarHotspotTethering {
         READY("Car hotspot is on"),
         PERMISSION_REQUIRED("Hotspot control permission is missing"),
         UNSUPPORTED("This firmware does not support automatic hotspot startup"),
+        NOT_ELIGIBLE("Hotspot auto-start is not eligible for this launch"),
         FAILED("The car could not start its hotspot"),
         TIMED_OUT("Timed out waiting for the car hotspot"),
         CANCELLED("Hotspot startup was cancelled"),
     }
 
-    fun permitted(context: Context): Boolean = com.shilapi.xcertplay.compat.ContextCompat.canWriteSettings(context)
+    fun permitted(context: Context): Boolean = com.geelyplay.preface.compat.ContextCompat.canWriteSettings(context)
+
+    fun gkuiLegacySoftApSupported(context: Context): Boolean = GkuiLegacySoftAp.supported(context)
+
+    /** Android 8.0–10 support the app-owned tethering path without an ADB shell. */
+    fun appStartSupported(): Boolean = PlatformTetheringStart.supported()
 
     /** Blocking; serialize startup and connection requests, checking cancellation after acquiring the lock. */
     fun enable(
@@ -38,22 +44,38 @@ object CarHotspotTethering {
         timeoutMillis: Long = WirelessStartupPolicy.HOTSPOT_READY_MILLIS,
         log: (String) -> Unit,
     ): Result {
+        val gkuiLegacySoftAp = GkuiLegacySoftAp.supported(context)
+        // carlito | A separately managed factory AP must not be replaced by Android tethering
+        // or an ADB fallback. The existing manual manager reads its state and verifies its route.
+        if (!gkuiLegacySoftAp && EcarxHotspotReader.available(context) &&
+            CarHotspotStatus.androidEnabled(context) != true) {
+            return (if (isCancelled()) Result.CANCELLED else Result.UNSUPPORTED).also {
+                log("car hotspot auto-enable: factory AP remains owned by the car settings")
+            }
+        }
         val deadline = System.nanoTime() + timeoutMillis * 1_000_000L
-        val observedAdbState = AtomicReference<Boolean?>()
+        val observedStartedState = AtomicReference<Boolean?>()
+        val readHotspotState = {
+            if (gkuiLegacySoftAp) CarHotspotStatus.androidEnabled(context)
+            else CarHotspotStatus.isEnabled(context)
+        }
         val startReflection: (ResultReceiver) -> Unit = { receiver ->
-            if (Build.VERSION.SDK_INT < 26) {
+            if (gkuiLegacySoftAp) {
                 val wifi = context.systemService(WifiManager::class.java, "wifi")
                     ?: throw NoSuchMethodException("Wi-Fi service unavailable")
-                if (!startLegacyHotspot(wifi)) receiver.send(1, null)
+                val remaining = ((deadline - System.nanoTime()) / 1_000_000L).coerceAtLeast(1L)
+                if (!GkuiLegacySoftAp.start(
+                        wifi, remaining, isCancelled, { CarHotspotStatus.androidEnabled(context) }, log,
+                    )) throw LegacyHotspotRejectedException()
+                observedStartedState.set(true)
+            } else if (Build.VERSION.SDK_INT < 26) {
+                val wifi = context.systemService(WifiManager::class.java, "wifi")
+                    ?: throw NoSuchMethodException("Wi-Fi service unavailable")
+                // Some Android 5.1 vendor services return false even when their
+                // advertised tethering command can start the saved AP.
+                if (!startLegacyHotspot(wifi)) throw LegacyHotspotRejectedException()
             } else {
-                val service = ConnectivityManager::class.java.getDeclaredField("mService")
-                    .apply { isAccessible = true }
-                    .get(context.systemService(ConnectivityManager::class.java, "connectivity"))
-                    ?: throw NoSuchMethodException("Connectivity service unavailable")
-                service.javaClass.getMethod(
-                    "startTethering", Int::class.javaPrimitiveType, ResultReceiver::class.java,
-                    Boolean::class.javaPrimitiveType, String::class.java,
-                ).invoke(service, 0, receiver, false, context.packageName)
+                PlatformTetheringStart.start(context, receiver, log)
             }
         }
         val startAdb: () -> Boolean = {
@@ -66,26 +88,34 @@ object CarHotspotTethering {
                     if (isCancelled() || Thread.currentThread().isInterrupted || System.nanoTime() >= deadline) false
                     else if (adb.connect(mayAsk = false) != LocalAdb.Access.READY) false
                     else CarHotspotAdbFallback.start(deadline, isCancelled,
-                        state = { CarHotspotStatus.isEnabled(context) }, shell = adb::shell, log = log)
-                        .also { if (it) observedAdbState.set(true) }
+                        state = readHotspotState, shell = adb::shell, log = log)
+                        .also { if (it) observedStartedState.set(true) }
                 }
             }
         }
         return enableUntil(
             deadline,
             isCancelled,
-            { permitted(context) },
-            stateWithAdbObservation({ CarHotspotStatus.isEnabled(context) }, observedAdbState),
+            { gkuiLegacySoftAp || permitted(context) },
+            stateWithAdbObservation(readHotspotState, observedStartedState),
             startFallback = startAdb,
             start = startReflection,
+            startWhenUnknown = canAttemptDirectStartBeforeAdb(
+                sdkInt = Build.VERSION.SDK_INT,
+                gkuiLegacySoftAp = gkuiLegacySoftAp,
+            ),
         ).also { log("car hotspot auto-enable: ${it.diagnostic}") }
     }
 
-    // Android 5.1 uses null to load the existing AP configuration. Never synthesize credentials,
-    // disable station Wi-Fi, or change the saved AP; enableUntil still checks actual readiness.
+    // Generic Android 5.1 fallback for firmware without the GKUI saved-configuration API.
     internal fun startLegacyHotspot(wifi: Any): Boolean = wifi.javaClass.getMethod(
         "setWifiApEnabled", WifiConfiguration::class.java, Boolean::class.javaPrimitiveType,
     ).invoke(wifi, null, true) == true
+
+    internal class LegacyHotspotRejectedException : Exception()
+
+    internal fun canAttemptDirectStartBeforeAdb(sdkInt: Int, gkuiLegacySoftAp: Boolean): Boolean =
+        gkuiLegacySoftAp || sdkInt < Build.VERSION_CODES.O || PlatformTetheringStart.supported(sdkInt)
 
     /** An ADB observation supplements hidden platform status, but never overrides a current off state. */
     internal fun stateWithAdbObservation(
@@ -108,8 +138,9 @@ object CarHotspotTethering {
         isEnabled: () -> Boolean?,
         startFallback: (() -> Boolean)?,
         start: (ResultReceiver) -> Unit,
+        startWhenUnknown: Boolean = false,
     ): Result = enableUntil(System.nanoTime() + timeoutMillis * 1_000_000L,
-        isCancelled, canWrite, isEnabled, startFallback, start)
+        isCancelled, canWrite, isEnabled, startFallback, start, startWhenUnknown)
 
     private fun enableUntil(
         deadline: Long,
@@ -118,6 +149,7 @@ object CarHotspotTethering {
         isEnabled: () -> Boolean?,
         startFallback: (() -> Boolean)?,
         start: (ResultReceiver) -> Unit,
+        startWhenUnknown: Boolean = false,
     ): Result {
         fun stopped(): Result? = when {
             isCancelled() || Thread.currentThread().isInterrupted -> Result.CANCELLED
@@ -151,13 +183,13 @@ object CarHotspotTethering {
                 }
             }
             val unknown = initialState == null
-            if (unknown) {
+            if (unknown && !startWhenUnknown) {
                 if (!fallback()) return stopped() ?: Result.UNSUPPORTED
             }
             val response = AtomicInteger(-1)
             try {
                 stopped()?.let { return it }
-                if (!unknown) {
+                if (!unknown || startWhenUnknown) {
                     start(object : ResultReceiver(null) {
                         override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
                             response.set(resultCode)
@@ -165,7 +197,8 @@ object CarHotspotTethering {
                     })
                 }
             } catch (error: Exception) {
-                val adbRecovered = ((error is ReflectiveOperationException && error !is InvocationTargetException) ||
+                val adbRecovered = ((error is LegacyHotspotRejectedException) ||
+                    (error is ReflectiveOperationException && error !is InvocationTargetException) ||
                     error is SecurityException ||
                     (error is InvocationTargetException && error.targetException is SecurityException)) &&
                     fallback()

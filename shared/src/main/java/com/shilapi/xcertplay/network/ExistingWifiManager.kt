@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay.network
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkProperties
@@ -116,7 +116,7 @@ class ExistingWifiManager(
                     hosts = addresses
                     interfaceIndex = iface.index
                     interfaceName = name
-                    connectivity.registerNetworkCallback(NetworkRequest.Builder().apply { if (android.os.Build.VERSION.SDK_INT >= 30) clearCapabilities() else { removeCapability(13); removeCapability(14); removeCapability(15) } }
+                    connectivity.registerNetworkCallback(requestWithoutDefaultCapabilities()
                         .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), callback)
                     callbackRegistered = true
@@ -183,4 +183,15 @@ class ExistingWifiManager(
             }
         }
     }
+
+    // NetworkRequest.Builder.clearCapabilities needs API 30; before that, drop the defaults one by one.
+    private fun requestWithoutDefaultCapabilities(): NetworkRequest.Builder =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            NetworkRequest.Builder().clearCapabilities()
+        } else {
+            NetworkRequest.Builder()
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+        }
 }

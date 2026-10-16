@@ -1,7 +1,7 @@
 // carlito | Owns only DiPlay's communication mode/device/SCO requests, with one process-wide lease.
 package com.shilapi.xcertplay.media
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -11,7 +11,7 @@ import java.io.Closeable
 
 internal class CommunicationAudioRoute(context: Context?, private val report: (String) -> Unit) : Closeable {
     private val manager = context?.systemService(AudioManager::class.java, "audio")
-    private val factoryPhone = context?.let(com.shilapi.xcertplay.network.E01ConnectedPhones::supported) == true
+    private val factoryPhone = context?.let(com.geelyplay.preface.network.E01ConnectedPhones::supported) == true
     private var output: AudioOutputDevice? = null
     private var input: AudioOutputDevice? = null
     private var selectedDevice: Int? = null

@@ -25,6 +25,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.shilapi.xcertplay.host.R
 import org.json.JSONObject
+import com.geelyplay.preface.AppPageStyle
 
 /** One panel: identify a physical key, fill its mapping, apply, and return the named profile to cloud. */
 class SteeringControlsActivity : ComponentActivity() {
@@ -131,8 +132,10 @@ class SteeringControlsActivity : ComponentActivity() {
         val content = column().apply { setPadding(dp(28), dp(20), dp(28), dp(28)) }
         scroll.addView(content)
         val header = row()
-        header.addView(label(getString(R.string.steering_identification), 26f, bold = true), LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(button(getString(R.string.back)) { finish() }, LinearLayout.LayoutParams(-2, -2))
+        header.addView(label(getString(R.string.steering_identification), 26f, bold = true).apply {
+            setPadding(dp(12), 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(header)
         content.addView(label(getString(R.string.steering_panel_intro), 16f, MUTED), params(12))
 

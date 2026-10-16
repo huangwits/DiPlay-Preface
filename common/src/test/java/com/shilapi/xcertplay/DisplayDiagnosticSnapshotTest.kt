@@ -57,4 +57,18 @@ class DisplayDiagnosticSnapshotTest {
         assertFalse(report.contains("secret"))
         assertTrue(report.lines().all { it.length <= 700 })
     }
+
+    @Test fun mapStagesSurviveDisconnectButCannotLeakIntoANewerNegotiation() {
+        val old = DisplayDiagnosticSnapshot.begin(context, "request", "capability", "effective")
+        val lines = listOf("Map plan: target=3 canvas=1920x720 factoryNative=true",
+            "Map gesture: source=app direction=SHOW result=vehicle_map_waiting",
+            "Map system gesture: direction=left prepared=true active=true enabled=true",
+            "Map native: stage=MODE_REQUESTED", "Map stream: type=111 active=true",
+            "Map output: stage=FRAME_TIMEOUT firstFrame=false", "Map closed: stage=FRAME_TIMEOUT")
+        lines.forEach { DisplayDiagnosticSnapshot.record(context, old, it) }
+        assertTrue(lines.all { DisplayDiagnosticSnapshot.report(context).contains(it) })
+        DisplayDiagnosticSnapshot.begin(context, "new request", "new capability", "new effective")
+        lines.forEach { DisplayDiagnosticSnapshot.record(context, old, it) }
+        assertFalse(DisplayDiagnosticSnapshot.report(context).contains("Map "))
+    }
 }

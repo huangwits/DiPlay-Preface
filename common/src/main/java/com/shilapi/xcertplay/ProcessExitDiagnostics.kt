@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build

@@ -91,6 +91,20 @@ class LauncherIntentTest {
         assertEquals(0, stops)
     }
 
+    @Test fun bootHotspotRequestDeliveredToAnExistingActivityIsConsumed() {
+        CarPlayBackgroundSession.active = false
+        controller = Robolectric.buildActivity(DiPlayActivity::class.java, Intent().putExtra("page", "settings")).create()
+        val activity = controller!!.get()
+        val boot = Intent().putExtra("boot_hotspot", true).putExtra("page", "settings")
+
+        ReflectionHelpers.callInstanceMethod<Unit>(activity, "onNewIntent",
+            ReflectionHelpers.ClassParameter(Intent::class.java, boot))
+
+        assertFalse(boot.getBooleanExtra("boot_hotspot", false))
+        assertEquals("NOT_ELIGIBLE", RuntimeEnvironment.getApplication()
+            .getSharedPreferences("diplay_startup_diagnostics", 0).getString("hotspotResult", null))
+    }
+
     @Test fun recreationRetainsSettingsInsteadOfRedirectingToProjection() {
         controller = Robolectric.buildActivity(DiPlayActivity::class.java, launcher())
             .create(Bundle().apply { putString("page", "settings") })

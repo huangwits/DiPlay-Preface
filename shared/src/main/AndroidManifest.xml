@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission
         android:name="android.permission.BLUETOOTH"
@@ -25,30 +26,16 @@
         android:required="false" />
 
     <queries>
+        <package android:name="com.geely.settings" />
         <intent>
             <action android:name="android.settings.WIFI_SETTINGS" />
         </intent>
         <intent>
-            <action android:name="com.android.settings.WIFI_TETHER_SETTINGS" />
+            <action android:name="android.settings.TETHER_SETTINGS" />
         </intent>
     </queries>
 
     <application android:usesCleartextTraffic="true">
-        <!-- Minimum Car API level -->
-        <meta-data
-            android:name="androidx.car.app.minCarApiLevel"
-            android:value="1" />
-
-        <service
-            android:name="com.shilapi.xcertplay.shared.MyCarAppService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="androidx.car.app.CarAppService" />
-                <!-- Other categories: NAVIGATION, CHARGING, IOT, ... -->
-                <category android:name="androidx.car.app.category.POI" />
-            </intent-filter>
-        </service>
-
         <service
             android:name="com.shilapi.xcertplay.network.CarPlayVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"

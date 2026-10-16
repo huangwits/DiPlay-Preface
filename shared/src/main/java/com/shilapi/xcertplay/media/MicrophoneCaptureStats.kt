@@ -15,6 +15,7 @@ internal class MicrophoneCaptureStats(
 ) {
     private val type = typeAndSource(config.audioType).first
     private val format = format(config)
+    private val bytesPerSampleFrame = config.channels * 2
     private var metadata = metadata(config)
     private var windowStart = nowNs()
     private var readStart = windowStart
@@ -29,6 +30,7 @@ internal class MicrophoneCaptureStats(
     private var sendErrors = 0L
     private var lastSentNs: Long? = null
     private var sendGapMaxNs = 0L
+    private var peakSample = 0
     private var routedDeviceType: Int? = null
 
     fun started(routeType: Int?) {
@@ -52,6 +54,19 @@ internal class MicrophoneCaptureStats(
         }
     }
 
+    /**
+     * The loudest 16-bit little-endian sample sent in this window. Without it, a microphone that
+     * delivers silence and an uplink the iPhone discards looked the same in a report (#647).
+     */
+    fun level(pcm: ByteArray) {
+        var index = 0
+        while (index + 1 < pcm.size) {
+            val sample = (pcm[index].toInt() and 0xff) or (pcm[index + 1].toInt() shl 8)
+            peakSample = maxOf(peakSample, kotlin.math.abs(sample))
+            index += 2
+        }
+    }
+
     fun encoded(frameCount: Int, emptyCount: Int) {
         encodedFrames += frameCount.coerceAtLeast(0)
         emptyEncodedFrames += emptyCount.coerceAtLeast(0)
@@ -66,6 +81,11 @@ internal class MicrophoneCaptureStats(
 
     fun sendFailed() { sendErrors++ }
 
+    fun restarted(attempt: Int, reason: String, routeType: Int?) {
+        emit("Microphone: recording restarted $metadata attempt=$attempt reason=$reason " +
+            "routedDeviceType=${routeType ?: "unknown"}")
+    }
+
     fun failure(stage: MicrophoneFailureStage, error: Throwable? = null, code: Int? = null) {
         emit(failureMessage(metadata, stage, error, code))
     }
@@ -74,11 +94,14 @@ internal class MicrophoneCaptureStats(
         val now = nowNs()
         if (!ended && now - windowStart < REPORT_INTERVAL_NS) return
         if (routeType != null) routedDeviceType = runCatching { routeType() }.getOrNull()
+        val windowMs = ((now - windowStart) / 1_000_000L).coerceAtLeast(0)
+        val captureHz = if (windowMs > 0) capturedBytes * 1000L / bytesPerSampleFrame / windowMs else 0L
         emit("Microphone: stats $metadata routedDeviceType=${routedDeviceType ?: "unknown"} " +
             "captureBytes=$capturedBytes reads=$reads zeroReads=$zeroReads readErrors=$readErrors " +
             "readMaxMs=${readMaxNs / 1_000_000} encodedFrames=$encodedFrames " +
             "emptyEncodedFrames=$emptyEncodedFrames udpSent=$udpSent sendErrors=$sendErrors " +
-            "sendGapMaxMs=${sendGapMaxNs / 1_000_000} ended=$ended")
+            "sendGapMaxMs=${sendGapMaxNs / 1_000_000} peakDbfs=${peakDbfs(peakSample)} " +
+            "windowMs=$windowMs captureHz=$captureHz ended=$ended")
         windowStart = now
         capturedBytes = 0
         reads = 0
@@ -90,12 +113,17 @@ internal class MicrophoneCaptureStats(
         udpSent = 0
         sendErrors = 0
         sendGapMaxNs = 0
+        peakSample = 0
     }
 
     private fun emit(message: String) { runCatching { report(message) } }
 
     companion object {
         private const val REPORT_INTERVAL_NS = 5_000_000_000L
+
+        /** Whole dBFS of a 16-bit peak; "silent" when every sample was zero. */
+        internal fun peakDbfs(peak: Int): String =
+            if (peak <= 0) "silent" else Math.round(20 * kotlin.math.log10(peak / 32768.0)).toString()
 
         private fun typeAndSource(audioType: String): Pair<String, String> = when (audioType) {
             "telephony" -> "telephony" to "VOICE_COMMUNICATION"

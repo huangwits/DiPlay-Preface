@@ -58,7 +58,8 @@ object ConnectionSettingsSection {
             context = context,
             label = context.getString(R.string.wi_fi_session),
             options = modes,
-            selected = selected,
+            selected = selected.takeUnless { it == WirelessHotspotMode.AUTOMATIC }
+                ?: WirelessHotspotMode.MANUAL,
             theme = theme,
             onSelected = onSelected,
         )

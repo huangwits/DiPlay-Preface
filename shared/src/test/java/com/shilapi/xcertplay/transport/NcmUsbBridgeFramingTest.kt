@@ -63,34 +63,36 @@ class NcmUsbBridgeFramingTest {
         checkSplitFollowingBlock(padded = false)
     }
 
-    @Test fun nonzeroGarbageAfterAlignedBlockStillFailsTheTransport() {
-        NcmFramingReplay.chunks.add(unpadded(alignedFrame, 1) + byteArrayOf(0x55))
+    @Test fun nonzeroGarbageAfterAlignedBlockResynchronizesAtTheNextHeader() {
+        NcmFramingReplay.chunks.add(unpadded(alignedFrame, 1) + byteArrayOf(0x55) + Ntb16Codec.build(smallFrame, 2))
         withBridge { ncm ->
-            val error = expectFailure { ncm.recv(50) }
-            assertTrue(error.message!!.contains("Invalid NTB16 short-packet pad"))
-            assertTrue(error === expectFailure { ncm.recv(50) })
+            assertArrayEquals(alignedFrame, ncm.recv(50))
+            assertArrayEquals(smallFrame, ncm.recv(50))
         }
     }
 
-    @Test fun nextHeaderWithOnlyItsFirstSignatureByteCorrectStillFails() {
+    @Test fun malformedHeaderIsSkippedAndTheNextValidBlockIsRecovered() {
         val malformed = Ntb16Codec.build(smallFrame, 2).also { it[1] = 0x55 }
-        NcmFramingReplay.chunks.add(unpadded(alignedFrame, 1) + malformed)
+        NcmFramingReplay.chunks.add(unpadded(alignedFrame, 1) + malformed + Ntb16Codec.build(smallFrame, 3))
         withBridge { ncm ->
-            assertTrue(expectFailure { ncm.recv(50) }.message!!.contains("NTB16 header"))
+            assertArrayEquals(alignedFrame, ncm.recv(50))
+            assertArrayEquals(smallFrame, ncm.recv(50))
         }
     }
 
-    @Test fun moreThanOnePadByteStillFailsHeaderValidation() {
+    @Test fun alignedBlockAcceptsOneOptionalZeroPad() {
         NcmFramingReplay.chunks.add(Ntb16Codec.build(alignedFrame, 1) + byteArrayOf(0) + Ntb16Codec.build(smallFrame, 2))
         withBridge { ncm ->
-            assertTrue(expectFailure { ncm.recv(50) }.message!!.contains("NTB16 header"))
+            assertArrayEquals(alignedFrame, ncm.recv(50))
+            assertArrayEquals(smallFrame, ncm.recv(50))
         }
     }
 
-    @Test fun unalignedBlocksDoNotAcceptExtraPadding() {
+    @Test fun unexpectedPaddingAfterUnalignedBlockIsSkippedToTheNextHeader() {
         NcmFramingReplay.chunks.add(Ntb16Codec.build(smallFrame, 1) + byteArrayOf(0) + Ntb16Codec.build(smallFrame, 2))
         withBridge { ncm ->
-            assertTrue(expectFailure { ncm.recv(50) }.message!!.contains("NTB16 header"))
+            assertArrayEquals(smallFrame, ncm.recv(50))
+            assertArrayEquals(smallFrame, ncm.recv(50))
         }
     }
 

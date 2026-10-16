@@ -20,7 +20,6 @@ import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import com.shilapi.xcertplay.transport.Iap2IdentificationConfig
 import java.time.Duration
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -35,6 +34,8 @@ import org.robolectric.android.util.concurrent.PausedExecutorService
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import org.robolectric.shadows.ShadowLog
+import com.geelyplay.preface.CarPlayShutdownGate
+import com.geelyplay.preface.E01FactoryMapTarget
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29])
@@ -59,7 +60,7 @@ class CarPlayHostDisplaySizeTest {
     }
 
     @After fun tearDown() {
-        (getField("shuttingDown") as AtomicBoolean).set(true)
+        (getField("shuttingDown") as CarPlayShutdownGate).begin(terminate = false)
         (getField("mainHandler") as Handler).removeCallbacksAndMessages(null)
         AirPlayPersistence.overlaySettingsListener = null
         (getField("controller") as? CarPlayController)?.let {
@@ -100,6 +101,34 @@ class CarPlayHostDisplaySizeTest {
         assertEquals(1, getField("restartGeneration"))
         assertNull(getField("sessionDisplay"))
     }
+
+    @Test fun resumingASquareCanvasInTheSameWindowDoesNotReconnect() {
+        AirPlayPersistence.saveAdaptPipResolution(activity, true)
+        val display = startSession(windowHeight = 1080, canvasHeight = 1920)
+        val video = object : TextureView(activity) {
+            override fun post(action: Runnable): Boolean = Handler(Looper.getMainLooper()).post(action)
+        }.apply { layout(0, 0, 1920, 1080) }
+        setField("videoView", video)
+
+        invoke("onResume")
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
+
+        assertSame(display, getField("sessionDisplay"))
+        assertEquals(size(1920, 1080), getField("activeDisplaySize"))
+        assertEquals(0, getField("restartGeneration"))
+        assertNull(getField("pendingDisplaySize"))
+    }
+
+    @Test fun aRealPipAspectChangeStillReconnectsWithASquareCanvas() {
+        AirPlayPersistence.saveAdaptPipResolution(activity, true)
+        startSession(windowHeight = 1080, canvasHeight = 1920)
+
+        applySize(700, 1080)
+
+        assertEquals(1, getField("restartGeneration"))
+        assertNull(getField("sessionDisplay"))
+    }
+
 
     @Test fun connectingInANarrowWindowRebuildsWhenTheCameraCloses() {
         startSession(windowWidth = 700)
@@ -388,6 +417,11 @@ class CarPlayHostDisplaySizeTest {
             AirPlayIdentity.generate(), PairingStore(), object : AirPlaySessionListener {},
             object : AirPlayMediaHandler {}, {})
         try {
+            val instrument = org.robolectric.shadows.ShadowDisplayManager.addDisplay("w1920dp-h720dp")
+            val plan = E01FactoryMapTarget.select(activity, E01FactoryMapTarget.Spec(instrument, 1920, 720))!!
+            VehicleMapProjection.attach(activity, controller, sink, plan)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertNull(getField("vehicleMapPlan"))
             CarPlayBackgroundSession.store(controller, sink, 1920, 990, Any(), display) {}
             val adopted = activity.javaClass.getDeclaredMethod("adoptBackgroundSession")
                 .apply { isAccessible = true }.invoke(activity)
@@ -395,6 +429,9 @@ class CarPlayHostDisplaySizeTest {
             applySize(700, 990)
             assertSame(controller, getField("controller"))
             assertSame(sink, getField("sink"))
+            assertSame(plan, getField("vehicleMapPlan"))
+            assertSame(plan, VehicleMapProjection.selectionFor(controller))
+            assertNull(VehicleMapProjection.selectionFor(org.mockito.Mockito.mock(CarPlayController::class.java)))
             assertEquals(display, getField("sessionDisplay"))
             assertEquals(display, CarPlayBackgroundSession.snapshot()?.display)
             assertFalse(controller.isClosed())

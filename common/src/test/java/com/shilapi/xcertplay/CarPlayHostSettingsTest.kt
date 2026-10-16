@@ -17,8 +17,9 @@ import com.shilapi.xcertplay.host.R
 import com.shilapi.xcertplay.orchestration.*
 import com.shilapi.xcertplay.transport.Iap2IdentificationConfig
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
+import android.app.AlertDialog
+import android.os.Looper
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -30,9 +31,11 @@ import org.mockito.Mockito.`when`
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowAlertDialog
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import org.robolectric.android.util.concurrent.PausedExecutorService
+import com.geelyplay.preface.CarPlayShutdownGate
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29])
@@ -60,7 +63,7 @@ class CarPlayHostSettingsTest {
     }
 
     @After fun tearDown() {
-        (field("shuttingDown") as AtomicBoolean).set(true)
+        (field("shuttingDown") as CarPlayShutdownGate).begin(terminate = false)
         (field("mainHandler") as Handler).removeCallbacksAndMessages(null)
         (field("teardownExecutor") as ExecutorService).shutdownNow()
         (field("airPlayCommandExecutor") as ExecutorService).shutdownNow()
@@ -68,6 +71,68 @@ class CarPlayHostSettingsTest {
         controllers.close()
     }
 
+    @Test fun disabledGesturePersistsAndDoesNotOpenTheMenu() {
+        AirPlayPersistence.saveSettingsGestureFingers(activity, 0)
+        invoke("loadPersistedSettings")
+        assertEquals(0, AirPlayPersistence.loadSettingsGestureFingers(activity))
+        for (fingers in 2..4) {
+            gesture(fingers)
+            assertFalse(field("menuOpen") as Boolean)
+            assertFalse(field("gestureSequenceActive") as Boolean)
+        }
+        invoke("openSettingsMenu")
+        val button = views(menu()).filterIsInstance<Button>()
+            .first { it.text == activity.getString(R.string.settings_gesture_disabled_action) }
+        button.performClick()
+        assertEquals(2, field("gestureFingerCount"))
+        invoke("cancelSettingsEdits")
+        assertEquals(0, field("gestureFingerCount"))
+    }
+
+    @Test fun menuStaysCenteredAndUsesAvailableWidthAcrossWindowSizes() {
+        invoke("openSettingsMenu")
+        val overlay = menu() as ViewGroup
+        val panel = overlay.getChildAt(0)
+        val density = activity.resources.displayMetrics.density
+        for (widthDp in listOf(320, 600, 1024, 1600)) {
+            val width = (widthDp * density + 0.5f).toInt()
+            val height = (480 * density + 0.5f).toInt()
+            repeat(3) {
+                overlay.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+                overlay.layout(0, 0, width, height)
+            }
+            val expected = (minOf(720, widthDp - 32) * density + 0.5f).toInt()
+            assertEquals(expected, panel.width)
+            assertTrue(kotlin.math.abs(panel.left - (width - panel.right)) <= 1)
+            val title = views(panel).filterIsInstance<TextView>()
+                .first { it.text == activity.getString(R.string.carplay_settings) }
+            val close = views(panel).filterIsInstance<Button>().first { it.text == activity.getString(R.string.close) }
+            val titleBounds = android.graphics.Rect(0, 0, title.width, title.height)
+            (panel as ViewGroup).offsetDescendantRectToMyCoords(title, titleBounds)
+            val closeBounds = android.graphics.Rect(0, 0, close.width, close.height)
+            panel.offsetDescendantRectToMyCoords(close, closeBounds)
+            assertTrue(kotlin.math.abs(titleBounds.exactCenterY() - closeBounds.exactCenterY()) <= 1f)
+            assertTrue(panel.height < height)
+        }
+    }
+
+    @Test fun originalAuthorMenuUsesOneScrollAndKeepsDraftEdits() {
+        invoke("openSettingsMenu")
+        val root = menu() as ViewGroup
+        assertTrue(views(root).filterIsInstance<android.widget.LinearLayout>()
+            .filter { it.tag in setOf("connection", "display", "navigation", "vehicle", "diagnostics", "advanced", "more") }
+            .all { it.visibility == View.VISIBLE })
+        val original = AirPlayPersistence.loadDisplayScalePercent(activity)
+        resolutionSlider().progress = 0
+        val edited = field("displayScalePercent")
+        assertEquals(edited, field("displayScalePercent"))
+        assertEquals(original, AirPlayPersistence.loadDisplayScalePercent(activity))
+        val save = views(root).filterIsInstance<Button>().single { it.text == activity.getString(R.string.save_and_reconnect) }
+        assertFalse(generateSequence(save.parent) { it.parent }.any { it is android.widget.ScrollView })
+        invoke("cancelSettingsEdits")
+        assertEquals(original, field("displayScalePercent"))
+    }
     @Test fun configuredFingerCountsOpenTheMountedMenuWithoutLeavingCarPlay() {
         assertEquals(3, AirPlayPersistence.loadSettingsGestureFingers(activity))
         for (fingers in 2..4) {
@@ -248,6 +313,26 @@ class CarPlayHostSettingsTest {
         assertEquals(MfiTarget.USB_CH341, field("mfiTarget"))
     }
 
+    @Test fun lightAppearanceRepaintsAnOpenMenuWithoutLosingDraftState() {
+        invoke("openSettingsMenu")
+        setField("manualHotspotSsid", "Unsaved hotspot")
+        val oldMenu = menu()
+        val scroll = views(oldMenu).filterIsInstance<android.widget.ScrollView>().single()
+        scroll.scrollTo(0, 120)
+
+        AirPlayPersistence.saveAppAppearance(activity, AppAppearance.LIGHT)
+        invoke("refreshAppAppearance")
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        assertNotSame(oldMenu, menu())
+        assertEquals("Unsaved hotspot", field("manualHotspotSsid"))
+        assertEquals(false, field("appNight"))
+        assertEquals(0xB3000000.toInt(), (menu().background as android.graphics.drawable.ColorDrawable).color)
+        val heading = views(menu()).filterIsInstance<TextView>()
+            .first { it.text == activity.getString(R.string.carplay_settings) }
+        assertEquals(DiPlayPalette.LIGHT.overlayPrimaryText, heading.currentTextColor)
+    }
+
     @Test fun savingPersistsSettingsAndRestartsOnce() {
         attachController()
         invoke("openSettingsMenu")
@@ -376,7 +461,7 @@ class CarPlayHostSettingsTest {
         assertTrue(AirPlayPersistence.loadWirelessEnabled(activity))
         assertTrue(field("wirelessEnabled") as Boolean)
         assertSame(controller, field("controller"))
-        assertFalse((field("shuttingDown") as AtomicBoolean).get())
+        assertFalse((field("shuttingDown") as CarPlayShutdownGate).get())
         assertFalse(activity.isFinishing)
         assertNull(shadowOf(activity).nextStartedActivity)
     }
@@ -394,7 +479,7 @@ class CarPlayHostSettingsTest {
         assertFalse(AirPlayPersistence.loadWirelessEnabled(activity))
         assertFalse(field("wirelessEnabled") as Boolean)
         assertTrue(field("vpnReady") as Boolean)
-        assertFalse((field("shuttingDown") as AtomicBoolean).get())
+        assertFalse((field("shuttingDown") as CarPlayShutdownGate).get())
         assertFalse(activity.isFinishing)
         assertNull(shadowOf(activity).nextStartedActivity)
     }
@@ -538,6 +623,14 @@ class CarPlayHostSettingsTest {
         .first { it.text == activity.getString(R.string.settings_gesture_fingers, field("gestureFingerCount")) }
     private fun fullSettingsButton() = views(menu()).filterIsInstance<Button>()
         .first { it.text == activity.getString(R.string.app_name) + " " + activity.getString(R.string.settings) }
+    /** Answers the "Discard your changes?" dialog that an exit with staged edits now shows. */
+    private fun discardPendingEdits() {
+        val dialog = ShadowAlertDialog.getLatestAlertDialog()
+            ?: error("leaving the menu with a pending edit should ask before discarding")
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
     private fun views(view: View): Sequence<View> = sequence {
         yield(view)
         if (view is ViewGroup) for (index in 0 until view.childCount) yieldAll(views(view.getChildAt(index)))

@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay.network
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
@@ -146,8 +146,12 @@ class CarPlayBonjour(
     private val onEvent: (CarPlayBonjourEvent) -> Unit = {},
     additionalAddresses: List<InetAddress> = emptyList(),
 ) : Closeable {
-    private val nsdManager = (context.applicationContext ?: context)
-        .getSystemService(Context.NSD_SERVICE) as NsdManager
+    // Interface-bound mDNS does not need Android's NSD service, which may be absent on some head units.
+    private val nsdManager: NsdManager by lazy {
+        (context.applicationContext ?: context)
+            .getSystemService(Context.NSD_SERVICE) as? NsdManager
+            ?: throw IOException("Android NSD service is unavailable")
+    }
     private val services = LinkedBlockingQueue<NsdServiceInfo>()
     // carlito: retain the receiving LAN address through resolution and probing.
     private data class InterfaceEndpoint(

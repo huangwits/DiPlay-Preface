@@ -14,7 +14,7 @@ data class AudioOutputDevice(val id: Int, val type: Int, val address: String, va
     // carlito | Input and output preferences share the same stable device identity representation.
     fun resolveInput(manager: AudioManager?): AudioDeviceInfo? = resolveFrom(inputs(manager))
     private fun resolveFrom(devices: List<AudioDeviceInfo>): AudioDeviceInfo? =
-        if (Build.VERSION.SDK_INT < 23) null else if (address.isNotBlank()) devices.firstOrNull { it.id == id && it.type == type && deviceAddress(it) == address && it.productName.toString() == name }
+        if (Build.VERSION.SDK_INT < 23) null else if (Build.VERSION.SDK_INT >= 28 && address.isNotBlank()) devices.firstOrNull { it.id == id && it.type == type && deviceAddress(it) == address && it.productName.toString() == name }
             ?: devices.filter { it.type == type && deviceAddress(it) == address }.singleOrNull()
         else devices.firstOrNull { it.id == id && it.type == type && it.productName.toString() == name }
             ?: devices.filter { it.type == type && it.productName.toString() == name }.singleOrNull()
@@ -42,3 +42,6 @@ data class AudioOutputDevice(val id: Int, val type: Int, val address: String, va
         }.getOrNull()
     }
 }
+
+// carlito | Android 7/8 expose no address; retain the existing ID/type/name identity there.
+private fun AudioDeviceInfo.routingAddress(): String = if (Build.VERSION.SDK_INT >= 28) address else ""

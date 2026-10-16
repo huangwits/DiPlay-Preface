@@ -10,6 +10,18 @@ class MicrophoneCaptureStatsTest {
     private val config = MicrophoneConfig("telephony", 48_000, 1, 100, 20,
         InetAddress.getByName("198.51.100.20"), 54321, ByteArray(32) { 0x7f }, AudioCodecKind.OPUS)
 
+    @Test fun measuredRateDistinguishesReal48kCaptureFromTheObservedDoubleRate() {
+        for ((bytes, hz) in listOf(480_000 to 48_000, 960_000 to 96_000)) {
+            var now = 0L
+            val reports = mutableListOf<String>()
+            val stats = MicrophoneCaptureStats(config, reports::add) { now }
+            stats.read(bytes)
+            now = 5_000_000_000L
+            stats.flush()
+            assertTrue(reports.single().contains("windowMs=5000 captureHz=$hz"))
+        }
+    }
+
     @Test fun aggregatesFiveSecondWindowsAndKeepsFinalPartialWindow() {
         var now = 0L
         val reports = mutableListOf<String>()

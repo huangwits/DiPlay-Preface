@@ -13,12 +13,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Robolectric
-import com.shilapi.xcertplay.e01goc.E01GocActivity
+import com.geelyplay.preface.e01goc.E01GocActivity
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import com.geelyplay.preface.ConnectionWaitingView
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], qualifiers = "zh-rCN-mdpi", manifest = Config.NONE)
