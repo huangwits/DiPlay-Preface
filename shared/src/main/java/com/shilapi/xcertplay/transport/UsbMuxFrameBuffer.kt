@@ -56,6 +56,11 @@ internal class UsbMuxFrameBuffer(private val diagnostic: (String) -> Unit = {}) 
                     if (bytes.size < PADDING_BYTES + followingLength) return null
                     isCapturedDiagnosticPayload(bytes, PADDING_BYTES + HEADER_BYTES, followingLength - HEADER_BYTES)
                 }
+                // A VERSION reply is fixed-size, so validate it exactly when a second reply
+                // follows the previous reply's optional trailer.
+                previous != null && readU32(bytes, 0) != PROTOCOL_TCP &&
+                    followingProtocol == PROTOCOL_VERSION && followingLength == VERSION_BYTES &&
+                    readU32(bytes, PADDING_BYTES + 8) == VERSION_REPLY_WORD -> true
                 else -> false
             }
             if (previous != null && validTarget) {
@@ -118,6 +123,7 @@ internal class UsbMuxFrameBuffer(private val diagnostic: (String) -> Unit = {}) 
         const val TCP_HEADER_BYTES = 20
         const val MAX_FRAME_BYTES = 65_536
         const val VERSION_BYTES = 20
+        const val VERSION_REPLY_WORD = 2
         const val PADDING_BYTES = 4
         const val MAX_PADDING_REPORTS = 4
         const val PROTOCOL_VERSION = 0

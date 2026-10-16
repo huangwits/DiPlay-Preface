@@ -4,7 +4,7 @@ import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import com.shilapi.xcertplay.e01goc.E01GocActivity
+import com.geelyplay.preface.e01goc.E01GocActivity
 import com.shilapi.xcertplay.orchestration.MfiTarget
 import org.junit.Assert.*
 import org.junit.Test
@@ -28,7 +28,7 @@ class E01FactoryBluetoothUiTest {
         try {
             val labels = views(host.get().window.decorView).filterIsInstance<TextView>().toList()
             assertFalse(labels.any { "mtk-su" in it.text || "备用蓝牙" in it.text })
-            labels.single { it.text.toString() == "蓝牙工具" }.performClick()
+            labels.single { it.text.toString() == "无线 CarPlay" }.performClick()
             assertEquals(E01GocActivity::class.java.name,
                 shadowOf(host.get()).nextStartedActivity.component?.className)
             assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))

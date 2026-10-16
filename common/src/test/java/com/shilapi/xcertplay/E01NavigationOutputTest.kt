@@ -9,10 +9,15 @@ import com.shilapi.xcertplay.hud.CarPlayHudGuidance
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.Mockito.inOrder
+import org.mockito.Mockito.mock
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.util.ReflectionHelpers
+import com.geelyplay.preface.E01NaviServiceClient
+import com.geelyplay.preface.E01NavigationOutput
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23, 29], manifest = Config.NONE)
@@ -74,6 +79,17 @@ class E01NavigationOutputTest {
         assertEquals(9, shadowOf(context).broadcastIntents.last().getIntExtra("EXTRA_STATE", -1))
     }
 
+    @Test fun routeStateWithoutTurnsStartsAndStopsWithoutInventingAnArrow() {
+        installReceiver()
+        val output = E01NavigationOutput(context)
+        output.update(null, requiredByMap = true, routeActive = true)
+        output.update(null, requiredByMap = true, routeActive = true)
+        output.update(null, requiredByMap = true, routeActive = false)
+        val messages = shadowOf(context).broadcastIntents
+        assertEquals(listOf(8, 9), messages.map { it.getIntExtra("EXTRA_STATE", -1) })
+        assertTrue(messages.all { it.getIntExtra("KEY_TYPE", -1) == 10019 })
+    }
+
     @Test fun protocolUsesAmapIconsAndPreservesDistanceUnits() {
         val intent = E01NavigationOutput.guidanceIntent(turn)
         assertEquals("AUTONAVI_STANDARD_BROADCAST_SEND", intent.action)
@@ -87,5 +103,43 @@ class E01NavigationOutputTest {
         assertEquals(17, roundabout.getIntExtra("ICON", -1))
         assertEquals(3, roundabout.getIntExtra("ROUNG_ABOUT_NUM", -1))
         assertEquals(Int.MAX_VALUE, roundabout.getIntExtra("ROUTE_REMAIN_DIS", -1))
+    }
+
+    @Test fun arrivalIsSentOnceHeldForFiveSecondsAndThenCleared() {
+        installReceiver()
+        E01NavigationOutput.setEnabled(context, true)
+        val output = E01NavigationOutput(context)
+        output.update(turn)
+        output.update(null, arrived = true)
+        output.update(null, arrived = true)
+        assertEquals(39, shadowOf(context).broadcastIntents.last().getIntExtra("EXTRA_STATE", -1))
+        val size = shadowOf(context).broadcastIntents.size
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(4))
+        assertEquals(size, shadowOf(context).broadcastIntents.size)
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
+        assertEquals(9, shadowOf(context).broadcastIntents.last().getIntExtra("EXTRA_STATE", -1))
+    }
+
+    @Test fun newRouteCancelsArrivalTimerAndStartsFreshGuidance() {
+        installReceiver()
+        E01NavigationOutput.setEnabled(context, true)
+        val output = E01NavigationOutput(context)
+        val naviService = mock(E01NaviServiceClient::class.java)
+        ReflectionHelpers.setField(output, "naviService", naviService)
+        val newTurn = turn.copy(road = "新路线")
+        output.update(turn)
+        output.update(null, arrived = true)
+        output.update(newTurn)
+        inOrder(naviService).apply {
+            verify(naviService).update(turn, routeActive = true, arrived = false)
+            verify(naviService).update(null, routeActive = false, arrived = true)
+            verify(naviService).clear()
+            verify(naviService).update(newTurn, routeActive = true, arrived = false)
+        }
+        val size = shadowOf(context).broadcastIntents.size
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(6))
+        assertEquals(size, shadowOf(context).broadcastIntents.size)
+        assertEquals("新路线", shadowOf(context).broadcastIntents.last().getStringExtra("NEXT_ROAD_NAME"))
+        output.clear()
     }
 }

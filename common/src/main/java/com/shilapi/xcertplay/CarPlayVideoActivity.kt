@@ -42,6 +42,7 @@ import com.shilapi.xcertplay.host.R
 import java.util.Locale
 import androidx.media3.ui.R as Media3R
 import kotlin.math.roundToInt
+import com.geelyplay.preface.CarPlayVideoActivityBridge
 
 /**
  * The car's own player for iOS 27 video in car (see [CarPlayVideo]). Full screen over CarPlay, which

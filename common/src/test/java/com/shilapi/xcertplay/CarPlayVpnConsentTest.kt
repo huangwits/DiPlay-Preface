@@ -13,7 +13,6 @@ import androidx.core.app.ActivityOptionsCompat
 import java.io.File
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -26,6 +25,7 @@ import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.annotation.LooperMode
 import org.robolectric.util.ReflectionHelpers
+import com.geelyplay.preface.CarPlayShutdownGate
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23, 28], shadows = [VpnConsentTestShadow::class])
@@ -47,7 +47,7 @@ class CarPlayVpnConsentTest {
     }
 
     @After fun tearDown() {
-        ReflectionHelpers.getField<AtomicBoolean>(activity, "shuttingDown").set(true)
+        ReflectionHelpers.getField<CarPlayShutdownGate>(activity, "shuttingDown").begin(terminate = false)
         ReflectionHelpers.getField<Handler>(activity, "mainHandler").removeCallbacksAndMessages(null)
         ReflectionHelpers.getField<ExecutorService>(activity, "teardownExecutor").shutdownNow()
         ReflectionHelpers.getField<ExecutorService>(activity, "airPlayCommandExecutor").shutdownNow()

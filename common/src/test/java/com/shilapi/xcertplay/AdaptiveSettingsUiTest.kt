@@ -18,6 +18,7 @@ import android.widget.Switch
 import android.widget.TextView
 import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.host.R
+import com.shilapi.xcertplay.network.CarHotspotTethering
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import java.util.concurrent.TimeUnit
 import org.junit.After
@@ -102,6 +103,7 @@ class AdaptiveSettingsUiTest {
     @Config(shadows = [CarHotspotSetupShadow::class])
     fun hotspotSearchIndexesItsAsyncCardWithoutStartingAnAdbProbe() {
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
+        installSystemPackage("com.byd.carsettings")
         CarHotspotSetupShadow.reset()
         CarHotspotSetupShadow.checkAccess = LocalAdb.Access.READY
         val screen = openSettings()
@@ -130,7 +132,55 @@ class AdaptiveSettingsUiTest {
 
     @Test
     @Config(shadows = [CarHotspotSetupShadow::class])
-    fun hotspotSearchUsesTheConnectionModeWithoutAnUnrelatedVendorPackage() {
+    fun supportedNonBydHotspotSettingsDoNotProbeAdb() {
+        AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
+        CarHotspotSetupShadow.reset()
+        val screen = openSettings()
+        val index = ReflectionHelpers.callInstanceMethod<List<DiPlayActivity.SettingsSearchResult>>(
+            screen, "buildSettingsSearchIndex")
+        val result = index.single { it.title == screen.getString(R.string.auto_car_hotspot_title) }
+
+        ReflectionHelpers.callInstanceMethod<Unit>(screen, "openSearchResult",
+            ReflectionHelpers.ClassParameter(result.javaClass, result))
+
+        assertTrue(CarHotspotTethering.appStartSupported())
+        assertTrue(CarHotspotSetup.isBydHeadUnit(context).not())
+        assertTrue("The app-owned path must not check ADB", CarHotspotSetupShadow.workers.isEmpty())
+        assertEquals(1, descendants(screen.window.decorView).filterIsInstance<Switch>().count {
+            it.contentDescription == screen.getString(R.string.auto_car_hotspot_title)
+        })
+    }
+
+    @Test
+    @Config(sdk = [23], shadows = [CarHotspotSetupShadow::class])
+    fun gkuiHotspotSettingsSaveWithoutAnAdbPermissionProbe() {
+        AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
+        installSystemPackage("ecarx.bluetooth.service")
+        CarHotspotSetupShadow.reset()
+        val screen = openSettings()
+        val index = ReflectionHelpers.callInstanceMethod<List<DiPlayActivity.SettingsSearchResult>>(
+            screen, "buildSettingsSearchIndex")
+        val result = index.single { it.title == screen.getString(R.string.auto_car_hotspot_title) }
+
+        ReflectionHelpers.callInstanceMethod<Unit>(screen, "openSearchResult",
+            ReflectionHelpers.ClassParameter(result.javaClass, result))
+
+        assertTrue(CarHotspotTethering.gkuiLegacySoftApSupported(context))
+        assertTrue(CarHotspotSetupShadow.workers.isEmpty())
+        val control = descendants(screen.window.decorView).filterIsInstance<Switch>()
+            .single { it.contentDescription == screen.getString(R.string.auto_car_hotspot_title) }
+        control.performClick()
+
+        assertTrue(com.shilapi.xcertplay.network.CarHotspotSettings.enabled(context))
+        assertTrue(CarHotspotSetupShadow.workers.isEmpty())
+        assertTrue(texts(screen).any {
+            it.text == screen.getString(R.string.settings_auto_car_hotspot_gkui_description)
+        })
+    }
+
+    @Test
+    @Config(shadows = [CarHotspotSetupShadow::class])
+    fun hotspotSearchIsIndependentOfTheSelectedConnectionMode() {
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.EXISTING_WIFI)
         CarHotspotSetupShadow.reset()
         CarHotspotSetupShadow.checkAccess = LocalAdb.Access.READY
@@ -139,7 +189,7 @@ class AdaptiveSettingsUiTest {
             screen, "buildSettingsSearchIndex")
         val title = screen.getString(R.string.auto_car_hotspot_title)
 
-        assertFalse(index().any { it.title == title })
+        assertTrue(index().any { it.title == title })
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
         assertTrue(index().any { it.title == title })
         assertTrue(CarHotspotSetupShadow.workers.isEmpty())
@@ -475,6 +525,16 @@ class AdaptiveSettingsUiTest {
         DiPlayActivity::class.java,
         Intent(context, DiPlayActivity::class.java).putExtra("page", "settings"),
     ).setup().get().also { activity = it }
+
+    private fun installSystemPackage(name: String) {
+        shadowOf(context.packageManager).installPackage(PackageInfo().apply {
+            packageName = name
+            applicationInfo = ApplicationInfo().apply {
+                packageName = name
+                flags = ApplicationInfo.FLAG_SYSTEM
+            }
+        })
+    }
 
     private fun openConnectionSetupFromSettings(): DiPlayActivity = openSettings().also { screen ->
         descendants(screen.window.decorView)

@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import com.geelyplay.preface.transport.LegacyUsbTransfer
 
 /**
  * Chunking, short writes and deadline behaviour, driven through the injectable transfer callback so

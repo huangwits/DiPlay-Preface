@@ -122,6 +122,28 @@ class CarHotspotTetheringTest {
         assertEquals(Result.READY, result)
     }
 
+    @Test fun gkuiLegacyStartRunsBeforeAdbWhenApStateCannotBeRead() {
+        val observed = AtomicReference<Boolean?>()
+        var fallbackCalls = 0
+        val result = CarHotspotTethering.enable(
+            1_000, { false }, { true }, CarHotspotTethering.stateWithAdbObservation({ null }, observed),
+            startFallback = { fallbackCalls++; false },
+            start = { observed.set(true) },
+            startWhenUnknown = true,
+        )
+
+        assertEquals(Result.READY, result)
+        assertEquals(0, fallbackCalls)
+    }
+
+    @Test fun unknownStateTriesGkuiThenApi22OrAuthorSupportedDirectStartBeforeAdb() {
+        assertTrue(CarHotspotTethering.canAttemptDirectStartBeforeAdb(22, gkuiLegacySoftAp = true))
+        assertTrue(CarHotspotTethering.canAttemptDirectStartBeforeAdb(22, gkuiLegacySoftAp = false))
+        assertTrue(CarHotspotTethering.canAttemptDirectStartBeforeAdb(26, gkuiLegacySoftAp = false))
+        assertTrue(CarHotspotTethering.canAttemptDirectStartBeforeAdb(29, gkuiLegacySoftAp = false))
+        assertFalse(CarHotspotTethering.canAttemptDirectStartBeforeAdb(30, gkuiLegacySoftAp = false))
+    }
+
     @Test fun acceptingAFallbackRequestDoesNotInventObservableReadiness() {
         val result = CarHotspotTethering.enable(20, { false }, { true }, { null },
             startFallback = { true }, start = { fail("Do not start blindly") })

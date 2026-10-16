@@ -12,6 +12,8 @@ import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import com.geelyplay.preface.license.OfflineLicenseProtocol
+import com.geelyplay.preface.license.PhoneActivationServer
 
 class PhoneActivationServerTest {
     private val device = "DP-DEVICE1-" + "a".repeat(64)

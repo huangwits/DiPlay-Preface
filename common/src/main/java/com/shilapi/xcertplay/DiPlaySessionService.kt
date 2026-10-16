@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationManager
@@ -25,7 +25,7 @@ class DiPlaySessionService : Service() {
         }
         val manager = systemService(NotificationManager::class.java, "notification")
             ?: return START_NOT_STICKY
-        val flags = com.shilapi.xcertplay.compat.PendingIntentCompat.updateCurrentImmutableFlags()
+        val flags = com.geelyplay.preface.compat.PendingIntentCompat.updateCurrentImmutableFlags()
         val open = PendingIntent.getActivity(this, 0, Intent(this, CarPlayHostActivity::class.java), flags)
         val stop = PendingIntent.getService(this, 1, Intent(this, DiPlaySessionService::class.java).setAction(ACTION_STOP), flags)
         val notification = notificationBuilder(manager)
@@ -37,13 +37,13 @@ class DiPlaySessionService : Service() {
             .build()
         if (Build.VERSION.SDK_INT >= 29) {
             var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            if (Build.VERSION.SDK_INT >= 30 && com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            if (Build.VERSION.SDK_INT >= 30 && com.geelyplay.preface.compat.ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                 types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
             // Without it Android stops location updates while another car app (the reversing camera,
             // the car's own map) covers CarPlay, and the iPhone gets no position until DiPlay is back.
             if (AirPlayPersistence.loadLocationReportingEnabled(this) &&
-                com.shilapi.xcertplay.compat.ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                com.geelyplay.preface.compat.ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                 types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
             }
             startForeground(1, notification, types)

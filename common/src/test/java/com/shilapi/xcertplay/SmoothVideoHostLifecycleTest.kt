@@ -16,7 +16,6 @@ import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -35,6 +34,7 @@ import org.robolectric.android.util.concurrent.PausedExecutorService
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import org.robolectric.shadows.ShadowMediaCodec
+import com.geelyplay.preface.CarPlayShutdownGate
 
 /**
  * Host-level lifecycle of Smooth video: which retained session a host may adopt, how a host that rebuilds
@@ -69,7 +69,7 @@ class SmoothVideoHostLifecycleTest {
     }
 
     @After fun tearDown() {
-        (getField("shuttingDown") as AtomicBoolean).set(true)
+        (getField("shuttingDown") as CarPlayShutdownGate).begin(terminate = false)
         (getField("mainHandler") as Handler).removeCallbacksAndMessages(null)
         AirPlayPersistence.overlaySettingsListener = null
         (getField("controller") as? CarPlayController)?.let { CarPlayMediaKeys.detach(it) }
@@ -183,7 +183,7 @@ class SmoothVideoHostLifecycleTest {
             assertTrue(started!!.videoPacingEnabled)
             assertTrue(CarPlayBackgroundSession.isOwner(rebuilt))
         } finally {
-            (getField(rebuilt, "shuttingDown") as AtomicBoolean).set(true)
+            (getField(rebuilt, "shuttingDown") as CarPlayShutdownGate).begin(terminate = false)
             (getField(rebuilt, "mainHandler") as Handler).removeCallbacksAndMessages(null)
             (getField(rebuilt, "controller") as? CarPlayController)?.let { CarPlayMediaKeys.detach(it) }
             (getField(rebuilt, "sink") as? AndroidMediaSink)?.close()

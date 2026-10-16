@@ -7,6 +7,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.io.File
+import com.geelyplay.preface.update.E01UpdateInstaller
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23])

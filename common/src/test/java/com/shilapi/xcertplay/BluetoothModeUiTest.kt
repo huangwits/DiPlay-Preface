@@ -8,8 +8,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
-import com.shilapi.xcertplay.e01goc.E01GocActivity
-import com.shilapi.xcertplay.e01goc.E01GocPreferences
+import com.geelyplay.preface.e01goc.E01GocActivity
+import com.geelyplay.preface.e01goc.E01GocPreferences
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,20 +34,30 @@ class BluetoothModeUiTest {
             val activity = host.get()
             assertFalse(visible(activity).any { it == "连接测试" || it == "安装适配" || it == "还原备份" })
             assertTrue("打开安卓蓝牙设置" in visible(activity))
-            assertTrue("当前模式：安卓蓝牙（切换）" in visible(activity))
+            assertTrue("安卓蓝牙" in visible(activity))
+            assertFalse("使用原厂蓝牙" in visible(activity))
+            assertTrue("更多选项" in visible(activity))
             assertTrue("更换手机 · 我的 iPhone" in visible(activity))
             assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))
             host.pause()
             E01GocPreferences.select(app, true)
             host.resume()
-            assertTrue("连接测试" in visible(activity))
-            assertTrue("当前模式：原厂蓝牙（切换）" in visible(activity))
+            assertTrue("一键连接 CarPlay" in visible(activity))
+            assertFalse("连接测试" in visible(activity))
+            assertTrue("原厂蓝牙" in visible(activity))
+            assertFalse("切换蓝牙模式" in visible(activity))
+            activity.window.decorView.findViewWithTag<Button>("bluetooth-more").performClick()
+            assertTrue("还原备份" in visible(activity))
+            assertTrue("切换蓝牙模式" in visible(activity))
+            assertFalse("完整操作说明" in visible(activity))
+            activity.window.decorView.findViewWithTag<Button>("bluetooth-more").performClick()
             assertFalse("打开安卓蓝牙设置" in visible(activity))
-            assertFalse(visible(activity).any { "安卓" in it })
+            assertFalse(visible(activity).any { it == "打开安卓蓝牙设置" })
             host.pause()
             E01GocPreferences.select(app, false)
             host.resume()
-            assertFalse(visible(activity).any { "原厂" in it || "安装适配" in it })
+            assertTrue("安卓蓝牙" in visible(activity))
+            assertFalse(visible(activity).any { "安装适配" in it })
             assertFalse(java.io.File(app.filesDir, "e01-goc/manage.sh").exists())
         } finally { host.pause().stop().destroy() }
     }
@@ -74,7 +84,8 @@ class BluetoothModeUiTest {
             awaitWork(activity)
             assertTrue(visible(activity).joinToString("\n"), E01GocPreferences.enabled(app))
             assertNull(DiPlayPreferences.phoneAddress(app))
-            assertTrue("连接测试" in visible(activity))
+            assertTrue("一键连接 CarPlay" in visible(activity))
+            assertFalse("连接测试" in visible(activity))
             assertFalse("打开安卓蓝牙设置" in visible(activity))
             assertFalse(java.io.File(app.filesDir, "e01-goc/manage.sh").exists())
         } finally { host.pause().stop().destroy() }
@@ -114,7 +125,7 @@ class BluetoothModeUiTest {
     }
 
     private fun visible(activity: E01GocActivity) = views(activity.window.decorView)
-        .filterIsInstance<TextView>().filter { it.visibility == View.VISIBLE }.map { it.text.toString() }.toList()
+        .filterIsInstance<TextView>().filter { it.isShown }.map { it.text.toString() }.toList()
     private fun views(view: View): Sequence<View> = sequence {
         yield(view)
         if (view is ViewGroup) for (i in 0 until view.childCount) yieldAll(views(view.getChildAt(i)))

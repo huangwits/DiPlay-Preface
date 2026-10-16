@@ -4,6 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.security.KeyPairGenerator
 import java.security.Signature
+import com.geelyplay.preface.license.OfflineLicenseProtocol
 
 class OfflineLicenseProtocolTest {
     private val issuer = KeyPairGenerator.getInstance("RSA").apply { initialize(3072) }.generateKeyPair()

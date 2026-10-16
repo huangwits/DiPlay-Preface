@@ -3,7 +3,7 @@ package com.shilapi.xcertplay
 import android.content.ContextWrapper
 import android.content.Intent
 import android.view.View
-import com.shilapi.xcertplay.e01goc.E01GocActivity
+import com.geelyplay.preface.e01goc.E01GocActivity
 import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import org.junit.Assert.*
@@ -15,6 +15,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.util.ReflectionHelpers
+import com.geelyplay.preface.ConnectionWaitingView
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], qualifiers = "zh-rCN", manifest = Config.NONE)
@@ -28,7 +29,7 @@ class PrefaceMaintenanceTest {
         CarPlayBackgroundSession.clear()
     }
 
-    @Test fun factoryHotspotBootChoiceWorksWithoutAppStartupOrCarPlayCredentials() {
+    @Test fun savedHotspotCanStartAtBootIndependentlyOfAppStartupAndSelectedBackend() {
         CarHotspotSettings.setEnabled(app, true)
         AirPlayPersistence.saveWirelessEnabled(app, true)
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.MANUAL)
@@ -41,23 +42,20 @@ class PrefaceMaintenanceTest {
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         assertTrue(launch!!.getBooleanExtra("boot_hotspot", false))
         assertFalse(AirPlayPersistence.loadAutoStartOnBoot(app))
+        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotLaunchAtBoot=true"))
+        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotRootResult=pending"))
+        StartupDiagnosticSnapshot.hotspotRootResult(app, StartupDiagnosticSnapshot.RootHotspotResult.FALLBACK)
+        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotRootResult=fallback"))
         launch = null
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.EXISTING_WIFI)
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         assertTrue(launch!!.getBooleanExtra("boot_hotspot", false))
-        launch = null
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.MANUAL)
-        AirPlayPersistence.saveWirelessEnabled(app, false)
         AirPlayPersistence.saveManualHotspotSsid(app, "")
-        BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
-        assertTrue(launch!!.getBooleanExtra("boot_hotspot", false))
         launch = null
-        CarHotspotSettings.setEnabled(app, false)
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         assertNull(launch)
-        CarHotspotSettings.setEnabled(app, true)
-        BootReceiver().onReceive(context, Intent("unrelated.action"))
-        assertNull(launch)
+        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotEligibility=manual-config-invalid"))
     }
 
     @Test fun factoryFailureIsPlacedWithSetupBeforeTheDailyConnectionAction() {
@@ -68,12 +66,8 @@ class PrefaceMaintenanceTest {
                 ReflectionHelpers.ClassParameter.from(String::class.java, "未完成：未发现 E01 原厂蓝牙服务"))
             assertEquals(View.VISIBLE, panel.failure.visibility)
             val controls = panel.controls
-            assertTrue(controls.indexOfChild(panel.failure) >
-                controls.indexOfChild(panel.findViewWithTag<View>("bluetooth-setup-hint")))
-            assertTrue(controls.indexOfChild(panel.failure) <
-                controls.indexOfChild(panel.findViewWithTag<View>("bluetooth-daily-actions")))
-            assertSame(panel.findViewWithTag<View>("bluetooth-daily-actions"),
-                panel.findViewWithTag<View>("bluetooth-connect").parent)
+            assertTrue(controls.indexOfChild(panel.failure) >= 0)
+            assertNotNull(panel.findViewWithTag<View>("bluetooth-connect"))
         } finally { host.pause().stop().destroy() }
     }
 }

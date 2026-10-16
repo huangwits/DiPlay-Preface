@@ -13,6 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import com.geelyplay.preface.E01VoiceKeyReceiver
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23, 29], manifest = Config.NONE)

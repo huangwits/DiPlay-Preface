@@ -14,8 +14,8 @@ import java.security.MessageDigest
 class UpdateClientTest {
     @get:Rule val temporary = TemporaryFolder()
     private val payload = "a complete update payload".toByteArray()
-    private fun release(assetApiUrl: String? = null) = UpdateRelease("0.2.16.1", "DiPlay-Preface-v0.2.16.1.apk",
-        "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk",
+    private fun release(assetApiUrl: String? = null) = UpdateRelease("0.2.16.1", "GeelyPlay-v0.2.16.1.apk",
+        "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/GeelyPlay-v0.2.16.1.apk",
         payload.size.toLong(), MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) }, "", assetApiUrl)
 
     private open class Response(url: URL, val bytes: ByteArray, val code: Int = 200,

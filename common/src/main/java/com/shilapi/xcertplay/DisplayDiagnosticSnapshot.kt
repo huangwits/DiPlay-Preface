@@ -9,7 +9,8 @@ import java.util.UUID
 /** Small, redacted snapshot retained separately from the rotating session logs. */
 internal object DisplayDiagnosticSnapshot {
     private const val PREFS = "diplay_display_diagnostics"
-    private val fields = listOf("selection", "request", "capability", "effective", "phone", "decoder", "output")
+    private val fields = listOf("selection", "request", "capability", "effective", "phone", "decoder", "output",
+        "mapPlan", "mapGesture", "mapSystemGesture", "mapNative", "mapStream", "mapOutput", "mapClosed")
     private fun stamp() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
 
     @Synchronized
@@ -43,6 +44,13 @@ internal object DisplayDiagnosticSnapshot {
             message.startsWith("Phone display peer ") -> "phone"
             message.startsWith("Video: decoder=") || message.startsWith("Video: decoder configuration failed") -> "decoder"
             message.startsWith("Video: output format ") -> "output"
+            message.startsWith("Map plan: ") -> "mapPlan"
+            message.startsWith("Map gesture: ") -> "mapGesture"
+            message.startsWith("Map system gesture: ") -> "mapSystemGesture"
+            message.startsWith("Map native: ") -> "mapNative"
+            message.startsWith("Map stream: ") -> "mapStream"
+            message.startsWith("Map output: ") -> "mapOutput"
+            message.startsWith("Map closed: ") -> "mapClosed"
             else -> return
         }
         val safe = DiagnosticRedactor.redact(message) ?: return

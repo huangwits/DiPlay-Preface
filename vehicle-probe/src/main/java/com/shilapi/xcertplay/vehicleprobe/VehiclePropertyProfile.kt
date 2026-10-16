@@ -1,12 +1,8 @@
-// carlito | Read-only report-to-profile integration for DiPlay. GPL-3.0.
+// carlito | Profile codec for existing read-only vehicle bridge consumers. GPL-3.0.
 package com.shilapi.xcertplay.vehicleprobe
 
-import android.content.Context
-import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import kotlin.math.abs
 
 internal enum class VehicleField(val title: String, vararg val symbols: String) {
     SPEED("车速", "SENSOR_TYPE_CAR_SPEED", "SignalId_VehSpdLgtA", "car_speed"),
@@ -78,48 +74,7 @@ internal data class VehiclePropertyBinding(
 
 internal data class VehiclePropertyProfile(val model: String, val bindings: List<VehiclePropertyBinding>)
 
-internal object ReportPropertyImporter {
-    const val MAX_BYTES = 10 * 1024 * 1024
-
-    /** Only exact published symbols can fill fields; checksum/counter/lookalike names cannot. */
-    fun extract(report: String): List<VehiclePropertyBinding> {
-        require(report.contains("schema=geely_property_probe_v2")) { "不是支持的车辆扫描报告" }
-        val result = linkedMapOf<VehicleField, VehiclePropertyBinding>()
-        report.lineSequence().filter { it.startsWith('"') }.forEach { line ->
-            val row = csvFields(line)
-            if (row.size != 14 || row[8] != "READ_OK") return@forEach
-            val chain = row[0]
-            val kind = row[1]
-            if (chain !in setOf("adapt_api", "ecarx_service", "direct_binder") ||
-                kind !in setOf("sensor", "signal", "property")) return@forEach
-            val raw = row[7].toDoubleOrNull() ?: return@forEach
-            if (!raw.isFinite() || (raw != 0.0 && abs(raw) < 1e-20)) return@forEach
-            val symbol = row[3].substringAfterLast('.')
-            val field = VehicleField.entries.firstOrNull { symbol in it.symbols } ?: return@forEach
-            // Readability of this sentinel is never evidence that the property is usable.
-            if (field in setOf(VehicleField.HIGH_BEAM, VehicleField.LOW_BEAM,
-                    VehicleField.LEFT_INDICATOR, VehicleField.RIGHT_INDICATOR, VehicleField.STEERING_BUTTON) && raw == 255.0) return@forEach
-            val id = row[4].toIntOrNull()?.takeIf { it != 0 } ?: return@forEach
-            val hex = runCatching { java.lang.Long.decode(row[5]).toInt() }.getOrNull()
-            if (hex != id || row[2] !in setOf("global", "auto", "auto(1,0)") && row[2].toIntOrNull() == null) return@forEach
-            val binding = VehiclePropertyBinding(field, chain, kind, row[2], id, row[3], row[12])
-            val existing = result[field]
-            if (existing == null || field.symbols.indexOf(symbol) < field.symbols.indexOf(existing.name.substringAfterLast('.'))) {
-                result[field] = binding
-            }
-        }
-        return VehicleField.entries.mapNotNull(result::get)
-    }
-}
-
-/** Atomic files are read afresh because the probe and CarPlay use different processes. */
 internal object VehiclePropertyProfiles {
-    private fun file(context: Context) = AtomicFile(File(context.filesDir, "vehicle-property-profile.json"))
-
-    fun load(context: Context): VehiclePropertyProfile? = runCatching {
-        decode(file(context).openRead().bufferedReader().use { it.readText() })
-    }.getOrNull()
-
     fun decode(text: String): VehiclePropertyProfile {
         val json = JSONObject(text)
         require(json.getInt("schema") == 1)
@@ -147,13 +102,6 @@ internal object VehiclePropertyProfiles {
         val json = JSONObject().put("schema", 1).put("author", "carlito")
             .put("model", profile.model.trim()).put("bindings", rows)
         return json.toString()
-    }
-
-    fun save(context: Context, profile: VehiclePropertyProfile) {
-        val atomic = file(context)
-        val output = atomic.startWrite()
-        try { output.write(encode(profile).toByteArray(Charsets.UTF_8)); atomic.finishWrite(output) }
-        catch (error: Throwable) { atomic.failWrite(output); throw error }
     }
 
     private fun validate(profile: VehiclePropertyProfile) {

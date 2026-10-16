@@ -13,6 +13,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
+import com.geelyplay.preface.update.UpdateInstaller
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23, 28])
@@ -48,7 +49,7 @@ class UpdateInstallerTest {
     @Test fun tamperedFileIsRejectedBeforePackageManagerOrInstaller() {
         val app = RuntimeEnvironment.getApplication()
         val file = File(app.cacheDir, "bad.apk").apply { writeText("damaged") }
-        val release = UpdateRelease("0.2.16.1", "DiPlay-Preface-v0.2.16.1.apk", "", 7, "a".repeat(64), "")
+        val release = UpdateRelease("0.2.16.1", "GeelyPlay-v0.2.16.1.apk", "", 7, "a".repeat(64), "")
         assertThrows(IOException::class.java) { UpdateInstaller.validate(app, release, file) }
     }
 }

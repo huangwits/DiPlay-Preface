@@ -9,6 +9,7 @@ import org.json.JSONObject
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.geelyplay.preface.license.LicenseProtocol
 
 /** Optional live-workerd fixture is generated outside source using synthetic keys. */
 @RunWith(RobolectricTestRunner::class)

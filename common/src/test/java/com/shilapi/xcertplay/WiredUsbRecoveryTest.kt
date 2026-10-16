@@ -10,6 +10,7 @@ import android.os.SystemClock
 import com.shilapi.xcertplay.airplay.*
 import com.shilapi.xcertplay.orchestration.*
 import com.shilapi.xcertplay.transport.*
+import org.junit.Before
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -36,6 +37,18 @@ class WiredUsbRecoveryTest {
     }
     private val statuses = mutableListOf<CarPlayStatus>()
     private val controllers = mutableListOf<CarPlayController>()
+
+
+    @Before fun provideSystemUsbPermissionPage() {
+        // This suite replays the normal permission flow; the missing page has its own tests.
+        val component = android.content.ComponentName("com.android.systemui",
+            "com.android.systemui.usb.UsbPermissionActivity")
+        val pm = shadowOf(app.packageManager)
+        val info = pm.addActivityIfNotPresent(component)
+        info.enabled = true
+        info.applicationInfo.enabled = true
+        pm.addOrUpdateActivity(info)
+    }
 
     @After fun close() {
         controllers.forEach { it.close(); assertTrue(it.awaitClosed(2_000)) }

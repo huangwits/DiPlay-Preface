@@ -36,6 +36,7 @@ class ImageCropActivity : Activity() {
     private lateinit var statusView: TextView
 
     private var interfaceOverride: android.content.res.Configuration? = null
+
     override fun attachBaseContext(newBase: Context) {
         val base = AppLocale.wrap(newBase)
         super.attachBaseContext(base)

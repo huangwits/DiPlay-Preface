@@ -11,6 +11,23 @@ class UsbMuxFrameBufferTest {
         assertEverySplitPreservesFrames(version, zeroPadding, tcp(data = data))
     }
 
+    @Test fun versionReplyAfterAnEarlierTrailerKeepsItsOwnTrailerAndFollowingTcpFrame() {
+        val wire = version + zeroPadding + version + zeroPadding + tcp(data = data)
+        for (split in 0..wire.size) {
+            val buffer = UsbMuxFrameBuffer()
+            val frames = mutableListOf<UsbMuxFrame>()
+            fun drain() { while (true) frames.add(buffer.takeFrame() ?: break) }
+            try {
+                buffer.append(wire.copyOfRange(0, split)); drain()
+                buffer.append(wire.copyOfRange(split, wire.size)); drain()
+            } catch (error: IphoneUsbException.Protocol) {
+                throw AssertionError("transfer split at $split buffered=${buffer.bufferedBytes}", error)
+            }
+            assertEquals("transfer split at $split", listOf(20, 20, tcp(data = data).size), frames.map { it.length })
+            assertEquals(0, buffer.bufferedBytes)
+        }
+    }
+
     @Test fun synAckPaddingWorksAcrossEveryTransferSplit() {
         assertEverySplitPreservesFrames(synAck, capturedPadding, tcp(data = data))
     }

@@ -2,7 +2,7 @@ package com.shilapi.xcertplay.glance
 
 import com.shilapi.xcertplay.iap2.body.Iap2BodyBuilder
 import com.shilapi.xcertplay.iap2.message.Iap2Messages
-import com.shilapi.xcertplay.hud.CarPlayRouteState
+import com.geelyplay.preface.hud.CarPlayRouteState
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -22,6 +22,19 @@ class CarPlayGlanceTest {
 
     @After
     fun clear() = reset()
+
+    @Test
+    fun navigationWithoutManeuverDetailsEndsOnlyOnRouteOrSessionEnd() {
+        CarPlayGlance.setConnected(true)
+        CarPlayGlance.onFrame(frame(0x5201) { u8(1, 1); u16List(0x0d, emptyList()) })
+        assertTrue(CarPlayGlance.snapshot().navigationActive)
+        assertNull(CarPlayGlance.snapshot().maneuverType)
+        CarPlayGlance.onFrame(frame(0x5201) { u8(1, 2) })
+        assertEquals(false, CarPlayGlance.snapshot().navigationActive)
+        CarPlayGlance.onFrame(frame(0x5201) { u8(1, 1) })
+        CarPlayGlance.setConnected(false)
+        assertEquals(false, CarPlayGlance.snapshot().navigationActive)
+    }
 
     @Test
     fun followsTheNextTurnAndTheSong() {
@@ -76,6 +89,7 @@ class CarPlayGlanceTest {
             assertNull(CarPlayGlance.snapshot().maneuverType)
             assertNull(seen.single().maneuverType)
             assertTrue(CarPlayGlance.snapshot().connected)
+            assertTrue("Expiring turn details must not end navigation", CarPlayGlance.snapshot().navigationActive)
         }
     }
 
@@ -127,5 +141,18 @@ class CarPlayGlanceTest {
 
         assertEquals(before, CarPlayGlance.snapshot())
         assertEquals(0, calls)
+    }
+
+    @Test
+    fun routeFrameCountsAreRetainedForDiagnosticsAndResetForANewSession() {
+        CarPlayGlance.setConnected(true)
+        CarPlayGlance.onFrame(frame(0x5201) { u8(1, 1) })
+        CarPlayGlance.onFrame(frame(0x5202) { u16(1, 0); u8(3, 2) })
+
+        assertEquals(CarPlayGlance.RouteFrameStats(1, 1), CarPlayGlance.routeFrameStats())
+        CarPlayGlance.setConnected(false)
+        assertEquals(CarPlayGlance.RouteFrameStats(1, 1), CarPlayGlance.routeFrameStats())
+        CarPlayGlance.setConnected(true)
+        assertEquals(CarPlayGlance.RouteFrameStats(0, 0), CarPlayGlance.routeFrameStats())
     }
 }

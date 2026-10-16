@@ -13,12 +13,12 @@ import kotlin.math.sin
 @Config(sdk = [23], manifest = Config.NONE)
 class OpusEncoderTest {
     @Test fun encodesDecodable20MsSpeechFramesAndReleasesOnClose() {
-        val encoder = OpusEncoder(48_000)
+        val encoder = SoftwareOpusEncoder(48_000)
         val decoder = OpusDecoder(48_000, 1)
         assertTrue(encoder.available)
         repeat(10) { frame ->
-            val pcm = ByteArray(OpusEncoder.FRAME_BYTES)
-            repeat(OpusEncoder.FRAME_SAMPLES) { i ->
+            val pcm = ByteArray(SoftwareOpusEncoder.FRAME_BYTES)
+            repeat((SoftwareOpusEncoder.FRAME_BYTES / 2)) { i ->
                 val value = (8000 * sin(2 * PI * 220 * (frame * 960 + i) / 48_000)).toInt()
                 pcm[2 * i] = value.toByte()
                 pcm[2 * i + 1] = (value shr 8).toByte()
@@ -33,7 +33,7 @@ class OpusEncoderTest {
     }
 
     @Test fun invalidFramesDoNotPreventTheNextValidFrame() {
-        OpusEncoder(48_000).use { encoder ->
+        SoftwareOpusEncoder(48_000).use { encoder ->
             for (size in listOf(0, 1, 960, 1918, 1922, 3840)) assertTrue(encoder.encode(ByteArray(size)).isEmpty())
             assertEquals(1, encoder.encode(ByteArray(1920)).size)
         }

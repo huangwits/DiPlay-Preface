@@ -39,17 +39,18 @@ class CarHotspotSetupTest {
         assertTrue(eligible())
     }
 
-    @Test fun startupUsesFactoryCredentialsButProtectsExistingSession() {
+    @Test fun startupNeedsValidCredentialsAndNoExistingSession() {
+        AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
         CarHotspotSettings.setEnabled(context, true)
-        assertTrue(eligible())
+        assertFalse(eligible())
         configureHotspot()
         assertTrue(eligible())
         assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = true))
         AirPlayPersistence.saveManualHotspotPassphrase(context, "short")
-        assertTrue(eligible())
+        assertFalse(eligible())
     }
 
-    @Test fun bootCanStartFactoryHotspotInUsbModeWithoutChangingConnectionPreparation() {
+    @Test fun wiredModeStillStartsTheExplicitlySavedCarHotspot() {
         configureHotspot()
         CarHotspotSettings.setEnabled(context, true)
         AirPlayPersistence.saveWirelessEnabled(context, false)
@@ -58,12 +59,14 @@ class CarHotspotSetupTest {
         assertTrue(CarHotspotSettings.enabled(context))
     }
 
-    @Test fun bootChoiceIsIndependentOfWirelessModeButConnectionPreparationIsNot() {
+    @Test fun savedChoiceStartsTheCarHotspotRegardlessOfSelectedWirelessBackend() {
         configureHotspot()
         CarHotspotSettings.setEnabled(context, true)
-        AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.WIFI_P2P)
-        assertTrue(eligible())
-        assertFalse(CarHotspotSettings.shouldEnable(context, true, WirelessHotspotMode.LOCAL_ONLY_HOTSPOT))
+        for (mode in listOf(WirelessHotspotMode.AUTOMATIC, WirelessHotspotMode.WIFI_P2P, WirelessHotspotMode.EXISTING_WIFI)) {
+            AirPlayPersistence.saveWirelessHotspotMode(context, mode)
+            assertTrue("mode=$mode", eligible())
+        }
+        assertFalse(CarHotspotSettings.shouldEnable(context, true, WirelessHotspotMode.WIFI_P2P))
     }
 
     @Test fun disablingTheChoiceCancelsFutureStartupWithoutChangingConnectionSettings() {

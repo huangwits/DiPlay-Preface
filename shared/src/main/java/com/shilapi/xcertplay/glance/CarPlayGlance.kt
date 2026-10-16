@@ -1,7 +1,7 @@
 package com.shilapi.xcertplay.glance
 
-import com.shilapi.xcertplay.hud.CarPlayRouteState
-import com.shilapi.xcertplay.hud.ClusterSongState
+import com.geelyplay.preface.hud.CarPlayRouteState
+import com.geelyplay.preface.hud.ClusterSongState
 import com.shilapi.xcertplay.iap2.wire.Iap2Frame
 
 /**
@@ -10,9 +10,13 @@ import com.shilapi.xcertplay.iap2.wire.Iap2Frame
  * Fed by every CarPlay session, whatever the BYD output settings.
  */
 object CarPlayGlance {
+    data class RouteFrameStats(val guidanceUpdates: Long, val maneuverUpdates: Long)
+
     /** One state of the glance; [maneuverType] is Apple's RouteGuidanceManeuverType, null without a route. */
     data class Snapshot(
         val connected: Boolean = false,
+        val navigationActive: Boolean = false,
+        val navigationArrived: Boolean = false,
         val maneuverType: Int? = null,
         val drivingSide: Int = 0,
         val distanceMeters: Int = 0,
@@ -28,6 +32,8 @@ object CarPlayGlance {
     private val song = ClusterSongState()
     private var connected = false
     private var last = Snapshot()
+    private var routeGuidanceFrames = 0L
+    private var routeManeuverFrames = 0L
 
     /** Called with each new snapshot, on the thread that changed it. */
     @Volatile var listener: ((Snapshot) -> Unit)? = null
@@ -42,8 +48,14 @@ object CarPlayGlance {
     fun onFrame(frame: Iap2Frame) {
         val changed = synchronized(this) {
             when (frame.messageId) {
-                CarPlayRouteState.ROUTE_GUIDANCE_UPDATE, CarPlayRouteState.ROUTE_GUIDANCE_MANEUVER_UPDATE ->
+                CarPlayRouteState.ROUTE_GUIDANCE_UPDATE -> {
+                    routeGuidanceFrames++
                     runCatching { route.accept(frame.messageId, frame.payload) }
+                }
+                CarPlayRouteState.ROUTE_GUIDANCE_MANEUVER_UPDATE -> {
+                    routeManeuverFrames++
+                    runCatching { route.accept(frame.messageId, frame.payload) }
+                }
                 ClusterSongState.NOW_PLAYING_UPDATE -> runCatching { song.accept(frame) }
                 else -> return
             }
@@ -56,7 +68,10 @@ object CarPlayGlance {
         val changed = synchronized(this) {
             if (connected == next) return
             connected = next
-            if (!next) {
+            if (next) {
+                routeGuidanceFrames = 0
+                routeManeuverFrames = 0
+            } else {
                 route.clear()
                 song.clear()
             }
@@ -65,11 +80,18 @@ object CarPlayGlance {
         changed?.let { listener?.invoke(it) }
     }
 
+    /** Counts CarPlay route metadata frames without retaining road names or destination details. */
+    fun routeFrameStats(): RouteFrameStats = synchronized(this) {
+        RouteFrameStats(routeGuidanceFrames, routeManeuverFrames)
+    }
+
     private fun publishLocked(): Snapshot? {
         val maneuver = route.currentApple()
         val current = song.current()
         val next = Snapshot(
             connected = connected,
+            navigationActive = route.isNavigating(),
+            navigationArrived = route.arrivalActive(),
             maneuverType = maneuver?.type,
             drivingSide = maneuver?.drivingSide ?: 0,
             distanceMeters = maneuver?.distanceMeters ?: 0,

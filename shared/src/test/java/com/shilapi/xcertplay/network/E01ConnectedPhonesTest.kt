@@ -2,6 +2,8 @@ package com.shilapi.xcertplay.network
 
 import org.junit.Assert.*
 import org.junit.Test
+import com.geelyplay.preface.network.E01ConnectedPhones
+import com.geelyplay.preface.network.E01Phone
 
 class E01ConnectedPhonesTest {
     @Test fun requiresBothConnectedProfilesAndDeduplicatesAddresses() {

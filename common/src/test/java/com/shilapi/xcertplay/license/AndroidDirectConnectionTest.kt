@@ -8,7 +8,7 @@ import com.shilapi.xcertplay.AirPlayPersistence
 import com.shilapi.xcertplay.CarPlayHostActivity
 import com.shilapi.xcertplay.DiPlayActivity
 import com.shilapi.xcertplay.DiPlayPreferences
-import com.shilapi.xcertplay.e01goc.E01GocPreferences
+import com.geelyplay.preface.e01goc.E01GocPreferences
 import com.shilapi.xcertplay.orchestration.MfiTarget
 import org.junit.After
 import org.junit.Assert.*
@@ -27,6 +27,9 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import com.geelyplay.preface.license.AppLicense
+import com.geelyplay.preface.license.LicenseActivity
+import com.geelyplay.preface.license.OnlineLicense
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23], qualifiers = "zh-rCN", shadows = [BluetoothLicenseLayoutTest.LicensedResources::class])
@@ -44,17 +47,40 @@ class AndroidDirectConnectionTest {
         ReflectionHelpers.setStaticField(AppLicense::class.java, "lastPrompt", -10000L)
         E01GocPreferences.select(app, false)
         AirPlayPersistence.saveMfiTarget(app, MfiTarget.USB_CH341)
+        // These tests exercise admission and phone selection, before a controller starts the
+        // hotspot. An unconfigured manual hotspot intentionally stops at its setup page.
+        AirPlayPersistence.saveWirelessHotspotMode(app,
+            com.shilapi.xcertplay.orchestration.WirelessHotspotMode.WIFI_P2P)
+        com.shilapi.xcertplay.CarPlayBackgroundSession.clear()
         DiPlayPreferences.saveAutoConnect(app, false)
         DiPlayPreferences.savePhone(app, "11:22:33:44:55:66", "我的 iPhone")
         shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_ON)
         app.getSharedPreferences("diplay-license", Context.MODE_PRIVATE).edit()
-            .putBoolean("activated", true).putBoolean("requested", true).commit()
+            .clear().putBoolean("requested", true).commit()
         host = Robolectric.buildActivity(DiPlayActivity::class.java).setup()
     }
 
     @After fun cleanup() {
         host.pause().stop().destroy()
         lease(false)
+    }
+
+    @Test fun approvedAndroidInstallationConnectsOfflineAfterColdRestart() {
+        OnlineLicense.saveDecision(app, true, "ABCDEF123456", "installation")
+        lease(false) // Process-memory cache has gone away.
+        activity.refreshWirelessAdmission = { error("Approved connection must not access network") }
+        connect()
+        assertProjection(true)
+    }
+
+    @Test fun upgradedFactoryInstallationConnectsOfflineWithoutARefresh() {
+        app.getSharedPreferences("diplay-license", Context.MODE_PRIVATE).edit().putBoolean("activated", true).commit()
+        E01GocPreferences.select(app, true)
+        DiPlayPreferences.savePhone(app, "11:22:33:44:55:66", "我的 iPhone")
+        shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_OFF)
+        activity.refreshWirelessAdmission = { error("Existing approval must survive upgrade") }
+        connect()
+        assertProjection(true)
     }
 
     @Test fun validAndroidAdmissionConnectsDirectlyWithoutRefreshingOrOpeningTools() {
@@ -66,7 +92,7 @@ class AndroidDirectConnectionTest {
         assertFalse(java.io.File(app.filesDir, "e01-goc/manage.sh").exists())
     }
 
-    @Test fun expiredAndroidAdmissionRefreshesOnceAndAutomaticallyContinues() {
+    @Test fun pendingAndroidApplicationRefreshesOnceAndAutomaticallyContinues() {
         val calls = AtomicInteger()
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -108,12 +134,130 @@ class AndroidDirectConnectionTest {
         assertAuthorization()
     }
 
-    @Test fun factoryModeKeepsItsExistingAuthorizationFlowAndSavedTransport() {
+    @Test fun factoryModeRenewsAdmissionAndConnectsWithTheAndroidAdapterOff() {
         E01GocPreferences.select(app, true)
-        activity.refreshWirelessAdmission = { error("Factory flow owns its admission") }
+        DiPlayPreferences.savePhone(app, "11:22:33:44:55:66", "我的 iPhone")
+        shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_OFF)
+        activity.refreshWirelessAdmission = { lease(true); true }
         connect()
-        assertAuthorization()
+        awaitWorker()
+        assertProjection(true)
         assertTrue(E01GocPreferences.enabled(app))
+        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))
+        assertFalse(java.io.File(app.filesDir, "e01-goc/manage.sh").exists())
+    }
+
+    @Test fun factoryPhoneSelectionOnHomeContinuesConnectionWithoutOpeningToolsOrAndroidBluetooth() {
+        lease(true)
+        E01GocPreferences.select(app, true)
+        shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_OFF)
+        val read = CountDownLatch(1)
+        activity.factoryPhoneLookup = {
+            read.countDown()
+            listOf(com.geelyplay.preface.network.E01Phone("11:22:33:44:55:66", "我的 iPhone"))
+        }
+        connect()
+        assertTrue(read.await(5, TimeUnit.SECONDS))
+        awaitFactoryPicker()
+        assertNull(shadowOf(activity).nextStartedActivity)
+        ShadowAlertDialog.getLatestAlertDialog().listView.performItemClick(null, 0, 0)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertProjection(true)
+        assertTrue(E01GocPreferences.enabled(app))
+        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))
+        assertFalse(java.io.File(app.filesDir, "e01-goc/manage.sh").exists())
+    }
+
+    @Test fun leavingHomeDiscardsALateFactoryLookupWithoutSavingOrConnecting() {
+        lease(true)
+        E01GocPreferences.select(app, true)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        activity.factoryPhoneLookup = {
+            entered.countDown(); check(release.await(5, TimeUnit.SECONDS))
+            listOf(com.geelyplay.preface.network.E01Phone("11:22:33:44:55:66", "我的 iPhone"))
+        }
+        connect()
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        host.pause().stop()
+        release.countDown(); awaitFactoryPicker()
+        assertNull(DiPlayPreferences.phoneAddress(app))
+        assertNull(shadowOf(activity).nextStartedActivity)
+        assertFalse(ShadowAlertDialog.getLatestAlertDialog().isShowing)
+        host.start().resume()
+    }
+
+    @Test fun usbCancelsFactoryPhoneSelectionAndPreventsALateWirelessStart() {
+        lease(true)
+        E01GocPreferences.select(app, true)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        activity.factoryPhoneLookup = {
+            entered.countDown(); check(release.await(5, TimeUnit.SECONDS))
+            listOf(com.geelyplay.preface.network.E01Phone("11:22:33:44:55:66", "我的 iPhone"))
+        }
+        connect()
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        connect(false)
+        assertProjection(false)
+        release.countDown(); awaitFactoryPicker()
+        assertNull(DiPlayPreferences.phoneAddress(app))
+        assertNull(shadowOf(activity).nextStartedActivity)
+        assertFalse(AirPlayPersistence.loadWirelessEnabled(app))
+    }
+
+    private fun awaitFactoryPicker() {
+        for (attempt in 0 until 1000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            if (Thread.getAllStackTraces().keys.none { it.name == "diplay-factory-phone-lookup" && it.isAlive }) {
+                shadowOf(Looper.getMainLooper()).idle()
+                return
+            }
+            Thread.sleep(5)
+        }
+        fail("Factory lookup did not finish")
+    }
+
+    private fun installFactoryBluetooth() {
+        val pkg = com.geelyplay.preface.network.E01ConnectedPhones.PACKAGE
+        shadowOf(app.packageManager).installPackage(android.content.pm.PackageInfo().apply {
+            packageName = pkg
+            applicationInfo = android.content.pm.ApplicationInfo().apply {
+                packageName = pkg; flags = android.content.pm.ApplicationInfo.FLAG_SYSTEM
+            }
+        })
+        shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_OFF)
+        activity.factoryPhoneLookup = {
+            listOf(com.geelyplay.preface.network.E01Phone("22:33:44:55:66:77", "原厂 iPhone"))
+        }
+    }
+
+    @Test fun oldAndroidSettingWithFactoryBluetoothSelectsPhoneAndResumesConnection() {
+        lease(true)
+        installFactoryBluetooth()
+        connect()
+        awaitFactoryPicker()
+        assertFalse(E01GocPreferences.enabled(app))
+        assertNull(shadowOf(activity).nextStartedActivity)
+        ShadowAlertDialog.getLatestAlertDialog().listView.performItemClick(null, 0, 0)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(E01GocPreferences.enabled(app))
+        assertEquals("22:33:44:55:66:77", DiPlayPreferences.phoneAddress(app))
+        assertProjection(true)
+        assertFalse(java.io.File(app.filesDir, "e01-goc/manage.sh").exists())
+    }
+
+    @Test fun cancellingFactoryFallbackKeepsThePreviousModeAndPhone() {
+        lease(true)
+        installFactoryBluetooth()
+        connect()
+        awaitFactoryPicker()
+        ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_NEGATIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(E01GocPreferences.enabled(app))
+        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))
+        assertFalse(ReflectionHelpers.getField(activity, "pendingWireless"))
+        assertNull(shadowOf(activity).nextStartedActivity)
     }
 
     @Test fun cancellingTheCheckDiscardsLateApproval() = withBlockedApproval { release ->
@@ -153,30 +297,17 @@ class AndroidDirectConnectionTest {
         assertFalse(E01GocPreferences.enabled(app))
     }
 
-    @Test fun factorySelectionSurvivesReturningHomeWithAndroidAdapterOff() {
+    @Test
+    @Config(sdk = [31])
+    fun stoppingForAndroidBluetoothPermissionPreservesThePendingAndroidConnection() {
+        lease(true)
+        shadowOf(app).denyPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+        connect()
+        assertTrue(ReflectionHelpers.getField(activity, "pendingWireless"))
+        assertEquals("android.content.pm.action.REQUEST_PERMISSIONS", shadowOf(activity).nextStartedActivity?.action)
         host.pause().stop()
-        E01GocPreferences.select(app, true)
-        DiPlayPreferences.savePhone(app, "11:22:33:44:55:66", "原厂 iPhone")
-        shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_OFF)
+        assertTrue(ReflectionHelpers.getField(activity, "pendingWireless"))
         host.start().resume()
-        lease(true)
-        connect()
-        assertProjection(true)
-        assertTrue(E01GocPreferences.enabled(app))
-        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))
-        assertNull(ShadowAlertDialog.getLatestAlertDialog())
-    }
-
-    @Test fun disabledAndroidBluetoothOffersToolsWithoutSilentlyChangingTransport() {
-        lease(true)
-        shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_OFF)
-        connect()
-        ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_NEUTRAL).performClick()
-        shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(com.shilapi.xcertplay.e01goc.E01GocActivity::class.java.name,
-            shadowOf(activity).nextStartedActivity?.component?.className)
-        assertFalse(E01GocPreferences.enabled(app))
-        assertEquals("11:22:33:44:55:66", DiPlayPreferences.phoneAddress(app))
     }
 
     @Test fun firstPhoneIsSelectedInTheNormalAndroidPickerThenConnects() {
@@ -200,7 +331,7 @@ class AndroidDirectConnectionTest {
         lease(true)
         connect()
         val next = shadowOf(activity).nextStartedActivity
-        assertEquals(com.shilapi.xcertplay.e01goc.E01GocActivity::class.java.name, next?.component?.className)
+        assertEquals(com.geelyplay.preface.e01goc.E01GocActivity::class.java.name, next?.component?.className)
         assertTrue(next.getBooleanExtra("android_bluetooth_unavailable", false))
         assertFalse(E01GocPreferences.enabled(app))
         assertFalse(java.io.File(app.filesDir, "e01-goc/manage.sh").exists())

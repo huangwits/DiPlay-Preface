@@ -12,7 +12,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [23])
 class UpdateCatalogTest {
     private fun release(version: String, draft: Boolean = false, preview: Boolean = false): JSONObject {
-        val name = "DiPlay-Preface-v$version.apk"
+        val name = "GeelyPlay-v$version.apk"
         return JSONObject().put("tag_name", "v$version").put("draft", draft).put("prerelease", preview)
             .put("body", "更新说明").put("assets", JSONArray().put(JSONObject().put("name", name)
                 .put("browser_download_url", "${UpdateCatalog.REPOSITORY}/releases/download/v$version/$name")
@@ -50,7 +50,7 @@ class UpdateCatalogTest {
             { it.remove("digest") },
             { it.put("digest", "sha256:invalid") },
             { it.put("browser_download_url", "https://github.com/carlito12345/DiPlay/releases/download/v0.2.16/DiPlay.apk") },
-            { it.put("browser_download_url", "http://github.com/huangwits/DiPlay-Preface/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk") },
+            { it.put("browser_download_url", "http://github.com/huangwits/DiPlay-Preface/releases/download/v0.2.16.1/GeelyPlay-v0.2.16.1.apk") },
             { it.put("name", "../../DiPlay.apk") },
             { it.put("size", UpdateCatalog.MAX_APK_SIZE + 1) }
         )) {

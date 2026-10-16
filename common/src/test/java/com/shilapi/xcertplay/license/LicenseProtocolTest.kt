@@ -4,6 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.security.KeyPairGenerator
 import java.security.Signature
+import com.geelyplay.preface.license.LicenseProtocol
 
 class LicenseProtocolTest {
     private val issuer = KeyPairGenerator.getInstance("RSA").apply { initialize(3072) }.generateKeyPair()
@@ -57,5 +58,17 @@ class LicenseProtocolTest {
         assertThrows(IllegalArgumentException::class.java) {
             LicenseProtocol.proof("request", challenge, "d".repeat(64), device, key, "A".repeat(32), packageName, signer)
         }
+    }
+
+    @Test fun deviceProofSeparatesStableDeviceIdentityFromReinstallKey() {
+        val key = byteArrayOf(1, 2, 3)
+        val keyId = LicenseProtocol.hash(key)
+        val stableDevice = "e".repeat(64)
+        val data = LicenseProtocol.deviceProof("request", challenge, "d".repeat(64), stableDevice,
+            key, packageName, signer)
+
+        assertEquals(listOf("DP-LIC2", "request", challenge, "d".repeat(64), stableDevice, keyId,
+            "", packageName, signer).joinToString("\n"), String(data))
+        assertNotEquals(stableDevice, keyId)
     }
 }

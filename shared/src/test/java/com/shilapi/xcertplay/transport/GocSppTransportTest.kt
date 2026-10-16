@@ -7,6 +7,8 @@ import java.io.OutputStream
 import java.util.concurrent.CopyOnWriteArrayList
 import org.junit.Assert.*
 import org.junit.Test
+import com.geelyplay.preface.transport.GocSocketAccess
+import com.geelyplay.preface.transport.GocSppTransport
 
 class GocSppTransportTest {
     @Test fun deniedLocalSocketClosesWithoutRetry() {

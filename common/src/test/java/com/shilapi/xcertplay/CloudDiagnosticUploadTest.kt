@@ -1,8 +1,8 @@
 package com.shilapi.xcertplay
 
 import android.util.Base64
-import com.shilapi.xcertplay.license.LicenseProtocol
-import com.shilapi.xcertplay.license.OnlineLicense
+import com.geelyplay.preface.license.LicenseProtocol
+import com.geelyplay.preface.license.OnlineLicense
 import java.security.KeyPairGenerator
 import java.security.Signature
 import org.json.JSONObject
@@ -11,6 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.geelyplay.preface.CloudDiagnosticUpload
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23])
@@ -52,7 +53,8 @@ class CloudDiagnosticUploadTest {
 
     @Test fun submissionBindsExactDocumentToFreshProofWithoutAnyLicenseRequest() {
         val keys = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        val identity = OnlineLicense.DiagnosticIdentity("https://license.example", "com.shihab.diplay.preface", "b".repeat(64), keys.public.encoded, keys.private)
+        val identity = OnlineLicense.DiagnosticIdentity("https://license.example", "com.shihab.diplay.preface",
+            "b".repeat(64), "c".repeat(64), keys.public.encoded, keys.private)
         val document = CloudDiagnosticUpload.document("0.2.16.13", "方向盘下一曲无效", "wheel=NEXT result=ignored")
         assertEquals("0.2.16.13", JSONObject(document).getString("version"))
         val paths = mutableListOf<String>()
@@ -61,11 +63,12 @@ class CloudDiagnosticUploadTest {
             if (path == "/v1/challenge") JSONObject().put("id", "1".repeat(48)).put("nonce", "2".repeat(64))
             else {
                 assertEquals(document, value.getString("document"))
-                val device = LicenseProtocol.hash(keys.public.encoded)
-                val canonical = listOf("DP-LIC1", "report:" + LicenseProtocol.hash(document.toByteArray()), "1".repeat(48),
-                    "2".repeat(64), device, device, "", identity.packageName, identity.signer).joinToString("\n")
+                assertEquals(2, value.getInt("identityVersion"))
+                val canonical = LicenseProtocol.deviceProof("report:" + LicenseProtocol.hash(document.toByteArray()),
+                    "1".repeat(48), "2".repeat(64), identity.deviceId, keys.public.encoded,
+                    identity.packageName, identity.signer)
                 assertTrue(Signature.getInstance("SHA256withRSA").run {
-                    initVerify(keys.public); update(canonical.toByteArray()); verify(Base64.decode(value.getString("signature"), Base64.DEFAULT))
+                    initVerify(keys.public); update(canonical); verify(Base64.decode(value.getString("signature"), Base64.DEFAULT))
                 })
                 JSONObject().put("ok", true).put("receipt", "DPR-0123456789ABCDEF").put("expiresAt", 1800000000)
             }
@@ -76,7 +79,8 @@ class CloudDiagnosticUploadTest {
 
     @Test fun rejectsMalformedChallengeAndUnconfirmedReceipts() {
         val keys = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        val identity = OnlineLicense.DiagnosticIdentity("https://license.example", "com.shihab.diplay.preface", "b".repeat(64), keys.public.encoded, keys.private)
+        val identity = OnlineLicense.DiagnosticIdentity("https://license.example", "com.shihab.diplay.preface",
+            "b".repeat(64), "c".repeat(64), keys.public.encoded, keys.private)
         for (bad in listOf(JSONObject(), JSONObject().put("ok", false).put("receipt", "DPR-0123456789ABCDEF").put("expiresAt", 1800000000),
             JSONObject().put("ok", true).put("receipt", "<script>").put("expiresAt", 1800000000))) {
             try {

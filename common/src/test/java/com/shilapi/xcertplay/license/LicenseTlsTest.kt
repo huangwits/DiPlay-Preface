@@ -17,6 +17,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import com.geelyplay.preface.license.LicenseFailureMessage
+import com.geelyplay.preface.license.LicenseTls
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23])

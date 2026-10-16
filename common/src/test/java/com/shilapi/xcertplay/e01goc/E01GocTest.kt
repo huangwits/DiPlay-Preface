@@ -1,25 +1,66 @@
 package com.shilapi.xcertplay.e01goc
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import com.shilapi.xcertplay.DiPlayPreferences
 import com.shilapi.xcertplay.AirPlayPersistence
-import com.shilapi.xcertplay.E01BluetoothSwitchIntegration
+import com.geelyplay.preface.E01BluetoothSwitchIntegration
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import com.geelyplay.preface.e01goc.E01GocActivity
+import com.geelyplay.preface.e01goc.E01GocManager
+import com.geelyplay.preface.e01goc.E01GocPreferences
+import com.geelyplay.preface.e01goc.E01RootBridge
+import com.geelyplay.preface.e01goc.GocSnapshot
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23], qualifiers = "zh-rCN")
 class E01GocTest {
     private val original = "a".repeat(64)
     private val candidate = E01GocManager.CANDIDATE_SHA
+
+    @Test fun firstUseRecognizesFactoryBluetoothAndKeepsAnExplicitAndroidChoice() {
+        val app = RuntimeEnvironment.getApplication()
+        val saved = app.getSharedPreferences("diplay", Context.MODE_PRIVATE)
+        saved.edit().clear().commit()
+        assertFalse(E01GocPreferences.enabled(app))
+        val pkg = com.geelyplay.preface.network.E01ConnectedPhones.PACKAGE
+        val info = ApplicationInfo().apply { packageName = pkg; flags = 0 }
+        shadowOf(app.packageManager).installPackage(PackageInfo().apply { packageName = pkg; applicationInfo = info })
+        assertFalse("A user-installed namesake is not factory Bluetooth", E01GocPreferences.enabled(app))
+        info.flags = ApplicationInfo.FLAG_SYSTEM
+        shadowOf(app.packageManager).installPackage(PackageInfo().apply { packageName = pkg; applicationInfo = info })
+        assertTrue(E01GocPreferences.enabled(app))
+        DiPlayPreferences.savePhone(app, "10:11:22:33:44:55", "Factory phone")
+        E01GocPreferences.select(app, true)
+        assertEquals("10:11:22:33:44:55", DiPlayPreferences.phoneAddress(app))
+        assertTrue(saved.contains("e01_goc_enabled"))
+        E01GocPreferences.select(app, false)
+        assertFalse(E01GocPreferences.enabled(app))
+        assertNull(DiPlayPreferences.phoneAddress(app))
+    }
+
+    @Test fun selectingTheDefaultAndroidModeStillRecordsTheExplicitChoice() {
+        val app = RuntimeEnvironment.getApplication()
+        app.getSharedPreferences("diplay", Context.MODE_PRIVATE).edit().clear().commit()
+        E01GocPreferences.select(app, false)
+        val pkg = com.geelyplay.preface.network.E01ConnectedPhones.PACKAGE
+        shadowOf(app.packageManager).installPackage(PackageInfo().apply {
+            packageName = pkg
+            applicationInfo = ApplicationInfo().apply { packageName = pkg; flags = ApplicationInfo.FLAG_SYSTEM }
+        })
+        assertFalse(E01GocPreferences.enabled(app))
+    }
 
     @Test fun factoryMaintenanceExcludesConcurrentOperationsAndReleasesOnFailure() {
         val manager = E01GocManager(RuntimeEnvironment.getApplication()) { }
@@ -91,7 +132,8 @@ class E01GocTest {
         val activity = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val labels = views(activity.get().window.decorView).filterIsInstance<TextView>().map { it.text.toString() }.toList()
-            for (label in listOf("检查状态", "连接测试", "安装适配", "还原备份", "停止测试")) assertTrue(label, label in labels)
+            for (label in listOf("无线 CarPlay", "还原备份", "取消操作")) assertTrue(label, label in labels)
+            for (label in listOf("检查状态", "连接测试", "安装适配")) assertFalse(label, label in labels)
             assertFalse("测试 Root 权限" in labels)
             assertFalse(java.io.File(activity.get().filesDir, "e01-goc/manage.sh").exists())
         } finally { activity.pause().stop().destroy() }

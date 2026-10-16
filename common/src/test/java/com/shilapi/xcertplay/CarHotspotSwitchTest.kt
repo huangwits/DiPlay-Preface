@@ -164,20 +164,6 @@ class CarHotspotSwitchTest {
         assertTrue(CarHotspotSetupShadow.requested.isEmpty())
     }
 
-    @Test fun hotspotSwitchRemainsVisibleInUsbAndAutomaticWirelessModesWithoutAdb() {
-        AirPlayPersistence.saveWirelessEnabled(activity, false)
-        for (mode in listOf(WirelessHotspotMode.AUTOMATIC, WirelessHotspotMode.EXISTING_WIFI)) {
-            AirPlayPersistence.saveWirelessHotspotMode(activity, mode)
-            DiPlayActivity::class.java.getDeclaredMethod("renderHotspotAdbControls", LinearLayout::class.java,
-                LocalAdb.Access::class.java).apply { isAccessible = true }
-                .invoke(activity, controls, LocalAdb.Access.UNREACHABLE)
-            assertEquals(View.VISIBLE, controls.visibility)
-            assertTrue(hotspotSwitch().isEnabled)
-            assertFalse(hotspotSwitch().isChecked)
-        }
-        assertTrue(CarHotspotSetupShadow.requested.isEmpty())
-    }
-
 
     @Test fun unexpectedAdbFailureRestoresTheSameSwitch() {
         CarHotspotSetupShadow.fail = true

@@ -3,7 +3,7 @@ package com.shilapi.xcertplay.media
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.media.AudioManager
-import com.shilapi.xcertplay.network.E01ConnectedPhones
+import com.geelyplay.preface.network.E01ConnectedPhones
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test

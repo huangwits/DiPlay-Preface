@@ -14,7 +14,7 @@ class BootReceiver : BroadcastReceiver() {
         // existing explicit permission gate while removing the extra manual hotspot step.
         val hotspotLaunchEnabled = CarHotspotSetup.shouldStartOnLaunch(context, CarPlayBackgroundSession.hasSession())
         val launchEnabled = appLaunchEnabled || hotspotLaunchEnabled
-        StartupDiagnosticSnapshot.received(context, launchEnabled)
+        StartupDiagnosticSnapshot.received(context, launchEnabled, hotspotLaunchEnabled)
         if (!launchEnabled) return
 
         val launch = Intent(context, DiPlayActivity::class.java).apply {

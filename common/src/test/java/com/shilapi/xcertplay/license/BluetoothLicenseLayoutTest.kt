@@ -14,8 +14,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.shilapi.xcertplay.DiPlayActivity
-import com.shilapi.xcertplay.ConnectionWaitingView
-import com.shilapi.xcertplay.e01goc.E01GocActivity
+import com.geelyplay.preface.ConnectionWaitingView
+import com.geelyplay.preface.e01goc.E01GocActivity
 import com.shilapi.xcertplay.host.R
 import org.junit.Assert.*
 import org.junit.Test
@@ -35,6 +35,11 @@ import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter
 import java.io.File
 import java.time.Duration
+import com.geelyplay.preface.license.AppLicense
+import com.geelyplay.preface.license.CommunityCard
+import com.geelyplay.preface.license.LicenseActivity
+import com.geelyplay.preface.license.LicensePanel
+import com.geelyplay.preface.license.OnlineLicense
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], qualifiers = "zh-rCN-w960dp-h360dp-mdpi", shadows = [BluetoothLicenseLayoutTest.LicensedResources::class])
@@ -60,7 +65,7 @@ class BluetoothLicenseLayoutTest {
     }
 
     @Test fun factoryToolsKeepAuthorizationOnTheRightAcrossWindowSizes() {
-        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
+        com.geelyplay.preface.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val activity = host.get()
@@ -80,7 +85,17 @@ class BluetoothLicenseLayoutTest {
                 assertTrue(right.right <= row.width && right.bottom <= row.height)
                 assertNull(left.logPanel.parent)
                 val labels = views(left).filterIsInstance<Button>().map { it.text.toString() }.toList()
-                for (text in listOf("检查状态", "选择手机", "连接测试", "安装适配", "还原备份", "当前模式：原厂蓝牙（切换）", "返回")) assertTrue(text in labels)
+                for (text in listOf("选择手机", "还原备份", "切换蓝牙模式", "返回")) assertTrue(text in labels)
+                assertFalse(labels.any { it in listOf("检查状态", "连接测试", "安装适配") })
+                assertSame(left.back, left.controls.getChildAt(left.controls.childCount - 1))
+                assertEquals(1, views(root).filterIsInstance<TextView>().count { it.isShown && it.text == "无线 CarPlay" })
+                views(root).filterIsInstance<Button>().filter { it.isShown }.forEach {
+                    assertEquals(48, it.height)
+                    assertEquals(14f, it.textSize, 0.1f)
+                }
+                assertEquals("原厂蓝牙", left.findViewWithTag<TextView>("bluetooth-mode-status").text.toString())
+                assertTrue(left.controls.indexOfChild(left.findViewWithTag<Button>("bluetooth-mode")) >
+                    left.controls.indexOfChild(left.findViewWithTag<Button>("bluetooth-connect")))
                 assertFalse(labels.any { it.contains("原厂已连接") || it.contains("临时兼容测试") })
                 assertFalse(views(root).filterIsInstance<TextView>().any { "微信" in it.text || "starts181004" in it.text })
                 screenshot(root, "bluetooth-${width}x${height}", width, height)
@@ -112,7 +127,7 @@ class BluetoothLicenseLayoutTest {
     }
 
     @Test fun authorizedReturnKeepsTheGroupQrAndDailyConnectionAvailable() {
-        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
+        com.geelyplay.preface.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
         ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
@@ -123,24 +138,24 @@ class BluetoothLicenseLayoutTest {
             val right = row.getChildAt(1) as LicensePanel
             assertEquals(View.VISIBLE, right.visibility)
             assertEquals(View.VISIBLE, right.findViewWithTag<CommunityCard>("license-community-card").visibility)
-            assertEquals("授权免费，审核仅用于防止滥用，不收取激活费用。",
+            assertEquals("激活免费，审核仅用于防止滥用。",
                 right.findViewWithTag<TextView>("license-free-notice").text.toString())
             val connect = left.findViewWithTag<Button>("bluetooth-connect")
             assertTrue(connect.isEnabled)
-            assertTrue(left.findViewWithTag<TextView>("bluetooth-license-status").text.contains("授权已通过"))
+            assertTrue(left.findViewWithTag<TextView>("bluetooth-license-status").text.contains("无线 CarPlay 已激活"))
             for ((width,height) in listOf(1280 to 480, 960 to 360, 480 to 800)) {
                 layout(root,width,height)
                 assertTrue(left.width > 0)
-                val steps = root.findViewWithTag<View>("bluetooth-setup-steps")
-                assertTrue(steps.isShown)
-                assertTrue(steps.bottom <= left.controlScroll.height)
+                assertNull(root.findViewWithTag<View>("bluetooth-setup-steps"))
                 val card = right.findViewWithTag<View>("license-community-card")
                 assertTrue(card.isShown)
                 assertTrue(card.bottom <= right.height)
                 assertFalse(views(right).filterIsInstance<Button>().any { it.isShown && it.text == "申请激活" })
                 screenshot(root,"authorized-${width}x${height}",width,height)
             }
+            com.shilapi.xcertplay.CarPlayBackgroundSession.active = true
             connect.performClick()
+            com.shilapi.xcertplay.CarPlayBackgroundSession.active = false
             val next = shadowOf(activity).nextStartedActivity
             assertEquals("wireless", next.getStringExtra("authorized_connection"))
             assertEquals(DiPlayActivity::class.java.name, next.component!!.className)
@@ -166,8 +181,8 @@ class BluetoothLicenseLayoutTest {
         } finally { host.pause().stop().destroy() }
     }
 
-    @Test fun approvalReturnsToTheFirstSetupStepAndKeepsQrVisible() {
-        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
+    @Test fun approvalReturnsToDailyConnectionAndKeepsQrVisible() {
+        com.geelyplay.preface.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val root = host.get().findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
@@ -182,9 +197,9 @@ class BluetoothLicenseLayoutTest {
             layout(root, 960, 360)
             assertEquals(0, left.controlScroll.scrollY)
             assertEquals(0, right.scrollY)
-            assertTrue(root.findViewWithTag<TextView>("bluetooth-setup-hint").text.contains("下一步：检查状态"))
+            assertNull(root.findViewWithTag<View>("bluetooth-setup-hint"))
             val primary = ReflectionHelpers.getField<Button>(left, "primaryAction")
-            assertEquals("检查状态", primary.text.toString())
+            assertEquals("一键连接 CarPlay", primary.text.toString())
             val card = right.findViewWithTag<View>("license-community-card")
             assertTrue(card.isShown && card.bottom <= right.height)
             assertFalse(File(host.get().filesDir, "e01-goc/manage.sh").exists())
@@ -194,18 +209,20 @@ class BluetoothLicenseLayoutTest {
         }
     }
 
-    @Test fun detailedGuideExplainsFirstSetupDailyUseAndRestoreWithoutStartingMaintenance() {
-        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
+    @Test fun moreOptionsShowsRecoveryDirectlyWithoutNumberedStepsOrInstructions() {
+        com.geelyplay.preface.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val activity = host.get()
-            views(activity.window.decorView).filterIsInstance<Button>().single { it.text == "完整操作说明" }.performClick()
-            val dialog = ShadowDialog.getLatestDialog() as android.app.AlertDialog
-            val text = dialog.findViewById<TextView>(android.R.id.message).text.toString()
-            for (part in listOf("日常使用", "第一次使用", "只验证握手", "只有测试通过", "重新连接车机蓝牙", "不会卸载适配", "USB 连接无需软件激活")) assertTrue(part,text.contains(part))
+            activity.window.decorView.findViewWithTag<Button>("bluetooth-more").performClick()
+            val root = activity.window.decorView
+            assertTrue(root.findViewWithTag<Button>("bluetooth-restore").isShown)
+            assertNull(root.findViewWithTag<View>("bluetooth-recovery-toggle"))
+            assertNull(root.findViewWithTag<View>("bluetooth-instructions"))
+            assertNull(root.findViewWithTag<View>("bluetooth-setup-steps"))
+            assertFalse(views(root).filterIsInstance<TextView>().any { it.text.toString() in listOf("第 1 步", "第 2 步", "第 3 步", "完整操作说明") })
             assertFalse(File(activity.filesDir,"e01-goc/manage.sh").exists())
             assertFalse(ReflectionHelpers.getField<Boolean>(activity,"working"))
-            dialog.dismiss()
         } finally { host.pause().stop().destroy() }
     }
 
@@ -300,7 +317,7 @@ class BluetoothLicenseLayoutTest {
             ReflectionHelpers.callInstanceMethod<Unit>(host.get(), "connectionSetup", ClassParameter.from(LinearLayout::class.java, root))
             val labels = views(root).filterIsInstance<TextView>().map { it.text.toString() }.toList()
             assertFalse(labels.any { "软件授权" in it || "打开授权页面" in it || "授权管理" in it })
-            assertTrue("蓝牙工具" in labels)
+            assertTrue("无线 CarPlay" in labels)
             assertTrue(host.get().getString(R.string.connect_with_usb) in labels)
             layout(root, 960, 1600)
             screenshot(root, "connection-settings", 960, 1600)
@@ -342,29 +359,21 @@ class BluetoothLicenseLayoutTest {
         } finally { host.destroy() }
     }
 
-    @Test fun connectionTestRequiresLicenseBeforeConfirmationAndRechecksBeforeMaintenance() {
+    @Test fun quickConnectionRequiresLicenseWhileRecoveryRemainsAvailable() {
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val activity = host.get()
-            com.shilapi.xcertplay.e01goc.E01GocPreferences.select(activity, true)
+            com.geelyplay.preface.e01goc.E01GocPreferences.select(activity, true)
             com.shilapi.xcertplay.DiPlayPreferences.savePhone(activity, "00:11:22:33:44:55", "iPhone")
-            val buttons = views(activity.window.decorView).filterIsInstance<Button>().toList()
             ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
-            buttons.single { it.text == "连接测试" }.performClick()
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "updateModeLayout")
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "quickConnect")
             assertNull(ShadowDialog.getLatestDialog())
             assertFalse(ReflectionHelpers.getField<Boolean>(activity, "working"))
-            assertTrue(views(activity.window.decorView).filterIsInstance<TextView>().any { "连接测试需要激活" in it.text })
+            assertNull(shadowOf(activity).nextStartedActivity)
             assertFalse(File(activity.filesDir, "e01-goc/manage.sh").exists())
-            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
-            buttons.single { it.text == "连接测试" }.performClick()
-            val confirmation = ShadowDialog.getLatestDialog() as android.app.AlertDialog
-            assertTrue(confirmation.isShowing)
-            // An expired lease while the confirmation was open must not start maintenance.
-            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
-            confirmation.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
-            assertFalse(ReflectionHelpers.getField<Boolean>(activity, "working"))
-            assertFalse(File(activity.filesDir, "e01-goc/manage.sh").exists())
-            buttons.single { it.text == "还原备份" }.performClick()
+            activity.window.decorView.findViewWithTag<Button>("bluetooth-more").performClick()
+            activity.window.decorView.findViewWithTag<Button>("bluetooth-restore").performClick()
             assertTrue(ShadowDialog.getLatestDialog().isShowing)
             ShadowDialog.getLatestDialog().dismiss()
         } finally {
@@ -373,59 +382,42 @@ class BluetoothLicenseLayoutTest {
         }
     }
 
-    @Test fun installConfirmationAndManagerBothRejectExpiredAdmission() {
+    @Test fun managerRejectsExpiredAdmissionWithoutManualStepButtons() {
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val activity = host.get()
-            com.shilapi.xcertplay.e01goc.E01GocPreferences.select(activity, true)
-            ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
-            ReflectionHelpers.setField(activity, "setupStep", 2)
-            ReflectionHelpers.callInstanceMethod<Unit>(activity, "updateModeLayout")
-            val install = views(activity.window.decorView).filterIsInstance<Button>().single { it.text == "安装适配" }
-            assertTrue(install.isEnabled)
-            install.performClick()
-            val confirmation = ShadowDialog.getLatestDialog() as android.app.AlertDialog
+            com.geelyplay.preface.e01goc.E01GocPreferences.select(activity, true)
             ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
-            confirmation.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
             assertFalse(ReflectionHelpers.getField<Boolean>(activity, "working"))
-            val manager = com.shilapi.xcertplay.e01goc.E01GocManager(activity) {}
+            val manager = com.geelyplay.preface.e01goc.E01GocManager(activity) {}
             assertThrows(IllegalStateException::class.java) { manager.install() }
             assertThrows(IllegalStateException::class.java) { manager.test("00:11:22:33:44:55") }
             assertFalse(File(activity.filesDir, "e01-goc/manage.sh").exists())
-            assertFalse(com.shilapi.xcertplay.e01goc.E01GocManager.isBusy())
+            assertFalse(com.geelyplay.preface.e01goc.E01GocManager.isBusy())
         } finally {
             ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", 0L)
             host.pause().stop().destroy()
         }
     }
 
-    @Test fun setupButtonsFollowPrerequisitesAndRecoveryIsAnExplicitAction() {
-        com.shilapi.xcertplay.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
+    @Test fun moreOptionsKeepsRecoveryAndModeSwitchWithoutManualSetupSteps() {
+        com.geelyplay.preface.e01goc.E01GocPreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), true)
         ReflectionHelpers.setStaticField(OnlineLicense::class.java, "validUntilElapsed", Long.MAX_VALUE)
         val host = Robolectric.buildActivity(E01GocActivity::class.java).setup()
         try {
             val activity = host.get()
             val root = activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
             val buttons = views(root).filterIsInstance<Button>().associateBy { it.text.toString() }
-            assertTrue(buttons.getValue("检查状态").isEnabled)
-            assertFalse(buttons.getValue("连接测试").isEnabled)
-            assertFalse(buttons.getValue("安装适配").isEnabled)
+            assertFalse(buttons.keys.any { it in listOf("检查状态", "连接测试", "安装适配") })
             val restore = root.findViewWithTag<Button>("bluetooth-restore")
             assertEquals(View.GONE, restore.visibility)
-            root.findViewWithTag<Button>("bluetooth-recovery-toggle").performClick()
+            root.findViewWithTag<Button>("bluetooth-more").performClick()
             assertEquals(View.VISIBLE, restore.visibility)
             assertFalse(File(activity.filesDir, "e01-goc/manage.sh").exists())
-            ReflectionHelpers.setField(activity, "setupStep", 1)
-            com.shilapi.xcertplay.DiPlayPreferences.savePhone(activity, "00:11:22:33:44:55", "我的 iPhone")
-            ReflectionHelpers.callInstanceMethod<Unit>(activity, "updateModeLayout")
-            assertTrue(buttons.getValue("连接测试").isEnabled)
-            assertFalse(buttons.getValue("安装适配").isEnabled)
-            ReflectionHelpers.setField(activity, "setupStep", 2)
-            ReflectionHelpers.callInstanceMethod<Unit>(activity, "updateSetupGuide")
-            assertTrue(buttons.getValue("安装适配").isEnabled)
+            assertTrue(root.findViewWithTag<Button>("bluetooth-mode").isShown)
             for ((width,height) in listOf(960 to 360, 1280 to 480, 480 to 800)) {
                 layout(root,width,height)
-                val daily = root.findViewWithTag<View>("bluetooth-daily-actions")
+                val daily = root.findViewWithTag<Button>("bluetooth-connect")
                 assertTrue(daily.width > 0)
                 screenshot(root,"setup-ready-${width}x${height}",width,height)
             }

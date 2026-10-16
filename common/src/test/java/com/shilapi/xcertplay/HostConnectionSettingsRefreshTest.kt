@@ -16,6 +16,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implements
 import org.robolectric.annotation.Implementation
+import com.geelyplay.preface.ConnectionWaitingView
 
 /**
  * The connection settings screen lives in [DiPlayActivity] and comes back to the projection screen

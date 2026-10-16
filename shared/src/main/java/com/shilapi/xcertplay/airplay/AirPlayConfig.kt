@@ -64,9 +64,14 @@ data class AirPlayConfig(
     val entertainmentSampleRate: Int = 48000,
     val hevc: Boolean = false,
     val disableAudioOutput: Boolean = false,
-    val opusOutputSupported: Boolean = true,
     val microphone: Boolean = false,
+    /**
+     * Whether to offer Opus alongside PCM for the microphone. Both platform and bundled software
+     * encoding count toward [com.shilapi.xcertplay.media.OpusEncoderSupport]; an older Android
+     * version or absent MediaCodec encoder alone must not remove the wireless Opus formats.
+     */
     val microphoneOpus: Boolean = true,
+    val opusOutputSupported: Boolean = true,
     val manufacturer: String = "xcertplay",
     val model: String = "xcertplay",
     val oemLabel: String = "xcertplay",

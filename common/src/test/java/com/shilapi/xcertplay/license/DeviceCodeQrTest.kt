@@ -17,6 +17,9 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import com.geelyplay.preface.license.DeviceCodeQrView
+import com.geelyplay.preface.license.OfflineLicenseActivity
+import com.geelyplay.preface.license.PhoneActivationServer
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], qualifiers = "zh-rCN-mdpi", manifest = Config.NONE)

@@ -23,11 +23,21 @@ import org.robolectric.shadows.ShadowDisplayManager
 import org.robolectric.shadows.ShadowSettings
 import org.robolectric.util.ReflectionHelpers
 import java.util.concurrent.ExecutorService
+import com.geelyplay.preface.NavigationFlyGesture
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23, 29], manifest = Config.NONE)
 class E01MapProjectionTest {
     private lateinit var activity: CarPlayHostActivity
+
+    @Test fun mapPixelsCanShowWithoutNavigationOnlyAfterTheFactoryAcceptsShowGesture() {
+        assertFalse(mapOutputReady(true, true, true, false, false, false))
+        assertTrue(mapOutputReady(true, true, true, false, false, true))
+        assertTrue(mapOutputReady(true, true, true, true, false, false))
+        assertFalse(mapOutputReady(true, false, true, true, false, true))
+        assertFalse(mapOutputReady(false, true, true, true, false, true))
+        assertTrue(mapOutputReady(true, true, false, false, false, false))
+    }
 
     @Before fun prepare() {
         activity = Robolectric.buildActivity(CarPlayHostActivity::class.java).get()
@@ -87,6 +97,24 @@ class E01MapProjectionTest {
         VehicleMapSettings.setEnabled(activity, true)
         assertNull(ReflectionHelpers.callInstanceMethod<AirPlayDisplayConfig?>(activity, "clusterDisplayConfig"))
         assertNull(ReflectionHelpers.getField<VehicleMapPlan?>(activity, "vehicleMapPlan"))
+    }
+
+    @Test fun closingProjectionRetainsTheLastFailureAndSelectedTargetInTheReport() {
+        DisplayDiagnosticSnapshot.begin(activity, "request", "capability", "effective")
+        ShadowDisplayManager.addDisplay("w1280dp-h480dp")
+        val screen = GeelyHudProjection.availableDisplays(activity).single()
+        VehicleMapSettings.select(activity, screen)
+        VehicleMapSettings.setEnabled(activity, true)
+        VehicleMapProjection.attach(activity, mock(CarPlayController::class.java),
+            mock(AndroidMediaSink::class.java), VehicleMapSettings.plan(activity))
+        shadowOf(Looper.getMainLooper()).idle()
+        ReflectionHelpers.setField(VehicleMapProjection, "stage", "FRAME_TIMEOUT")
+        VehicleMapProjection.close(null)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(VehicleMapProjection.diagnostics().contains("stage=IDLE"))
+        val report = DisplayDiagnosticSnapshot.report(activity)
+        assertTrue(report.contains("Map closed: vehicleMap stage=FRAME_TIMEOUT"))
+        assertTrue(report.contains("target=${screen.id}"))
     }
 
     @Suppress("DEPRECATION")

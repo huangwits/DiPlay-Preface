@@ -1,3 +1,4 @@
 <resources>
+    <bool name="config_factory_bluetooth_default">false</bool>
     <bool name="config_advanced_audio_channel_mapping">false</bool>
 </resources>

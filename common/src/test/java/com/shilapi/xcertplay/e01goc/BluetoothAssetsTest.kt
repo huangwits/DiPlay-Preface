@@ -12,11 +12,14 @@ import java.util.zip.GZIPOutputStream
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import com.geelyplay.preface.e01goc.BluetoothAssetKey
+import com.geelyplay.preface.e01goc.BluetoothAssets
+import com.geelyplay.preface.e01goc.E01GocManager
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23])
 class BluetoothAssetsTest {
-    private val signer = "db0dc2a34dc06f22db7a3d10103fa011167712ebe61985ca2103084ff542cb82"
+    private val signer = "8accfdd43476ee44404140964c3bd5c38edde9fd3d47e76bdd7e48c2c394e418"
     private val asset = "e01-goc/manage.enc"
 
     @Test fun materializationChecksBytesBeforeWritingAndPreservesActiveWatchdog() {

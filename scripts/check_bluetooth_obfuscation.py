@@ -1,4 +1,4 @@
-"""Verify Bluetooth DEX obfuscation in a final APK; this does not prove irreversibility."""
+"""Verify Bluetooth/flyscreen asset protection and E01 DEX obfuscation; this is not irreversibility proof."""
 import argparse
 import hashlib
 import json
@@ -78,9 +78,18 @@ def audit(apk, mapping):
             payload = archive.read(asset)
             assert payload[:4] == b'DPG1' and len(payload) > 32
             assert b'#!/system/bin/sh' not in payload and b'ExtraUtilsService' not in payload
+        flyscreen = [
+            'assets/e01-map/C04010181159_MultipleScreen.json.enc',
+            'assets/e01-map/MultipleScreen.json.enc',
+        ]
+        for asset in flyscreen:
+            payload = archive.read(asset)
+            assert payload[:4] == b'DPG1' and len(payload) > 32
+        assert 'assets/C04010181159_MultipleScreen.json' not in archive.namelist()
+        assert 'assets/MultipleScreen.json' not in archive.namelist()
         assert 'assets/e01-goc/NOTICE.txt' in bluetooth_assets
 
-    prefix = 'com.shilapi.xcertplay.'
+    prefix = 'com.geelyplay.preface.'
     business = {
         'e01goc.E01GocManager': {'test', 'install', 'restore', 'inspect', 'exclusive'},
         'e01goc.E01RootBridge': {'execute', 'command', 'parse'},
@@ -91,6 +100,15 @@ def audit(apk, mapping):
         'E01BluetoothSwitchIntegration': {'prepare', 'beginFactory', 'endFactory'},
         'e01goc.BluetoothAssets': {'read', 'decode'},
         'e01goc.BluetoothAssetKey': {'material'},
+        'E01MapConfigAssets': {'read', 'decode'},
+        'E01FactoryMapTarget': {'plan', 'parse', 'readSpec', 'select', 'screen', 'screenByDisplayId'},
+        'E01NativeMapControl': {'sync', 'frameReady', 'request', 'supported'},
+        'E01NaviServiceClient': {'update', 'clear', 'close'},
+        'E01NaviServiceProtocol': {'writeNavigationInfo'},
+        'E01NavigationOutput': {'enabled', 'available'},
+        'NavigationFlyGesture': {'detect'},
+        'FactorySteeringKeys': {'keys', 'action', 'dispatch'},
+        'FactoryKeyAction': set(),
         'license.AppLicense': {'canStart', 'requireActivation'},
         'license.OnlineLicense': {'canStart', 'refresh'},
         'license.LicenseProtocol': {'verify', 'proof'},
@@ -124,6 +142,7 @@ def audit(apk, mapping):
         'mappingEmbedded': False,
         'bluetoothAssets': bluetooth_assets,
         'encryptedBluetoothAssets': encrypted,
+        'encryptedFlyscreenAssets': flyscreen,
         'assetCipher': 'AES-256-GCM, random 96-bit nonce, asset/signer-associated context, bounded GZIP',
         'maintenanceScriptReadable': False,
         'clientKeyRecoverable': True,

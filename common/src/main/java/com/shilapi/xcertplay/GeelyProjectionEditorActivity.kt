@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.shilapi.xcertplay.host.R
 import java.util.Locale
+import com.geelyplay.preface.AppPageStyle
 
 /** Edits a local draft. Save applies it; Back leaves the saved layout intact. */
 class GeelyProjectionEditorActivity : ComponentActivity() {
@@ -87,8 +88,8 @@ class GeelyProjectionEditorActivity : ComponentActivity() {
         val content = column().apply { setPadding(dp(24), dp(20), dp(24), dp(28)) }
         scroll.addView(content)
         val header = row()
-        header.addView(label(R.string.projection_editor, 26f), LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(button(R.string.back) { finish() })
+        header.addView(label(R.string.projection_editor, 26f).apply { setPadding(dp(12), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(header)
         content.addView(label(R.string.projection_editor_hint, 16f, MUTED), params(12))
         val screen = GeelyHudProjection.selectedDisplay(this)

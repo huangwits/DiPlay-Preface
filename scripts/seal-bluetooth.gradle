@@ -1,5 +1,6 @@
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.nio.file.Files
 import java.util.zip.GZIPOutputStream
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -41,20 +42,21 @@ def seal = tasks.register('sealBluetoothAssets') {
         if (notice != null && notice.isFile()) new File(destination.parentFile, 'NOTICE.txt').bytes = notice.bytes
         byte[] master
         if (isCommon) {
+            Files.deleteIfExists(new File(keySource, 'com/shilapi/xcertplay/e01goc/BluetoothAssetKey.java').toPath())
             master = new byte[32]
             def mask = new byte[32]
             new SecureRandom().nextBytes(master)
             new SecureRandom().nextBytes(mask)
             keyFile.parentFile.mkdirs()
             keyFile.bytes = master
-            def source = new File(keySource, 'com/shilapi/xcertplay/e01goc/BluetoothAssetKey.java')
+            def source = new File(keySource, 'com/geelyplay/preface/e01goc/BluetoothAssetKey.java')
             source.parentFile.mkdirs()
             def left = mask.collect { (int) it }.join(',')
             def right = (0..<32).collect { (int) ((byte) (master[it] ^ mask[it])) }.join(',')
-            source.text = """package com.shilapi.xcertplay.e01goc;
+            source.text = """package com.geelyplay.preface.e01goc;
 // Generated local build input. Do not commit or distribute this source.
-final class BluetoothAssetKey {
-  static byte[] material() {
+public final class BluetoothAssetKey {
+  public static byte[] material() {
     byte[] left = new byte[]{${left}};
     byte[] right = new byte[]{${right}};
     for (int i=0; i<left.length; i++) left[i] = (byte)(left[i] ^ right[i]);
@@ -68,7 +70,7 @@ final class BluetoothAssetKey {
             master = keyFile.bytes
             if (master.length != 32) throw new GradleException('Invalid local Bluetooth build key')
         }
-        def signer = 'db0dc2a34dc06f22db7a3d10103fa011167712ebe61985ca2103084ff542cb82'
+        def signer = '8accfdd43476ee44404140964c3bd5c38edde9fd3d47e76bdd7e48c2c394e418'
         def context = ('DiPlay Bluetooth v1\u0000' + signer + '\u0000' + asset).getBytes('UTF-8')
         def digest = MessageDigest.getInstance('SHA-256')
         digest.update(master)

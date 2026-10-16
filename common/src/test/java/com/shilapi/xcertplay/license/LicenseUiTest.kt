@@ -14,11 +14,18 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import com.geelyplay.preface.license.AppLicense
+import com.geelyplay.preface.license.LicenseActivity
+import com.geelyplay.preface.license.LicensePanel
+import com.geelyplay.preface.license.LicensePanelClient
+import com.geelyplay.preface.license.LicensePanelState
+import com.geelyplay.preface.license.OfflineLicenseActivity
+import com.geelyplay.preface.license.OnlineLicense
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23])
 class LicenseUiTest {
-    @Test fun sourceBuildStaysUsableButActivatedPreferenceCannotBypassLicensedGate() {
+    @Test fun sourceBuildStaysUsableAndPreviousApprovalMigratesToOfflineAdmission() {
         val app = RuntimeEnvironment.getApplication()
         assertFalse(AppLicense.enabled(app))
         assertTrue(AppLicense.canStart(app))
@@ -28,7 +35,9 @@ class LicenseUiTest {
         val resources = mock(Resources::class.java)
         `when`(context.resources).thenReturn(resources)
         `when`(resources.getBoolean(R.bool.config_online_license)).thenReturn(true)
-        assertFalse(OnlineLicense.canStart(context))
+        `when`(context.getSharedPreferences("diplay-license", Context.MODE_PRIVATE))
+            .thenReturn(app.getSharedPreferences("diplay-license", Context.MODE_PRIVATE))
+        assertTrue(OnlineLicense.canStart(context))
     }
 
     @Test fun offlineGateRejectsAnActivatedFlagWithoutASignedToken() {
@@ -62,7 +71,7 @@ class LicenseUiTest {
         val controller = Robolectric.buildActivity(LicenseActivity::class.java).create()
         try {
             val intent = org.robolectric.Shadows.shadowOf(controller.get()).nextStartedActivity
-            assertEquals(com.shilapi.xcertplay.e01goc.E01GocActivity::class.java.name, intent.component!!.className)
+            assertEquals(com.geelyplay.preface.e01goc.E01GocActivity::class.java.name, intent.component!!.className)
             assertTrue(intent.getBooleanExtra("license_wireless", false))
             assertTrue(controller.get().isFinishing)
         } finally { controller.destroy() }
@@ -73,7 +82,7 @@ class LicenseUiTest {
         panel.start()
         try {
             val labels = views(panel).filterIsInstance<TextView>().map { it.text.toString() }.toList()
-            assertTrue(labels.any { it.contains("授权预览版") })
+            assertTrue(labels.any { it.contains("激活服务尚未配置") })
             assertFalse(labels.any { it.contains("微信") || it.contains("starts181004") })
             assertTrue("申请激活" in labels)
             assertFalse("复制申请号" in labels)
@@ -254,6 +263,86 @@ class LicenseUiTest {
             assertEquals(1, client.requests.size)
             assertFalse(views(panel).filterIsInstance<android.widget.Button>().single { it.text == "连接 CarPlay" }.isEnabled)
         } finally { panel.stop() }
+    }
+
+    @Test fun returningCheckKeepsCompactUiAndResumesOneQueuedConnection() {
+        val client = ReturningClient().apply {
+            entered = java.util.concurrent.CountDownLatch(1)
+            release = java.util.concurrent.CountDownLatch(1)
+        }
+        var connections = 0
+        val panel = LicensePanel(RuntimeEnvironment.getApplication(), {}, client, compactWhenApproved = true)
+        panel.start()
+        try {
+            assertTrue(client.entered!!.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(View.GONE, views(panel).filterIsInstance<android.widget.Button>().single { it.text == "申请激活" }.visibility)
+            panel.whenAdmitted { connections++ }
+            panel.whenAdmitted { connections++ }
+            assertEquals(0, connections)
+            client.release!!.countDown(); settleLicense()
+            assertEquals(1, connections)
+            assertEquals(listOf(false), client.requests)
+        } finally { client.release!!.countDown(); panel.stop() }
+    }
+
+    @Test fun leavingDuringAuthorizationCancelsTheQueuedConnection() {
+        val client = ReturningClient().apply {
+            entered = java.util.concurrent.CountDownLatch(1)
+            release = java.util.concurrent.CountDownLatch(1)
+        }
+        var connections = 0
+        val panel = LicensePanel(RuntimeEnvironment.getApplication(), {}, client)
+        panel.start()
+        assertTrue(client.entered!!.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        panel.whenAdmitted { connections++ }
+        panel.stop()
+        client.release!!.countDown(); settleLicense()
+        assertEquals(0, connections)
+    }
+
+    @Test fun approvedPanelDoesNotQueryTheNetworkBeforeCarPlayConnects() {
+        val count = java.util.concurrent.atomic.AtomicInteger()
+        val client = object : LicensePanelClient {
+            override val configured = true
+            override val requested = true
+            override val activated = true
+            override val valid = true
+            override val requestId = "123456ABCDEF"
+            override fun refresh(request: Boolean): OnlineLicense.Result {
+                count.incrementAndGet(); throw java.io.IOException("offline")
+            }
+        }
+        val panel = LicensePanel(RuntimeEnvironment.getApplication(), {}, client, compactWhenApproved = true)
+        panel.start()
+        try {
+            panel.refreshAdmission()
+            assertEquals(LicensePanelState.AUTHORIZED, panel.state)
+            settleLicense()
+            assertEquals(LicensePanelState.AUTHORIZED, panel.state)
+            repeat(3) { panel.refreshAdmission() }; settleLicense()
+            assertEquals(0, count.get())
+        } finally { panel.stop() }
+    }
+
+    @Test fun savedApprovalReadDoesNotWaitForTheNetworkRefreshMonitor() {
+        val held = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val returned = java.util.concurrent.CountDownLatch(1)
+        val app = RuntimeEnvironment.getApplication()
+        app.getSharedPreferences("diplay-license", Context.MODE_PRIVATE).edit().putBoolean("authorized", true).commit()
+        val network = Thread {
+            synchronized(OnlineLicense) {
+                held.countDown()
+                check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            }
+        }
+        val caller = Thread { assertTrue(OnlineLicense.hasSavedApproval(app)); returned.countDown() }
+        network.start()
+        try {
+            assertTrue(held.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            caller.start()
+            assertTrue("Offline admission must not wait for refresh", returned.await(2, java.util.concurrent.TimeUnit.SECONDS))
+        } finally { release.countDown(); network.join(5000); caller.join(5000) }
     }
 
     private fun views(view: View): Sequence<View> = sequence {

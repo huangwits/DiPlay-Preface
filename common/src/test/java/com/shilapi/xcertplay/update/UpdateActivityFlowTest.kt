@@ -13,6 +13,8 @@ import android.widget.Button
 import android.widget.TextView
 import com.shilapi.xcertplay.CarPlayBackgroundSession
 import com.shilapi.xcertplay.DiPlayActivity
+import com.geelyplay.preface.update.E01UpdateInstaller
+import com.geelyplay.preface.update.UpdateActivity
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -35,6 +37,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import com.geelyplay.preface.update.UpdatePanel
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [23], qualifiers = "zh-rCN", shadows = [UpdateActivityFlowTest.PrefaceContext::class,
@@ -74,9 +77,11 @@ class UpdateActivityFlowTest {
             ReflectionHelpers.callInstanceMethod<Unit>(host.get(), "render")
             assertNull(host.get().window.decorView.findViewWithTag<Button>("update-action"))
             val project = views(host.get().window.decorView).filterIsInstance<Button>()
-                .single { it.text == host.get().getString(com.shilapi.xcertplay.host.R.string.ui_open_preface_source) }
+                .single { it.text == host.get().getString(com.shilapi.xcertplay.host.R.string.ui_open_upstream_source) }
+            val aboutLabels = views(host.get().window.decorView).filterIsInstance<TextView>().map { it.text.toString() }.toList()
+            assertFalse(aboutLabels.any { it.contains("carlito", ignoreCase = true) || it.contains(UpdateCatalog.REPOSITORY) || it.contains("星瑞版 GitHub") })
             project.performClick()
-            assertEquals(UpdateCatalog.REPOSITORY, shadowOf(host.get()).nextStartedActivity.dataString)
+            assertEquals("https://github.com/shihabal3amri/DiPlay", shadowOf(host.get()).nextStartedActivity.dataString)
         } finally { host.pause().stop().destroy() }
         val legacy = Robolectric.buildActivity(UpdateActivity::class.java).create()
         val intent = shadowOf(legacy.get()).nextStartedActivity
@@ -135,7 +140,7 @@ class UpdateActivityFlowTest {
         try {
             val bytes = "fixture payload, package identity supplied by PackageManager shadow".toByteArray()
             val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-            val name = "DiPlay-Preface-v0.2.16.1.apk"
+            val name = "GeelyPlay-v0.2.16.1.apk"
             val info = PackageInfo().apply {
                 packageName = UpdateCatalog.PACKAGE; versionName = "0.2.16.1"; versionCode = 45
                 signatures = arrayOf(Signature("0123456789abcdef"))
@@ -202,8 +207,8 @@ class UpdateActivityFlowTest {
         val bytes = "validated fixture".toByteArray()
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val saved = File(directory, "$digest.apk").apply { writeBytes(bytes) }
-        val release = UpdateRelease("0.2.16.1", "DiPlay-Preface-v0.2.16.1.apk",
-            "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk", bytes.size.toLong(), digest, "")
+        val release = UpdateRelease("0.2.16.1", "GeelyPlay-v0.2.16.1.apk",
+            "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/GeelyPlay-v0.2.16.1.apk", bytes.size.toLong(), digest, "")
         File(directory, "pending.json").writeText(release.json().toString())
         shadowOf(app.packageManager).setPackageArchiveInfo(saved.absolutePath, PackageInfo().apply {
             packageName = UpdateCatalog.PACKAGE; versionName = "0.2.16.1"; versionCode = 45
@@ -261,8 +266,8 @@ class UpdateActivityFlowTest {
         val directory = File(app.cacheDir, "update").apply { mkdirs() }
         val sha = "c".repeat(64)
         File(directory, "$sha.apk").writeText("cached")
-        val release = UpdateRelease("0.2.16.1", "DiPlay-Preface-v0.2.16.1.apk",
-            "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/DiPlay-Preface-v0.2.16.1.apk", 6, sha,
+        val release = UpdateRelease("0.2.16.1", "GeelyPlay-v0.2.16.1.apk",
+            "${UpdateCatalog.REPOSITORY}/releases/download/v0.2.16.1/GeelyPlay-v0.2.16.1.apk", 6, sha,
             "新增应用内检查更新和下载。\n支持 E01 车机覆盖安装，保留设置和授权信息。")
         File(directory, "pending.json").writeText(release.json().toString())
         val host = settingsHost()
@@ -285,7 +290,7 @@ class UpdateActivityFlowTest {
                 assertTrue("install reachable at $width x $height", rect.top >= scroll.scrollY &&
                     rect.bottom <= scroll.scrollY + scroll.height)
                 assertTrue(button.background is android.graphics.drawable.RippleDrawable)
-                assertEquals(com.shilapi.xcertplay.AppPageStyle.background, button.currentTextColor)
+                assertEquals(com.geelyplay.preface.AppPageStyle.background, button.currentTextColor)
                 System.getenv("DIPLAY_UPDATE_SCREENSHOTS")?.let { output ->
                     val folder = File(output).apply { mkdirs() }
                     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)

@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay
 
-import com.shilapi.xcertplay.compat.systemService
+import com.geelyplay.preface.compat.systemService
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -34,7 +34,8 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
     private var pending: Future<*>? = null
     @Volatile private var closed = false
 
-    fun play(channel: Int, navigation: Boolean, output: AudioOutputDevice? = null, role: VehicleAudioRole? = null) {
+    fun play(channel: Int, navigation: Boolean, output: AudioOutputDevice? = null, role: VehicleAudioRole? = null,
+        explicitStream: Boolean = false, focusGain: Int? = AudioManager.AUDIOFOCUS_GAIN_TRANSIENT) {
         if (closed) return
         require(channel in AirPlayPersistence.AUDIO_CHANNELS)
         val request = generation.incrementAndGet()
@@ -43,6 +44,12 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
         pending = worker.submit {
             var track: AudioTrack? = null
             var focusRequest: AudioFocusRequest? = null
+            var legacyFocusRequested = false
+            val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+                if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                    if (generation.compareAndSet(request, request + 1)) activeTrack.get()?.let { runCatching { it.stop() } }
+                }
+            }
             try {
                 if (closed || generation.get() != request) return@submit
                 val pcm = tone()
@@ -60,7 +67,7 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
                 if (attributes.usage != usage) {
                     attributes = AudioAttributes.Builder().setUsage(standardUsage).setContentType(contentType).build()
                 }
-                val built = if (channel == 0 && Build.VERSION.SDK_INT >= 23) {
+                val built = if (!explicitStream && channel == 0 && Build.VERSION.SDK_INT >= 23) {
                     AudioTrack.Builder()
                         .setAudioAttributes(attributes)
                         .setAudioFormat(
@@ -76,7 +83,7 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
                 } else {
                     // Match playback and let the head unit handle vendor-specific stream types.
                     @Suppress("DEPRECATION")
-                    AudioTrack(if (channel == 0) AudioManager.STREAM_MUSIC else channel, SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO,
+                    AudioTrack(if (!explicitStream && channel == 0) AudioManager.STREAM_MUSIC else channel, SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO,
                         AudioFormat.ENCODING_PCM_16BIT, bufferBytes, AudioTrack.MODE_STREAM)
                 }
                 track = built
@@ -87,20 +94,22 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
                 }
                 if (closed || generation.get() != request) return@submit
                 activeTrack.set(built)
-                if (focusEnabled && audioManager != null && Build.VERSION.SDK_INT >= 26) {
+                if (focusEnabled && focusGain != null && audioManager != null && Build.VERSION.SDK_INT >= 26) {
                     val focusAttributes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) built.audioAttributes
                         else attributes
-                    val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    val focus = AudioFocusRequest.Builder(focusGain)
                         .setAudioAttributes(focusAttributes)
+                        .setOnAudioFocusChangeListener(focusListener, mainHandler)
                         .build()
                     focusRequest = focus
                     check(audioManager.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
                         "Preview audio focus unavailable"
                     }
                 }
-                if (focusEnabled && audioManager != null && Build.VERSION.SDK_INT < 26) {
-                    check(audioManager.requestAudioFocus(null, if (channel == 0) AudioManager.STREAM_MUSIC else channel,
-                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                if (focusEnabled && focusGain != null && audioManager != null && Build.VERSION.SDK_INT < 26) {
+                    legacyFocusRequested = true
+                    check(audioManager.requestAudioFocus(focusListener, if (!explicitStream && channel == 0) AudioManager.STREAM_MUSIC else channel,
+                        focusGain) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
                 }
                 built.setVolume(0.6f)
                 built.play()
@@ -125,7 +134,7 @@ internal class AudioChannelPreview(context: Context? = null, private val onUnava
                 activeTrack.compareAndSet(track, null)
                 track?.let { runCatching { it.stop() }; runCatching { it.release() } }
                 if (Build.VERSION.SDK_INT >= 26) focusRequest?.let { runCatching { audioManager?.abandonAudioFocusRequest(it) } }
-                else if (focusEnabled) runCatching { audioManager?.abandonAudioFocus(null) }
+                else if (legacyFocusRequested) runCatching { audioManager?.abandonAudioFocus(focusListener) }
             }
         }
     }

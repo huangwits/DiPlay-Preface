@@ -11,3 +11,8 @@
 # Preserve useful crash positions; mapping.txt is retained privately with each build.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# Invoked by the fixed FS11 ExtraUtilsService root hotspot command.
+-keep class com.shilapi.xcertplay.e01goc.E01RootHotspotMain {
+    public static void main(java.lang.String[]);
+}
