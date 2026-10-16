@@ -18,24 +18,30 @@ class MediaAudioBufferSettingsTest {
             .remove("media_buffer_ms").remove("wired_media_buffer_ms").commit()
     }
 
-    @Test fun installationsWithoutAnExplicitChoiceUseTheMoreResilientMusicBuffer() {
-        assertEquals(500, AirPlayPersistence.loadMediaBufferMillis(context))
+    @Test fun installationsWithoutAnExplicitChoiceUseThe300msDefault() {
+        assertEquals(300, AirPlayPersistence.loadMediaBufferMillis(context))
+        assertEquals(300, AirPlayPersistence.loadMediaBufferMillis(context, wireless = true))
+        assertEquals(300, AirPlayPersistence.loadMediaBufferMillis(context, wireless = false))
     }
 
-    @Test fun explicitMusicBufferChoicesSurviveTheDefaultChange() {
+    @Test fun explicitSharedBufferChoiceAppliesToBothTransports() {
+        AirPlayPersistence.saveMediaBufferMillis(context, 500)
+        assertEquals(500, AirPlayPersistence.loadMediaBufferMillis(context))
+        assertEquals(500, AirPlayPersistence.loadMediaBufferMillis(context, wireless = true))
+        assertEquals(500, AirPlayPersistence.loadMediaBufferMillis(context, wireless = false))
+    }
+
+    @Test fun explicit100msChoiceSurvivesTheDefaultIncrease() {
         AirPlayPersistence.saveMediaBufferMillis(context, 100)
         assertEquals(100, AirPlayPersistence.loadMediaBufferMillis(context))
+        assertEquals(100, AirPlayPersistence.loadMediaBufferMillis(context, wireless = true))
+        assertEquals(100, AirPlayPersistence.loadMediaBufferMillis(context, wireless = false))
     }
 
-    @Test fun anOlderSavedChoiceSeedsBothTransportsBeforeTheyCanDiverge() {
-        AirPlayPersistence.saveMediaBufferMillis(context, 700)
-        assertEquals(700, AirPlayPersistence.loadMediaBufferMillis(context, wireless = true))
-        assertEquals(700, AirPlayPersistence.loadMediaBufferMillis(context, wireless = false))
-        AirPlayPersistence.saveMediaBufferMillis(context, wireless = true, millis = 900)
-        assertEquals(900, AirPlayPersistence.loadMediaBufferMillis(context, wireless = true))
-        assertEquals(700, AirPlayPersistence.loadMediaBufferMillis(context, wireless = false))
-        AirPlayPersistence.saveMediaBufferMillis(context, wireless = false, millis = 200)
-        assertEquals(900, AirPlayPersistence.loadMediaBufferMillis(context, wireless = true))
-        assertEquals(200, AirPlayPersistence.loadMediaBufferMillis(context, wireless = false))
+    @Test fun transportSpecificCompatibilityApiUsesOneSharedBuffer() {
+        AirPlayPersistence.saveMediaBufferMillis(context, wireless = false, millis = 1000)
+        assertEquals(1000, AirPlayPersistence.loadMediaBufferMillis(context, wireless = true))
+        AirPlayPersistence.saveMediaBufferMillis(context, wireless = true, millis = 300)
+        assertEquals(300, AirPlayPersistence.loadMediaBufferMillis(context, wireless = false))
     }
 }

@@ -6,11 +6,11 @@ import org.junit.Test
 
 class MicrophoneInputSourceOrderTest {
     @Test
-    fun fs11CallsPreferTheStandardCommunicationSourceAndKeepTheFactoryFallback() {
+    fun fs11CarPlayCallsPreferAndroidCommunicationCapture() {
         assertEquals(
-            listOf(MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.CAMCORDER),
+            listOf(MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC),
             microphoneSourceCandidates(
-                factorySource = MediaRecorder.AudioSource.CAMCORDER,
+                factorySource = MediaRecorder.AudioSource.MIC,
                 androidSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 preferAndroidPhoneSource = true,
                 legacyFs11Speech = false,
@@ -19,11 +19,11 @@ class MicrophoneInputSourceOrderTest {
     }
 
     @Test
-    fun otherVehiclesKeepTheFactoryPhoneSourceFirst() {
+    fun otherVehiclesKeepTheFactoryTelephonySourceFirst() {
         assertEquals(
-            listOf(MediaRecorder.AudioSource.CAMCORDER, MediaRecorder.AudioSource.VOICE_COMMUNICATION),
+            listOf(MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.VOICE_COMMUNICATION),
             microphoneSourceCandidates(
-                factorySource = MediaRecorder.AudioSource.CAMCORDER,
+                factorySource = MediaRecorder.AudioSource.MIC,
                 androidSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 preferAndroidPhoneSource = false,
                 legacyFs11Speech = false,
@@ -32,7 +32,7 @@ class MicrophoneInputSourceOrderTest {
     }
 
     @Test
-    fun fs11SiriKeepsItsMicWorkaroundAndCommunicationFallback() {
+    fun fs11SiriKeepsMicrophoneThenAndroidFallbacks() {
         assertEquals(
             listOf(
                 MediaRecorder.AudioSource.MIC,

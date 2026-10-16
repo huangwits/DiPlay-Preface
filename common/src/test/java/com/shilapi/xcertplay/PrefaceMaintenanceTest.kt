@@ -29,7 +29,7 @@ class PrefaceMaintenanceTest {
         CarPlayBackgroundSession.clear()
     }
 
-    @Test fun savedHotspotCanStartAtBootIndependentlyOfAppStartupAndSelectedBackend() {
+    @Test fun savedHotspotDoesNotStartDiPlayAtBootWithoutAppStartupEnabled() {
         CarHotspotSettings.setEnabled(app, true)
         AirPlayPersistence.saveWirelessEnabled(app, true)
         AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.MANUAL)
@@ -40,22 +40,11 @@ class PrefaceMaintenanceTest {
             override fun startActivity(intent: Intent) { launch = intent }
         }
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
-        assertTrue(launch!!.getBooleanExtra("boot_hotspot", false))
-        assertFalse(AirPlayPersistence.loadAutoStartOnBoot(app))
-        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotLaunchAtBoot=true"))
-        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotRootResult=pending"))
-        StartupDiagnosticSnapshot.hotspotRootResult(app, StartupDiagnosticSnapshot.RootHotspotResult.FALLBACK)
-        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotRootResult=fallback"))
-        launch = null
-        AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.EXISTING_WIFI)
-        BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
-        assertTrue(launch!!.getBooleanExtra("boot_hotspot", false))
-        AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.MANUAL)
-        AirPlayPersistence.saveManualHotspotSsid(app, "")
-        launch = null
-        BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         assertNull(launch)
-        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotEligibility=manual-config-invalid"))
+        assertFalse(AirPlayPersistence.loadAutoStartOnBoot(app))
+        val report = StartupDiagnosticSnapshot.report(app)
+        assertTrue(report.contains("hotspotLaunchAtBoot=false"))
+        assertTrue(report.contains("hotspotAutoStartSetting=false"))
     }
 
     @Test fun factoryFailureIsPlacedWithSetupBeforeTheDailyConnectionAction() {

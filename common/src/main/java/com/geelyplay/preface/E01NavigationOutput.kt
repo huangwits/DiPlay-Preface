@@ -53,6 +53,8 @@ internal class E01NavigationOutput(private val context: Context) {
         previous = null
     }
 
+    fun routeStatePublished() = started && !arrivalShowing
+
     fun close() {
         clear()
         naviService.close()

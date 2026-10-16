@@ -6,10 +6,10 @@ package com.shilapi.xcertplay.media
  * outlasts them. Calls, Siri and navigation prompts keep the small low-latency buffer.
  */
 object MediaAudioBuffer {
-    const val DEFAULT_MILLIS = 500
-    val wirelessPresets = (100..1000 step 100).toList()
-    val wiredPresets = wirelessPresets
-    val presets = wirelessPresets
+    const val DEFAULT_MILLIS = 300
+    val presets = (100..1000 step 100).toList()
+    val wirelessPresets = presets
+    val wiredPresets = presets
 
     private const val HEADROOM_MILLIS = 200 // room above the start level so bursts after a gap fit
     private const val MIN_TRACK_BUFFER_BYTES = 16 * 1024

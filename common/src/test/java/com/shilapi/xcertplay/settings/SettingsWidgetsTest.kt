@@ -143,8 +143,16 @@ class SettingsWidgetsTest {
         val row = ConnectionSettingsSection.createHotspotModeChoice(context, WirelessHotspotMode.MANUAL,
             onSelected = {})
         val options = views(row.container).filterIsInstance<RadioButton>().toList()
-        assertEquals(listOf(WirelessHotspotMode.MANUAL, WirelessHotspotMode.EXISTING_WIFI), options.map { it.tag })
+        assertEquals(listOf(WirelessHotspotMode.AUTOMATIC, WirelessHotspotMode.MANUAL, WirelessHotspotMode.EXISTING_WIFI), options.map { it.tag })
         assertEquals(WirelessHotspotMode.MANUAL, options.first { it.isChecked }.tag)
+    }
+
+    @Test @Config(sdk = [28]) fun automaticModeRemainsSelectedInTheProjectionSettings() {
+        val row = ConnectionSettingsSection.createHotspotModeChoice(context, WirelessHotspotMode.AUTOMATIC,
+            onSelected = {})
+        val selected = views(row.container).filterIsInstance<RadioButton>().single { it.isChecked }
+        assertEquals(WirelessHotspotMode.AUTOMATIC, selected.tag)
+        assertEquals("自动连接", selected.text.toString())
     }
 
     private fun views(view: View): Sequence<View> = sequence {

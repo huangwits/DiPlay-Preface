@@ -42,10 +42,9 @@ class HotspotStartupLifecycleTest {
         CarPlayBackgroundSession.clear()
         CarHotspotSettings.setEnabled(app, true)
         AirPlayPersistence.saveMfiTarget(app, MfiTarget.USB_CH341)
-        AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.MANUAL)
         AirPlayPersistence.saveManualHotspotSsid(app, "Car hotspot")
         AirPlayPersistence.saveManualHotspotPassphrase(app, "12345678")
-        DiPlayPreferences.saveAutoConnect(app, true)
+        DiPlayPreferences.saveAutoConnect(app, false)
         DiPlayPreferences.saveDefaultConnectionMode(app, DefaultConnectionMode.USB)
         app.getSharedPreferences("diplay", 0).edit().putBoolean("notification_asked", true).commit()
         RootStartup.entered = CountDownLatch(1)
@@ -61,76 +60,109 @@ class HotspotStartupLifecycleTest {
         CarPlayBackgroundSession.clear()
     }
 
-    @Test fun automaticConnectionWaitsForTheRootHotspotReply() {
+    @Test fun explicitManualModeDoesNotStartTheCarHotspotIndependently() {
+        AirPlayPersistence.saveWirelessHotspotMode(app, WirelessHotspotMode.MANUAL)
         val activity = launch()
         shadowOf(Looper.getMainLooper()).idle()
-        assertNull(shadowOf(activity).nextStartedActivity)
 
-        finishRoot()
-        shadowOf(Looper.getMainLooper()).idle()
-
-        assertEquals(CarPlayHostActivity::class.java.name,
-            shadowOf(activity).nextStartedActivity?.component?.className)
+        assertFalse(RootStartup.entered.await(0, TimeUnit.MILLISECONDS))
         assertEquals(0, FallbackStartup.calls)
-        assertFalse(AirPlayPersistence.loadWirelessEnabled(app))
-    }
-
-    @Test fun leavingTheActivityCancelsAutomaticConnectionDespiteALateRootSuccess() {
-        val activity = launch()
-        controller!!.pause().stop()
-        stopped = true
-
-        finishRoot()
-        shadowOf(Looper.getMainLooper()).idle()
-
-        assertNull(shadowOf(activity).nextStartedActivity)
-        assertEquals(0, FallbackStartup.calls)
-    }
-
-    @Test fun cancellationAfterTheReplyWasQueuedStillPreventsAutomaticConnection() {
-        val activity = launch()
-        finishRoot()
-        controller!!.pause().stop()
-        stopped = true
-
-        shadowOf(Looper.getMainLooper()).idle()
-
         assertNull(shadowOf(activity).nextStartedActivity)
     }
 
-    @Test fun manualConnectionDoesNotGetRepeatedWhenTheRootReplyArrives() {
-        val activity = launch()
-        ReflectionHelpers.callInstanceMethod<Unit>(activity, "connect",
-            ReflectionHelpers.ClassParameter(Boolean::class.javaPrimitiveType!!, false))
-        assertEquals(CarPlayHostActivity::class.java.name,
-            shadowOf(activity).nextStartedActivity?.component?.className)
-
-        finishRoot()
-        shadowOf(Looper.getMainLooper()).idle()
-
-        assertNull(shadowOf(activity).nextStartedActivity)
-        assertEquals(0, FallbackStartup.calls)
-    }
-
-    @Test fun bootHotspotCanFinishWhenTheOemLauncherStopsTheActivity() {
-        DiPlayPreferences.saveAutoConnect(app, false)
-        StartupDiagnosticSnapshot.received(app, launchEnabled = true, hotspotLaunchEnabled = true)
+    @Test fun disabledBootStartupDoesNotStartTheCarHotspot() {
+        AirPlayPersistence.saveAutoStartOnBoot(app, false)
         val activity = launch(Intent().putExtra("boot_hotspot", true))
-        controller!!.pause().stop()
-        stopped = true
-
-        finishRoot()
         shadowOf(Looper.getMainLooper()).idle()
 
-        val report = StartupDiagnosticSnapshot.report(app)
-        assertTrue(report, report.contains("hotspotRootResult=confirmed hotspotResult=READY"))
+        assertFalse(RootStartup.entered.await(0, TimeUnit.MILLISECONDS))
         assertEquals(0, FallbackStartup.calls)
-        assertNull(shadowOf(activity).nextStartedActivity)
+        assertFalse(activity.intent.hasExtra("boot_hotspot"))
+    }
+
+    @Test fun bootReceiverLaunchesDefaultAutomaticModeAndStartsSavedHotspot() {
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_BOOT_COMPLETED))
+        val boot = shadowOf(app).nextStartedActivity
+        assertNotNull(boot)
+        assertTrue(boot.getBooleanExtra("boot_hotspot", false))
+        val activity = launch(boot)
+        assertTrue("boot did not attempt saved hotspot startup", RootStartup.entered.await(5, TimeUnit.SECONDS))
+        assertFalse(activity.intent.hasExtra("boot_hotspot"))
+        finishRoot()
+        assertEquals(0, FallbackStartup.calls)
+    }
+
+    @Test fun automaticModeAtAppLaunchStartsSavedHotspotWithoutWaitingForWirelessConnect() {
+        launch()
+        assertTrue(RootStartup.entered.await(5, TimeUnit.SECONDS))
+        finishRoot()
+        assertEquals(0, FallbackStartup.calls)
+    }
+
+    @Test fun failedFactoryStartupTriesTheExistingTetheringFallback() {
+        RootStartup.ready = false
+        launch(Intent().putExtra("boot_hotspot", true))
+        assertTrue(RootStartup.entered.await(5, TimeUnit.SECONDS))
+        finishRoot()
+        assertEquals(1, FallbackStartup.calls)
+    }
+
+    @Test fun disabledStartupAlsoPreventsBootReceiverLaunch() {
+        AirPlayPersistence.saveAutoStartOnBoot(app, false)
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_BOOT_COMPLETED))
+        assertNull(shadowOf(app).nextStartedActivity)
+    }
+
+    @Test fun bootHotspotRequestSurvivesLauncherTakingTheForeground() {
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_BOOT_COMPLETED))
+        launch(shadowOf(app).nextStartedActivity)
+        assertTrue(RootStartup.entered.await(5, TimeUnit.SECONDS))
+        controller!!.pause().stop()
+        stopped = true
+        finishRoot()
+        assertEquals(0, FallbackStartup.calls)
+        assertTrue(StartupDiagnosticSnapshot.report(app).contains("hotspotRootResult=confirmed"))
+    }
+
+    @Test fun ordinaryLaunchCancelsLateFactoryReplyAfterTheUserLeaves() {
+        RootStartup.ready = false
+        launch()
+        assertTrue(RootStartup.entered.await(5, TimeUnit.SECONDS))
+        controller!!.pause().stop()
+        stopped = true
+        finishRoot()
+        assertEquals(0, FallbackStartup.calls)
+    }
+
+    @Test fun anExistingCarPlaySessionPreventsIndependentHotspotStartup() {
+        ReflectionHelpers.setField(CarPlayBackgroundSession, "stopAction", { done: () -> Unit -> done() })
+        launch(Intent().putExtra("boot_hotspot", true))
+        assertFalse(RootStartup.entered.await(0, TimeUnit.MILLISECONDS))
+        assertEquals(0, FallbackStartup.calls)
+    }
+
+    @Test fun aSessionStartedDuringTheFactoryCallPreventsFallbackHotspotChanges() {
+        RootStartup.ready = false
+        launch(Intent().putExtra("boot_hotspot", true))
+        assertTrue(RootStartup.entered.await(5, TimeUnit.SECONDS))
+        ReflectionHelpers.setField(CarPlayBackgroundSession, "stopAction", { done: () -> Unit -> done() })
+        finishRoot()
+        assertEquals(0, FallbackStartup.calls)
+    }
+
+    @Test fun bootDeliveryToAnExistingActivityAlsoStartsTheAutomaticHotspot() {
+        AirPlayPersistence.saveAutoStartOnBoot(app, false)
+        launch()
+        assertFalse(RootStartup.entered.await(0, TimeUnit.MILLISECONDS))
+        AirPlayPersistence.saveAutoStartOnBoot(app, true)
+        controller!!.newIntent(Intent().putExtra("boot_hotspot", true))
+        assertTrue(RootStartup.entered.await(5, TimeUnit.SECONDS))
+        finishRoot()
+        assertEquals(0, FallbackStartup.calls)
     }
 
     private fun launch(intent: Intent = Intent(Intent.ACTION_MAIN)): DiPlayActivity {
         controller = Robolectric.buildActivity(DiPlayActivity::class.java, intent).create().start().resume()
-        assertTrue("hotspot startup did not enter the root path", RootStartup.entered.await(5, TimeUnit.SECONDS))
         return controller!!.get()
     }
 

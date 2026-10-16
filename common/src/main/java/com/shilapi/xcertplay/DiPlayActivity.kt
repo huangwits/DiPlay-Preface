@@ -52,7 +52,6 @@ import com.shilapi.xcertplay.airplay.ClusterTurnCardOverlay
 import com.geelyplay.preface.compat.systemService
 import com.shilapi.xcertplay.compat.closeCompat
 import com.shilapi.xcertplay.host.R
-import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.network.CarHotspotTethering
 import com.shilapi.xcertplay.network.WifiP2pChannels
 import com.shilapi.xcertplay.orchestration.ManualHotspotSecurity
@@ -75,6 +74,10 @@ import com.geelyplay.preface.FactoryKeyAction
 import com.geelyplay.preface.FactorySteeringKeys
 import com.geelyplay.preface.NavigationAudioDuckingSettings
 import com.geelyplay.preface.SoundRole
+import com.geelyplay.preface.media.AndroidMicrophoneProbeBackend
+import com.geelyplay.preface.media.MicrophoneHealthCheck
+import com.geelyplay.preface.media.MicrophoneHealthSnapshot
+import com.geelyplay.preface.media.MicrophoneHealthStatus
 
 internal enum class SettingsCategory {
     OVERVIEW, CONNECTION, DISPLAY, AUDIO, NAVIGATION, VEHICLE, DIAGNOSTICS, ADVANCED,
@@ -157,6 +160,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private var exportInProgress = false
     private var reportUploadInProgress = false
     private var reportIssueDescription = ""
+    private var microphoneHealthRunning = false
+    private var microphoneHealthPendingPermission = false
+    private var microphoneHealthPermissionDenied = false
+    private var microphoneHealthFailed = false
+    private var microphoneHealthSnapshot: MicrophoneHealthSnapshot? = null
     private var usbPermissionOperation: UsbPermissionSetup.Operation? = null
     private var usbPermissionDialog: AlertDialog? = null
     internal var usbPermissionOperationFactory: (Context) -> UsbPermissionSetup.Operation = {
@@ -195,12 +203,10 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
 
     private var carButtonCard: LinearLayout? = null
-    private var hotspotAdbControls: LinearLayout? = null
     private var adbSwitchChangePending = false
     private var pausedForAdbSwitchChange = false
     private var updatingAdbSwitches = false
     private val adbSwitches = mutableMapOf<Int, Pair<Switch, () -> Boolean>>()
-    private var hotspotStartupResult: CarHotspotTethering.Result? = null
     @Volatile private var startupHotspotCancelled = false
     @Volatile private var keepBootHotspotRunning = false
     private var exitRequested = false
@@ -223,6 +229,13 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             pendingWireless = false
             permissionHelp(getString(R.string.nearby_devices), getString(R.string.allow_nearby_devices_so_diplay_can_connect_to_your_paired))
         }
+    }
+    private val microphoneHealthPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!microphoneHealthPendingPermission) return@registerForActivityResult
+        microphoneHealthPendingPermission = false
+        microphoneHealthPermissionDenied = !granted
+        microphoneHealthFailed = false
+        if (granted) startMicrophoneHealthCheck() else render()
     }
     private val bluetoothAutoConnectPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -508,7 +521,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         // Window size only: a multi-window task can fill the whole screen, and in multi-window the
         // configuration already reports the window's own size.
         get() = resources.configuration.screenWidthDp < 550 ||
-            resources.configuration.screenHeightDp < 450
+            resources.configuration.screenHeightDp < 600
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -598,7 +611,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         settingsSearchBox = null
         if (page != "settings") clearSettingsSearchState()
         status = null; connectButton = null; disconnectButton = null; lastRunning = null; carButtonCard = null
-        hotspotAdbControls = null
         reconnectBar = null
         readinessCard = null
         exportButton = null
@@ -791,9 +803,17 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             background = rounded(SURFACE, BORDER)
             setPadding(dp(24), dp(24), dp(24), dp(24))
         }
-        card.addView(label(getString(R.string.wireless_carplay), 12, ACCENT, true).apply { letterSpacing = .12f })
-        status = label(getString(R.string.ready_when_you_are), 24, TEXT, true).apply { setPadding(0, dp(10), 0, dp(16)) }
+        card.addView(label(getString(R.string.wireless_carplay), 20, TEXT, true))
+        status = label(getString(R.string.ready_when_you_are), 15, MUTED).apply { setPadding(0, dp(8), 0, 0) }
         card.addView(status)
+        val actionDivider = View(this).apply {
+            tag = "home-primary-action-divider"
+            setBackgroundColor(BORDER)
+        }
+        card.addView(actionDivider, LinearLayout.LayoutParams(-1, dp(1)).apply {
+            topMargin = dp(22)
+            bottomMargin = dp(24)
+        })
         connectButton = homeButton(getString(R.string.connect_phone), true) {
             connectPhone()
         }
@@ -805,27 +825,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             else -> getString(R.string.hotspot_hint_p2p)
         }
         if (!compact) card.addView(label(connectionHint, 15, MUTED).apply { setPadding(0, dp(14), 0, 0) })
-        val startupProblem = hotspotStartupResult?.takeIf {
-            it != CarHotspotTethering.Result.READY && it != CarHotspotTethering.Result.CANCELLED &&
-                CarHotspotSettings.enabled(this) && AirPlayPersistence.loadWirelessEnabled(this) &&
-                com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(this) != true
-        }
-        if (startupProblem != null) {
-            val allowOnSystemScreen = startupProblem == CarHotspotTethering.Result.PERMISSION_REQUIRED &&
-                !CarHotspotSetup.isBydHeadUnit(this) && CarHotspotTethering.appStartSupported()
-            card.addView(label(if (allowOnSystemScreen) getString(R.string.settings_write_settings_missing)
-                else hotspotResultText(startupProblem), 15, WARNING))
-            if (!compact) card.addView(homeButton(getString(if (allowOnSystemScreen)
-                R.string.settings_write_settings_allow else R.string.open_car_hotspot_settings), false) {
-                if (allowOnSystemScreen) openWriteSettingsAccess() else openCarWifiSettings()
-            }, matchButton(CONTROL_GAP_DP, 56))
-        } else if (carHotspotOff()) {
-            // No name is saved before Connection setup, and the sentence that quotes it would show “”.
-            val name = AirPlayPersistence.loadManualHotspotSsid(this)
-            val off = if (name.isBlank()) getString(R.string.hotspot_details_off) else getString(R.string.msg_car_hotspot_off, name)
-            card.addView(label(off, 15, WARNING).apply { setPadding(0, dp(14), 0, 0) })
-            if (!compact) card.addView(homeButton(getString(R.string.open_car_hotspot_settings), false) { openCarWifiSettings() }, matchButton(CONTROL_GAP_DP, 56))
-        }
         card.addView(homeButton(getString(R.string.choose_iphone), false) { choosePhone() }, matchButton(if (compact) CONTROL_GAP_DP else 16, if (compact) 46 else 56))
         disconnectButton = homeButton(getString(R.string.disconnect), false) {
             disconnectButton?.isEnabled = false
@@ -1474,6 +1473,64 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             card.addView(button(getString(R.string.open_connection_setup), false) { openConnectionSetupFromSettings() }, matchButton(12, 60))
         }
         filteredSection(content, SettingsSection.DIAGNOSTICS, getString(R.string.diagnostics), R.drawable.ic_dp_diagnostics) { card ->
+            card.addView(label(getString(R.string.microphone_health_title), 18, TEXT, true))
+            card.addView(label(getString(R.string.microphone_health_description), 14, MUTED).apply {
+                setPadding(0, dp(6), 0, dp(8))
+            })
+            val sessionBusy = CarPlayBackgroundSession.hasSession()
+            card.addView(button(
+                getString(if (microphoneHealthRunning) R.string.microphone_health_running else R.string.microphone_health_run),
+                false,
+            ) { requestMicrophoneHealthCheck() }.apply {
+                isEnabled = !microphoneHealthRunning && !sessionBusy
+                alpha = if (isEnabled) 1f else 0.52f
+            }, matchButton(10, 60))
+            val microphoneSnapshot = microphoneHealthSnapshot
+            val statusText = when {
+                microphoneHealthRunning -> getString(R.string.microphone_health_running)
+                sessionBusy -> getString(R.string.microphone_health_blocked)
+                microphoneHealthPermissionDenied -> getString(R.string.microphone_health_permission_required_result)
+                microphoneHealthFailed -> getString(R.string.microphone_health_unavailable)
+                microphoneSnapshot == null -> getString(R.string.microphone_health_not_run)
+                else -> getString(microphoneHealthStatusText(microphoneSnapshot.status))
+            }
+            card.addView(label(statusText, 14, if (microphoneHealthPermissionDenied || microphoneHealthFailed ||
+                microphoneSnapshot?.status in setOf(MicrophoneHealthStatus.UNAVAILABLE, MicrophoneHealthStatus.READ_FAILED,
+                    MicrophoneHealthStatus.CLIPPING)) WARNING else MUTED).apply { setPadding(0, dp(8), 0, 0) })
+            microphoneSnapshot?.let { snapshot ->
+                card.addView(label(getString(R.string.microphone_health_sample_rates) + ": " + snapshot.sampleRates.joinToString(", ") {
+                    "${it.sampleRate} Hz (${it.minBufferBytes ?: it.failure ?: "-"})"
+                }, 13, MUTED).apply { setPadding(0, dp(6), 0, 0) })
+                val configuration = snapshot.selectedConfiguration
+                val lastAttempt = snapshot.attempts.lastOrNull()
+                val capturePath = configuration?.let {
+                    "${microphoneSourceName(it.source)} · ${it.sampleRate} Hz · PCM16 mono"
+                } ?: lastAttempt?.let {
+                    "${microphoneSourceName(it.configuration.source)} · ${it.configuration.sampleRate} Hz · ${it.failure}"
+                } ?: getString(R.string.microphone_health_no_capture_path)
+                card.addView(label(getString(R.string.microphone_health_capture_path) + ": " + capturePath, 13, MUTED)
+                    .apply { setPadding(0, dp(4), 0, 0) })
+                snapshot.metrics?.let { metrics ->
+                    val rms = metrics.rmsDbfs?.let { String.format(Locale.ROOT, "%.1f dBFS", it) }
+                        ?: getString(R.string.microphone_health_below_measurement)
+                    card.addView(label(getString(R.string.microphone_health_signal_level) + ": " +
+                        String.format(Locale.ROOT, "$rms · peak %.1f%% · %d ms", metrics.peakPercent, metrics.durationMillis), 13, MUTED)
+                        .apply { setPadding(0, dp(4), 0, 0) })
+                    card.addView(label(getString(R.string.microphone_health_clipping) + ": " +
+                        String.format(Locale.ROOT, "%.3f%%", metrics.clippingPercent), 13, MUTED)
+                        .apply { setPadding(0, dp(4), 0, 0) })
+                }
+                val effects = snapshot.effects
+                card.addView(label(getString(R.string.microphone_health_effects) + ": " + listOf(
+                    "AEC=${microphoneEffectLabel(effects.aec)}",
+                    "NS=${microphoneEffectLabel(effects.noiseSuppressor)}",
+                    "AGC=${microphoneEffectLabel(effects.agc)}",
+                ).joinToString(" · "), 13, MUTED).apply { setPadding(0, dp(4), 0, 0) })
+            }
+            card.addView(label(getString(R.string.microphone_health_limits), 13, MUTED).apply {
+                setPadding(0, dp(8), 0, dp(16))
+            })
+
             toggle(card, getString(R.string.settings_fps_counter), getString(R.string.settings_fps_counter_description),
                 AirPlayPersistence.loadFpsCounter(this)) { AirPlayPersistence.saveFpsCounter(this, it) }
 
@@ -1539,12 +1596,9 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             adbToggle(card, R.string.open_after_the_car_starts,
                 R.string.availability_depends_on_your_head_unit_s_startup_settings,
                 read = { AirPlayPersistence.loadAutoStartOnBoot(this) },
-                needsAdb = { CarHotspotSettings.enabled(this) &&
-                    AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL },
                 permissions = { listOf(CarHotspotSetup.Permission.BOOT_LAUNCH) }) {
                 AirPlayPersistence.saveAutoStartOnBoot(this, it)
             }
-            hotspotAdbSettings(card)
             card.addView(button("${getString(R.string.choose_iphone_prefix)}${DiPlayPreferences.phoneName(this)}", false) { choosePhone() }, matchButton(12, 60))
         }
         filteredSection(content, SettingsSection.DISPLAY_AND_PERFORMANCE, getString(R.string.display_and_performance), R.drawable.ic_dp_display) { card ->
@@ -1679,9 +1733,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                 }
             }
             SoundRole.entries.forEach { soundChannelControl(card, it) }
-            musicBufferChoice(card, wireless = true)
-            musicBufferChoice(card, wireless = false)
-            card.addView(label("有线与无线缓冲分别保存。缓冲越大，越能抵抗无线卡顿；切歌响应也会稍慢。", 14, MUTED))
+            musicBufferChoice(card)
+            card.addView(label("缓冲越大，越能抵抗无线卡顿；切歌响应也会稍慢。", 14, MUTED))
             val factoryMix = NavigationAudioDuckingSettings.usesFactoryMixer(this)
             var changingMix = false
             var mixControl: Switch? = null
@@ -1850,6 +1903,69 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         }
     }
 
+    private fun requestMicrophoneHealthCheck() {
+        if (microphoneHealthRunning) return
+        microphoneHealthPermissionDenied = false
+        microphoneHealthFailed = false
+        if (CarPlayBackgroundSession.hasSession()) {
+            microphoneHealthSnapshot = MicrophoneHealthCheck.run(AndroidMicrophoneProbeBackend(), true) { false }
+            render()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            microphoneHealthPendingPermission = true
+            microphoneHealthPermission.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        startMicrophoneHealthCheck()
+    }
+
+    private fun startMicrophoneHealthCheck() {
+        if (microphoneHealthRunning || CarPlayBackgroundSession.hasSession()) return
+        microphoneHealthRunning = true
+        microphoneHealthPermissionDenied = false
+        microphoneHealthFailed = false
+        microphoneHealthSnapshot = null
+        render()
+        Thread({
+            val result = runCatching {
+                MicrophoneHealthCheck.run(AndroidMicrophoneProbeBackend(), true) {
+                    !CarPlayBackgroundSession.hasSession()
+                }
+            }
+            runOnUiThread {
+                microphoneHealthRunning = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                microphoneHealthSnapshot = result.getOrNull()
+                microphoneHealthFailed = result.isFailure
+                render()
+            }
+        }, "diplay-microphone-health").apply { isDaemon = true }.start()
+    }
+
+    private fun microphoneHealthStatusText(status: MicrophoneHealthStatus): Int = when (status) {
+        MicrophoneHealthStatus.SIGNAL_DETECTED -> R.string.microphone_health_signal_detected
+        MicrophoneHealthStatus.LOW_SIGNAL -> R.string.microphone_health_low_signal
+        MicrophoneHealthStatus.CLIPPING -> R.string.microphone_health_clipping_detected
+        MicrophoneHealthStatus.PERMISSION_REQUIRED -> R.string.microphone_health_permission_required_result
+        MicrophoneHealthStatus.SESSION_ACTIVE -> R.string.microphone_health_session_active
+        MicrophoneHealthStatus.UNAVAILABLE -> R.string.microphone_health_unavailable
+        MicrophoneHealthStatus.READ_FAILED -> R.string.microphone_health_read_failed
+    }
+
+    private fun microphoneSourceName(source: Int): String = when (source) {
+        android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION -> "VOICE_COMMUNICATION"
+        android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION -> "VOICE_RECOGNITION"
+        android.media.MediaRecorder.AudioSource.MIC -> "MIC"
+        else -> "SOURCE_$source"
+    }
+
+    private fun microphoneEffectLabel(available: Boolean?): String = when (available) {
+        true -> getString(R.string.microphone_health_effect_available)
+        false -> getString(R.string.microphone_health_effect_unavailable)
+        null -> getString(R.string.microphone_health_effect_unknown)
+    }
+
     private fun attachUpdates(card: LinearLayout) {
         if (packageName != com.shilapi.xcertplay.update.UpdateCatalog.PACKAGE) return
         val updates = updatePanel ?: com.geelyplay.preface.update.UpdatePanel(this).also { updatePanel = it }
@@ -1879,82 +1995,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         }
     }
 
-    // An opted-in connection prepares the hotspot in the controller instead of stopping at this reminder.
+    // The controller owns hotspot startup; show this reminder only when the firmware cannot do it.
     private fun carHotspotOff(): Boolean =
         AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL &&
             com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(this) == false &&
-            !(CarHotspotSettings.enabled(this) &&
-                (CarHotspotTethering.permitted(this) || CarHotspotTethering.gkuiLegacySoftApSupported(this)))
-
-    private fun hotspotAdbSettings(parent: LinearLayout) {
-        if (CarHotspotTethering.gkuiLegacySoftApSupported(this)) {
-            if (searchIndexSink != null) {
-                searchIndexSink?.addAll(listOf(
-                    getString(R.string.settings_car_hotspot_control),
-                    getString(R.string.auto_car_hotspot_title),
-                ))
-                return
-            }
-            systemHotspotSettings(parent, requiresWriteSettings = false)
-            return
-        }
-        if (!CarHotspotSetup.isBydHeadUnit(this) && CarHotspotTethering.appStartSupported()) {
-            if (searchIndexSink != null) {
-                searchIndexSink?.addAll(listOf(
-                    getString(R.string.settings_car_hotspot_control),
-                    getString(R.string.auto_car_hotspot_title),
-                ))
-                return
-            }
-            systemHotspotSettings(parent)
-            return
-        }
-        if (searchIndexSink != null) {
-            // Index discoverable names without starting the asynchronous permission probe.
-            searchIndexSink?.addAll(listOf(
-                getString(R.string.geely_hotspot_permissions),
-                getString(R.string.auto_car_hotspot_title),
-            ))
-            return
-        }
-        val controls = column().apply { visibility = View.GONE }
-        hotspotAdbControls = controls
-        parent.addView(controls)
-        renderHotspotAdbControls(controls, LocalAdb.Access.UNREACHABLE)
-        Thread({
-            val access = runCatching { CarHotspotSetup.check(applicationContext) }
-                .onFailure { Log.w("DiPlay-Hotspot", "settings ADB check failed", it) }
-                .getOrDefault(LocalAdb.Access.UNREACHABLE)
-            Log.i("DiPlay-Hotspot", "settings eligibility: adb=$access visible=${CarHotspotSettings.visible(true, access)}")
-            runOnUiThread {
-                if (hotspotAdbControls !== controls || isFinishing || isDestroyed) return@runOnUiThread
-                if (!adbSwitchChangePending) renderHotspotAdbControls(controls, access)
-            }
-        }, "diplay-hotspot-adb-check").start()
-    }
-
-    private fun renderHotspotAdbControls(controls: LinearLayout, access: LocalAdb.Access) {
-        controls.removeAllViews()
-        adbSwitches.keys.retainAll(setOf(R.string.open_after_the_car_starts))
-        adbStatus = null
-        controls.visibility = View.VISIBLE
-            adbToggle(controls, R.string.auto_car_hotspot_title, R.string.auto_car_hotspot_description,
-                read = { CarHotspotSettings.enabled(this) },
-                needsAdb = { hotspotStartupPermissions().any { !it.granted(this) } },
-                permissions = { hotspotStartupPermissions() }) {
-                CarHotspotSettings.setEnabled(this, it)
-                if (!it) startupHotspotCancelled = true
-            }
-            val status = when {
-                hotspotStartupPermissions().all { it.granted(this) } -> R.string.hotspot_permission_granted
-                access == LocalAdb.Access.READY -> R.string.adb_access_ready
-                access == LocalAdb.Access.NOT_APPROVED -> R.string.adb_not_approved
-                access == LocalAdb.Access.UNSUPPORTED -> R.string.adb_pairing_only
-                else -> R.string.adb_off
-            }
-            adbStatus = label(getString(status), 14, MUTED).also(controls::addView)
-            normalizeSpacing(controls, isCard = false)
-    }
+            !(CarHotspotTethering.permitted(this) || CarHotspotTethering.gkuiLegacySoftApSupported(this))
 
     private fun adbToggle(parent: LinearLayout, title: Int, description: Int, read: () -> Boolean,
         needsAdb: () -> Boolean = { true },
@@ -1988,7 +2033,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                 adbSwitchChangePending = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 val message = if (ready) {
-                    if (permissions.isEmpty()) R.string.adb_access_ready else R.string.hotspot_permission_granted
+                    if (CarHotspotSetup.Permission.HOTSPOT in permissions) R.string.hotspot_permission_granted
+                    else R.string.adb_access_ready
                 } else when (access) {
                     LocalAdb.Access.NOT_APPROVED -> R.string.adb_not_approved
                     LocalAdb.Access.UNREACHABLE -> R.string.adb_off
@@ -2011,13 +2057,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             control.isEnabled = !adbSwitchChangePending
         }
         updatingAdbSwitches = false
-    }
-
-    private fun hotspotStartupPermissions() = buildList {
-        if (CarHotspotTethering.gkuiLegacySoftApSupported(this@DiPlayActivity)) return@buildList
-        add(CarHotspotSetup.Permission.HOTSPOT)
-        if (Build.VERSION.SDK_INT >= 29 || AirPlayPersistence.loadAutoStartOnBoot(this@DiPlayActivity))
-            add(CarHotspotSetup.Permission.BOOT_LAUNCH)
     }
 
     private fun startCarHotspotOnLaunch(keepRunningInBackground: Boolean = false, afterComplete: (() -> Unit)? = null) {
@@ -2060,8 +2099,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                 com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(app))
             runOnUiThread {
                 if (isFinishing || isDestroyed || cancelled() || result == CarHotspotTethering.Result.CANCELLED) return@runOnUiThread
-                hotspotStartupResult = result
-                if (page == "home") render()
                 afterComplete?.invoke()
             }
             keepBootHotspotRunning = false
@@ -2070,22 +2107,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     private fun startupHotspotEligible(): Boolean =
         CarHotspotSetup.shouldStartOnLaunch(applicationContext, CarPlayBackgroundSession.hasSession())
-
-    private fun hotspotResultText(result: CarHotspotTethering.Result): String = getString(when (result) {
-        CarHotspotTethering.Result.READY -> R.string.hotspot_control_on
-        CarHotspotTethering.Result.PERMISSION_REQUIRED -> R.string.hotspot_control_missing
-        CarHotspotTethering.Result.UNSUPPORTED -> R.string.hotspot_control_unsupported
-        CarHotspotTethering.Result.TIMED_OUT -> R.string.hotspot_control_timeout
-        else -> R.string.hotspot_control_failed
-    })
-
-    private fun carHotspotOffDialog() {
-        appDialogBuilder().setTitle(getString(R.string.car_hotspot_is_off))
-            .setMessage(getString(R.string.msg_car_hotspot_connect, AirPlayPersistence.loadManualHotspotSsid(this)))
-            .setPositiveButton(getString(R.string.open_car_settings)) { _, _ -> openCarWifiSettings() }
-            .setNeutralButton(getString(R.string.connect)) { _, _ -> connect(true) }
-            .setNegativeButton(getString(R.string.cancel), null).show()
-    }
 
     // Use the standard Android settings intents.
     private fun openCarWifiSettings() {
@@ -2131,30 +2152,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         }
     }
 
-    private fun systemHotspotSettings(parent: LinearLayout, requiresWriteSettings: Boolean = true) {
-        section(parent, getString(R.string.settings_car_hotspot_control), R.drawable.ic_dp_permissions) { card ->
-            toggle(card, getString(R.string.auto_car_hotspot_title),
-                getString(if (requiresWriteSettings) R.string.settings_auto_car_hotspot_system_description
-                    else R.string.settings_auto_car_hotspot_gkui_description), CarHotspotSettings.enabled(this)) { enabled ->
-                CarHotspotSettings.setEnabled(this, enabled)
-                if (!enabled) startupHotspotCancelled = true
-                else if (requiresWriteSettings && !CarHotspotTethering.permitted(this)) openWriteSettingsAccess()
-            }
-            if (requiresWriteSettings) {
-                val permitted = CarHotspotTethering.permitted(this)
-                card.addView(label(getString(if (permitted) R.string.settings_write_settings_granted
-                    else R.string.settings_write_settings_missing), 14, if (permitted) READY else MUTED).apply {
-                    setPadding(0, dp(6), 0, dp(4))
-                })
-                if (!permitted) {
-                    card.addView(button(getString(R.string.settings_write_settings_allow), false) {
-                        openWriteSettingsAccess()
-                    }, matchButton(8, 54))
-                }
-            }
-        }
-    }
-
     private fun openWriteSettingsAccess() =
         openSystem(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName")))
 
@@ -2166,25 +2163,21 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     private fun wirelessLinkControls(parent: LinearLayout) {
         val storedMode = AirPlayPersistence.loadWirelessHotspotMode(this)
-        // Automatic hotspot selection was an experimental connection choice. Keep
-        // existing installations usable by returning them to the original car-hotspot mode.
-        val mode = if (pendingCarHotspotSetup || storedMode == WirelessHotspotMode.AUTOMATIC) {
-            if (storedMode == WirelessHotspotMode.AUTOMATIC) {
-                AirPlayPersistence.saveWirelessHotspotMode(this, WirelessHotspotMode.MANUAL)
-            }
-            WirelessHotspotMode.MANUAL
-        } else storedMode
+        val mode = if (pendingCarHotspotSetup) WirelessHotspotMode.MANUAL else storedMode
         val modes = listOf(
+            WirelessHotspotMode.AUTOMATIC,
             WirelessHotspotMode.MANUAL,
             WirelessHotspotMode.WIFI_P2P,
             WirelessHotspotMode.EXISTING_WIFI,
         )
         val titles = listOf(
+            getString(R.string.hotspot_mode_auto),
             getString(R.string.built_in_car_hotspot),
             getString(R.string.wifi_direct),
             getString(R.string.existing_wifi_title),
         )
         val descriptions = listOf(
+            getString(R.string.hotspot_mode_auto_desc),
             getString(R.string.hotspot_mode_manual_desc),
             getString(R.string.hotspot_mode_p2p_desc),
             getString(R.string.existing_wifi_description),
@@ -3505,7 +3498,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             toast(getString(R.string.save_the_name_and_password_from_the_car_s_hotspot_settings))
             return
         }
-        if (wireless && carHotspotOff()) { carHotspotOffDialog(); return }
         if (wireless && DiPlayPreferences.phoneAddress(this) == null) {
             pendingWireless = true; choosePhone(); return
         }
@@ -4082,15 +4074,13 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
 
     // [announcesReconnect] labels a choice whose [save] reconnects by itself.
-    private fun musicBufferChoice(parent: LinearLayout, wireless: Boolean) {
+    private fun musicBufferChoice(parent: LinearLayout) {
         val buffer = com.shilapi.xcertplay.media.MediaAudioBuffer
-        val presets = if (wireless) buffer.wirelessPresets else buffer.wiredPresets
-        val title = getString(R.string.music_buffer) + if (wireless) " · 无线" else " · 有线"
-        val sessionTransport = AirPlayPersistence.loadWirelessEnabled(this) == wireless
+        val presets = buffer.presets
+        val title = getString(R.string.music_buffer)
         choice(parent, title, presets.map { "$it ms" },
-            presets.indexOf(AirPlayPersistence.loadMediaBufferMillis(this, wireless)).coerceAtLeast(0),
-            reconnects = sessionTransport) {
-            AirPlayPersistence.saveMediaBufferMillis(this, wireless, presets[it])
+            presets.indexOf(AirPlayPersistence.loadMediaBufferMillis(this)).coerceAtLeast(0)) {
+            AirPlayPersistence.saveMediaBufferMillis(this, presets[it])
         }
     }
 

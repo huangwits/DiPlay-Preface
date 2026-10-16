@@ -14,9 +14,9 @@
     <string name="wifi_direct_channel_choice">信道 %1$d · %2$s</string>
     <string name="wifi_direct_channel_description">自动模式会为您选择信道。手动信道取决于车机的支持情况。更改将在下次 Wi-Fi Direct 连接时生效。</string>
     <string name="built_in_car_hotspot">车载热点</string>
-    <string name="hotspot_mode_auto">自动选择热点</string>
+    <string name="hotspot_mode_auto">自动连接</string>
     <string name="wifi_direct">Wi-Fi Direct</string>
-    <string name="hotspot_hint_manual">车载热点 · 保持车载热点、蓝牙和 iPhone 的 Wi-Fi 开启。</string>
+    <string name="hotspot_hint_manual">车载热点 · 无线连接时自动尝试开启；若固件不支持，请手动开启。</string>
     <string name="hotspot_hint_local">打开“连接设置”以保存车载热点信息。</string>
     <string name="hotspot_hint_p2p">Wi-Fi Direct · 保持车机 Wi-Fi 开关、蓝牙和 iPhone 的 Wi-Fi 开启。</string>
     <string name="marker_left">左</string>
@@ -26,10 +26,10 @@
     <string name="marker_centre_default">居中 · 默认</string>
     <string name="hotspot_mode_auto_desc">自动使用可用的车机热点，或准备兼容的无线连接。</string>
     <string name="hotspot_hint_auto">DiPlay 会自动选择并准备可用的无线连接。</string>
-    <string name="hotspot_mode_manual_desc">使用车机自带热点。若车机支持，请在车机设置中选择 5 GHz。</string>
+    <string name="hotspot_mode_manual_desc">使用车机已配置的热点。无线连接时自动尝试开启；若支持，也可在车机设置中选择 5 GHz。</string>
     <string name="hotspot_mode_p2p_desc">备选方案。需要打开车机 Wi-Fi 开关；2.4 GHz 连接可能会卡顿。</string>
-    <string name="hotspot_details_off">热点已关闭 · 请在车机设置中开启。</string>
-    <string name="hotspot_details_saved">详情已保存 · 连接前请确认车载热点已开启。</string>
+    <string name="hotspot_details_off">热点当前已关闭 · DiPlay 会在连接时尝试开启，不支持时请手动开启。</string>
+    <string name="hotspot_details_saved">热点详情已保存 · DiPlay 会在无线连接时尝试开启。</string>
     <string name="permission_enabled_ready">权限已启用 · 可以使用</string>
     <string name="permission_not_enabled">权限尚未启用</string>
     <string name="clipboard_usage_access">DiPlay 使用情况访问权限</string>
@@ -259,6 +259,30 @@
     <string name="navigation_stream_type">导航音频流类型</string>
     <string name="nearby_devices">附近的设备</string>
     <string name="nearby_devices_connects_your_iphone_microphone_enables_sir">“附近的设备”权限用于连接 iPhone；麦克风权限用于 Siri 和通话。较旧的 Android 版本还需要位置权限来设置无线连接。USB 模式可能会请求建立本地 VPN 连接。</string>
+    <string name="microphone_health_title">麦克风自检</string>
+    <string name="microphone_health_description">请对着车机麦克风说话。每种输入配置最多采样约 0.75 秒，多种配置依次尝试；只在本机分析，不保存或上传录音。</string>
+    <string name="microphone_health_run">开始麦克风自检</string>
+    <string name="microphone_health_running">正在检测麦克风…</string>
+    <string name="microphone_health_blocked">CarPlay 正在连接或运行，暂不能自检</string>
+    <string name="microphone_health_not_run">尚未检测</string>
+    <string name="microphone_health_permission_required_result">需要麦克风权限</string>
+    <string name="microphone_health_signal_detected">检测到声音输入</string>
+    <string name="microphone_health_low_signal">输入过弱；请靠近麦克风说话后重试</string>
+    <string name="microphone_health_clipping_detected">输入削波；请降低麦克风音量或远离麦克风</string>
+    <string name="microphone_health_session_active">CarPlay 会话已开始，检测停止</string>
+    <string name="microphone_health_unavailable">没有可启动的麦克风配置</string>
+    <string name="microphone_health_read_failed">麦克风已启动，但没有读到足够音频</string>
+    <string name="microphone_health_sample_rates">可用采样率</string>
+    <string name="microphone_health_capture_path">检测输入</string>
+    <string name="microphone_health_no_capture_path">没有成功启动输入</string>
+    <string name="microphone_health_signal_level">输入电平</string>
+    <string name="microphone_health_below_measurement">低于测量范围</string>
+    <string name="microphone_health_clipping">削波样本</string>
+    <string name="microphone_health_effects">平台音效（仅查询）</string>
+    <string name="microphone_health_effect_available">可用</string>
+    <string name="microphone_health_effect_unavailable">不可用</string>
+    <string name="microphone_health_effect_unknown">未知</string>
+    <string name="microphone_health_limits">此短暂本地采样可发现输入失败、声音过弱或削波，不能保证通话质量。录音不会保存或上传；AEC、NS、AGC 只查询可用性，不会启用。</string>
     <string name="nothing_is_sent_automatically_protocol_payloads_and_creden">仅在操作后保存，报告不包含敏感信息。</string>
     <string name="oem_label">OEM 标签</string>
     <string name="on_your_iphone_open_settings_bluetooth_and_pair_with_the_c">在 iPhone 上打开“设置 → 蓝牙”并与车机配对。然后返回 DiPlay，点击“连接手机”。</string>
@@ -317,7 +341,7 @@
     <string name="s_1_0x">1.0x</string>
     <string name="s_1_choose_your_connection">1 · 选择连接方式</string>
     <string name="s_1_connect_a_computer_with_adb_installed_to_the_car_using">1. 用装有 ADB 的电脑，通过现有的 USB 或无线调试连接连接到车机。如有调试授权提示请批准。\n\n2. 在电脑终端中运行此命令：</string>
-    <string name="s_1_open_car_hotspot_settings_turn_the_hotspot_on_and_sele">1. 打开车机热点设置，开启热点，如有 5 GHz 请选择。\n2. 在下方准确复制热点名称和密码。\n3. 连接时保持车机热点开启。DiPlay 通过蓝牙发送热点信息，iPhone 会自动加入。</string>
+    <string name="s_1_open_car_hotspot_settings_turn_the_hotspot_on_and_sele">1. 在车机设置中查看已保存的热点名称和密码，如有 5 GHz 可优先选择。\n2. 在下方保存热点名称和密码。\n3. 无线连接时 DiPlay 会尝试开启车机热点并通过蓝牙发送热点信息；若固件不支持自动开启，请手动打开热点。</string>
     <string name="s_2_4_ghz">2.4 GHz</string>
     <string name="s_2_pair_your_iphone">2 · 配对你的 iPhone</string>
     <string name="s_300_ms_default">300 毫秒 · 默认</string>
@@ -678,7 +702,7 @@
     <string name="car_button_description">CarPlay 会在应用列表中显示此图标和名称。点按即可返回车辆自带的界面。更改将在 CarPlay 下次连接时生效。</string>
     <string name="car_button_saved_next_connection">已保存。CarPlay 将在下次连接时显示新的图标和名称。</string>
     <string name="this_head_unit_has_no_image_picker">此车机没有图片选择器。</string>
-    
+
 <string name="wheel_speed_for_tunnels">隧道中的车轮速度</string>
     <string name="wheel_speed_for_tunnels_description">开启“向 iPhone 报告位置”后，DiPlay 还会发送车轮速度和挡位，让 Apple 地图在隧道和停车场里也能继续推算你的位置。会重新连接 CarPlay。需要在车机上开启网络 ADB。</string>
     <string name="wheel_map_zoom">用方向盘按键缩放仪表盘地图</string>

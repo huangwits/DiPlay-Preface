@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import com.shilapi.xcertplay.DisplayDiagnosticSnapshot
 import com.shilapi.xcertplay.GeelyHudProjection
@@ -27,6 +29,7 @@ internal class E01NativeMapControl(
     private var active = false
     private var modeRequested = false
     private var registered = false
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var lastSystemGestureAt = -1L
     private var lastSystemGestureShow: Boolean? = null
     private val receiver = object : BroadcastReceiver() {
@@ -37,21 +40,24 @@ internal class E01NativeMapControl(
                 "right" -> false
                 else -> return
             }
-            val prepared = prepareGesture()
-            val enabled = GeelyHudProjection.threeFingerEnabled(context)
-            record("Map system gesture: direction=${if (show) "left" else "right"} prepared=$prepared active=$active enabled=$enabled")
-            if (!prepared || !active || !enabled) return
-            lastSystemGestureAt = SystemClock.elapsedRealtime()
-            lastSystemGestureShow = show
-            // The system delivered this same gesture to Extraservice. Never echo it back.
-            desired = show
-            // The OEM rejects a show gesture while navigation has not started yet.
-            // Retain that pending request; after real route state and a frame arrive,
-            // frameReady can request the mode once. Accepted gestures are never echoed.
-            modeRequested = show && GeelyHudProjection.navigationActive()
-            stage = if (show) "SYSTEM_SHOW" else "SYSTEM_HIDE"
-            recordState()
-            onGesture(show)
+            val routeStateWasPublished = GeelyHudProjection.factoryRouteStatePublished()
+            mainHandler.postDelayed({
+                if (!registered) return@postDelayed
+                val prepared = prepareGesture()
+                val enabled = GeelyHudProjection.threeFingerEnabled(context)
+                record("Map system gesture: direction=${if (show) "left" else "right"} routeStatePublished=$routeStateWasPublished prepared=$prepared active=$active enabled=$enabled")
+                if (!prepared || !active || !enabled) return@postDelayed
+                lastSystemGestureAt = SystemClock.elapsedRealtime()
+                lastSystemGestureShow = show
+                desired = show
+                // Let Extraservice process its original broadcast before preparation
+                // can publish a newly-started route. Retry rejected shows after the
+                // real route state and first CarPlay map frame are ready.
+                modeRequested = show && routeStateWasPublished
+                stage = if (show) "SYSTEM_SHOW" else "SYSTEM_HIDE"
+                recordState()
+                onGesture(show)
+            }, OEM_GESTURE_SETTLE_MS)
         }
     }
 
@@ -158,6 +164,7 @@ internal class E01NativeMapControl(
     companion object {
         const val ACTION = "com.neusoft.alfus.three_finger"
         const val DIRECTION = "direction"
+        private const val OEM_GESTURE_SETTLE_MS = 100L
         private val RECEIVER = ComponentName("com.neusoft.extraservice", "com.neusoft.extraservice.receiver.ThreeFingerReceiver")
 
         /** Package inspection only: collecting a report must not start or bind OEM services. */
@@ -172,10 +179,18 @@ internal class E01NativeMapControl(
                     else -> "declared-accessible"
                 }
             }.getOrDefault("missing")
+            @Suppress("DEPRECATION")
+            fun packageInfo(packageName: String) = runCatching {
+                context.packageManager.getPackageInfo(packageName, 0)
+            }.getOrNull()
+
+            val xcNaviService = ComponentName("ecarx.naviservice", "ecarx.naviservice.service.NaviService")
+            val naviPackage = packageInfo(xcNaviService.packageName)
+            val naviVersion = naviPackage?.let { "${it.versionName ?: "unknown"}(${it.versionCode})" } ?: "missing"
             return "e01NativeMap supported=${supported(context)} capability=${capabilityReason(context)} " +
                 "navigationReceiver=${E01NavigationOutput.available(context)} " +
                 "dimNaviService=${serviceStatus(ComponentName("com.neusoft.extraservice", "com.ecarx.xui.adaptapi.diminteraction.NaviService"))} " +
-                "xcNaviService=${serviceStatus(ComponentName("ecarx.naviservice", "ecarx.naviservice.service.NaviService"))}"
+                "xcNaviService=${serviceStatus(xcNaviService)}@$naviVersion mapRenderPath=Presentation"
         }
 
         @Suppress("DEPRECATION")

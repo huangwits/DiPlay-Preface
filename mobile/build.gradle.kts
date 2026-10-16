@@ -192,9 +192,9 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 83
+        versionCode = 86
         // Original DiPlay upstream version plus the Preface revision; see docs/VERSIONING.md.
-        versionName = "0.2.20.1"
+        versionName = "0.2.20.4"
 
     }
 
@@ -499,8 +499,8 @@ tasks.register("assembleStandaloneE01Licensed") {
     description = "Build the optimized, device-activated E01 APK; empty origin is allowed only in explicit preview mode."
     dependsOn(verifyStandaloneAuthentication, verifyLicenseConfiguration, "assembleE01Licensed")
     val packagedApk = layout.buildDirectory.file("outputs/apk/e01Licensed/mobile-e01Licensed.apk")
-    val namedApk = layout.buildDirectory.file("outputs/apk/e01Licensed/GeelyPlay-v0.2.20.1.apk")
-    val deliveryApk = rootProject.layout.projectDirectory.file("../../outputs/GeelyPlay-0.2.20.1-20261016/GeelyPlay-v0.2.20.1.apk")
+    val namedApk = layout.buildDirectory.file("outputs/apk/e01Licensed/GeelyPlay-v0.2.20.4.apk")
+    val deliveryApk = rootProject.layout.projectDirectory.file("../../outputs/GeelyPlay-0.2.20.4-20261016/GeelyPlay-v0.2.20.4.apk")
     val authentication = localAuthenticationAssets
     val licensing = localLicenseAssets
     val factoryMapConfigs = localE01MapConfigAssets

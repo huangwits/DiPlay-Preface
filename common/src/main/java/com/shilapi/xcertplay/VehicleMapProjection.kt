@@ -33,6 +33,10 @@ import com.geelyplay.preface.E01NativeMapControl
 internal data class VehicleMapPlan(val screen: GeelyHudDisplay, val width: Int, val height: Int,
     val visibleHeight: Int, val vehicleMode: Boolean, val automaticCanvas: Boolean = false,
     val factoryNative: Boolean = false) {
+    // FS11 must show the same phone-rendered view as the centre screen. Stream 111
+    // is an independent CarPlay scene whose view and availability vary by iOS.
+    val videoStreamType: Int get() = if (factoryNative) 110 else 111
+
     fun config() = AirPlayDisplayConfig(width, height, fps = 30, primaryInputDevice = 0,
         viewArea = AirPlayInsets(bottom = height - visibleHeight),
         safeArea = AirPlayInsets(top = visibleHeight * 8 / 100, bottom = height - visibleHeight + visibleHeight * 8 / 100,
@@ -143,7 +147,7 @@ internal object VehicleMapProjection {
             if (selection.vehicleMode) {
                 if (E01NativeMapControl.supported(context)) {
                     native = E01NativeMapControl(context.applicationContext, prepareGesture = {
-                        val token = controller?.clusterProjectionSessionToken()
+                        val token = projectionSessionToken()
                         syncSessionState(token, GeelyHudProjection.navigationActive())
                         native?.sync(app?.let { nativeSessionReady(it, token) } == true)
                         token != null
@@ -157,6 +161,8 @@ internal object VehicleMapProjection {
         }
     }
     fun owns(expected: CarPlayController?) = expected != null && controller === expected
+    private fun projectionSessionToken(): Any? = if (plan?.factoryNative == true)
+        controller?.activeAirPlaySessionToken() else controller?.clusterProjectionSessionToken()
     fun selectionFor(expected: CarPlayController?): VehicleMapPlan? = if (owns(expected)) plan else null
     fun mapVisible() = outputVisible
     fun menuAllowsZoom(): Boolean = zoomAllowed
@@ -166,11 +172,11 @@ internal object VehicleMapProjection {
     /** Follow a real OEM broadcast first; a registered receiver alone does not prove delivery. */
     fun followFactoryGesture(show: Boolean, startedAt: Long) {
         val current = controller ?: return
-        val session = current.clusterProjectionSessionToken() ?: return
+        val session = projectionSessionToken() ?: return
         val context = app ?: return
         val control = native ?: return
         main.postDelayed({
-            if (controller !== current || native !== control || current.clusterProjectionSessionToken() !== session ||
+            if (controller !== current || native !== control || projectionSessionToken() != session ||
                 !control.usesFactoryGestures()) return@postDelayed
             val followed = control.receivedSystemGesture(show, startedAt)
             val result = if (followed) "system-received" else {
@@ -185,7 +191,7 @@ internal object VehicleMapProjection {
 
     fun flyNavigation(show: Boolean? = null): Int {
         val current = controller ?: return R.string.vehicle_map_reconnect
-        val nextPhone = current.clusterProjectionSessionToken() ?: return R.string.vehicle_map_reconnect
+        val nextPhone = projectionSessionToken() ?: return R.string.vehicle_map_reconnect
         val context = app ?: return R.string.vehicle_map_reconnect
         syncSessionState(nextPhone, GeelyHudProjection.navigationActive())
         native?.sync(nativeSessionReady(context, nextPhone))
@@ -244,7 +250,7 @@ internal object VehicleMapProjection {
         val current = controller ?: return
         val selection = plan ?: return
         val route = GeelyHudProjection.navigationActive()
-        val nextPhone = current.clusterProjectionSessionToken()
+        val nextPhone = projectionSessionToken()
         syncSessionState(nextPhone, route)
         native?.sync(nativeSessionReady(context, nextPhone))
         // carlito | Re-read the logical target size; an OEM can resize a display without replacing its ID.
@@ -283,8 +289,12 @@ internal object VehicleMapProjection {
             requested = true; delivered = false; firstFrame = false
             val generation = ++command
             commandAt = SystemClock.elapsedRealtime()
-            stage = "WAITING_COMMAND"
-            current.setProjectionUiShown(this, true) { accepted -> main.post {
+            stage = if (selection.factoryNative) "WAITING_FRAME" else "WAITING_COMMAND"
+            if (selection.factoryNative) {
+                // Stream 110 already renders the centre screen. Do not require the
+                // optional cluster stream or change its UI to start this mirror.
+                delivered = true
+            } else current.setProjectionUiShown(this, true) { accepted -> main.post {
                 if (generation != command || controller !== current || !requested) return@post
                 if (accepted) { delivered = true; stage = "WAITING_FRAME" }
                 else {
@@ -304,7 +314,7 @@ internal object VehicleMapProjection {
         // A fully transparent TextureView can skip updates on API 22, preventing the
         // first-frame callback that makes the output ready. Keep preroll drawable.
         texture?.alpha = if (ready) 1f else PREROLL_ALPHA
-        current.setDashboardMapOutputVisible(ready)
+        current.setDashboardMapOutputVisible(ready && !selection.factoryNative)
         zoomAllowed = ready && (!selection.vehicleMode || status?.getBoolean("menuAllowsZoom") == true)
         if (ready) stage = when {
             mapOnly -> "MAP_ONLY_ACTIVE"
@@ -336,17 +346,19 @@ internal object VehicleMapProjection {
         val viewport = FrameLayout(displayContext).apply { clipChildren = true; clipToPadding = true }
         // carlito | Fit both axes with one scale: full-height automatic output fills a matching
         // screen, while a manual crop never stretches or spills beyond a narrower display.
-        val scale = min(screen.width.toDouble() / selection.width, screen.height.toDouble() / selection.visibleHeight)
-        val viewportWidth = (selection.width * scale).roundToInt().coerceIn(1, screen.width)
-        val scaledHeight = (selection.height * scale).roundToInt().coerceAtLeast(1)
-        val visibleHeight = (selection.visibleHeight * scale).roundToInt().coerceIn(1, screen.height)
-        val video = ClusterVideoTexture(displayContext, selection.width, selection.height, onFrame = {
+        val source = if (selection.factoryNative) controller?.configuredMainSize() else null
+        val sourceWidth = source?.first ?: selection.width
+        val sourceHeight = source?.second ?: selection.height
+        val sourceVisibleHeight = if (selection.factoryNative) sourceHeight else selection.visibleHeight
+        val scale = min(screen.width.toDouble() / sourceWidth, screen.height.toDouble() / sourceVisibleHeight)
+        val viewportWidth = (sourceWidth * scale).roundToInt().coerceIn(1, screen.width)
+        val scaledHeight = (sourceHeight * scale).roundToInt().coerceAtLeast(1)
+        val visibleHeight = (sourceVisibleHeight * scale).roundToInt().coerceIn(1, screen.height)
+        val video = ClusterVideoTexture(displayContext, sourceWidth, sourceHeight, onFrame = {
             if (requested && !firstFrame) { firstFrame = true; recordOutput() }
         }) { next ->
-            surface?.let { old -> sink?.clearSurface(111, old) }
-            surface = next
-            if (next != null) sink?.setSurface(111, next)
-            else {
+            setOutputSurface(next)
+            if (next == null) {
                 firstFrame = false; outputVisible = false; native?.outputLost()
                 controller?.setDashboardMapOutputVisible(false)
             }
@@ -384,6 +396,17 @@ internal object VehicleMapProjection {
     internal fun windowType(sdk: Int = Build.VERSION.SDK_INT): Int = if (sdk >= 26)
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
 
+    private fun setOutputSurface(next: Surface?) {
+        val selection = plan ?: return
+        if (selection.factoryNative) {
+            sink?.setMirrorSurface(selection.videoStreamType, FACTORY_MIRROR_KEY, next)
+        } else {
+            surface?.let { sink?.clearSurface(selection.videoStreamType, it) }
+            if (next != null) sink?.setSurface(selection.videoStreamType, next)
+        }
+        surface = next
+    }
+
     private fun hide() {
         outputVisible = false; zoomAllowed = false; texture?.alpha = 0f
         controller?.setDashboardMapOutputVisible(false)
@@ -391,11 +414,12 @@ internal object VehicleMapProjection {
         requested = false; delivered = false; firstFrame = false; command++
         bridge?.update(false, false)
         native?.outputLost()
-        if (wasRequested) controller?.setProjectionUiShown(this, false) {}
+        if (wasRequested && plan?.factoryNative != true) controller?.setProjectionUiShown(this, false) {}
         destroyWindow()
     }
     private fun destroyWindow() {
         texture?.close(); texture = null
+        if (surface != null) setOutputSurface(null)
         if (presentation != null) { runCatching { presentation?.dismiss() }; presentation = null }
         else root?.let { runCatching { manager?.removeViewImmediate(it) } }
         root = null; manager = null; attachedScreen = null
@@ -405,7 +429,7 @@ internal object VehicleMapProjection {
         app?.let { context ->
             DisplayDiagnosticSnapshot.record(context, diagnosticAttempt, "Map closed: ${diagnostics()}")
         }
-        hide(); controller?.releaseProjectionUi(this)
+        hide(); if (plan?.factoryNative != true) controller?.releaseProjectionUi(this)
         bridge?.close(); bridge = null
         native?.close(); native = null
         controller = null; sink = null; app = null; plan = null; phone = null; diagnosticAttempt = null
@@ -414,7 +438,7 @@ internal object VehicleMapProjection {
     fun diagnostics(): String {
         val routeFrames = com.shilapi.xcertplay.glance.CarPlayGlance.routeFrameStats()
         return "vehicleMap stage=$stage requested=$requested delivered=$delivered firstFrame=$firstFrame " +
-            "visible=$outputVisible menuAllowsZoom=$zoomAllowed target=${plan?.screen?.id} factoryNative=${plan?.factoryNative} " +
+            "visible=$outputVisible menuAllowsZoom=$zoomAllowed target=${plan?.screen?.id} factoryNative=${plan?.factoryNative} videoStream=${plan?.videoStreamType} " +
             "navigationActive=${GeelyHudProjection.navigationActive()} guidanceReceived=${GeelyHudProjection.currentGuidance() != null} " +
             "routeFrames=${routeFrames.guidanceUpdates}/${routeFrames.maneuverUpdates} " +
             "native=${native?.stage} bridge=${bridge?.status()?.getString("stage")} windowFailure=$windowFailure"
@@ -434,4 +458,5 @@ internal object VehicleMapProjection {
     }
 
     private const val PREROLL_ALPHA = 0.01f
+    private const val FACTORY_MIRROR_KEY = "fs11-centre-screen"
 }

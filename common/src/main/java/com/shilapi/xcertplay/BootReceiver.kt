@@ -5,13 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 
-/** Starts DiPlay after boot when the user enabled app startup or car-hotspot auto-start. */
+/** Starts DiPlay and its saved automatic hotspot after boot when the owner left auto-start enabled. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val appLaunchEnabled = AirPlayPersistence.loadAutoStartOnBoot(context)
-        // A hotspot request also needs DiPlay's foreground startup path. This keeps the
-        // existing explicit permission gate while removing the extra manual hotspot step.
+        // Hotspot startup runs through the foreground activity and a bounded factory service call.
         val hotspotLaunchEnabled = CarHotspotSetup.shouldStartOnLaunch(context, CarPlayBackgroundSession.hasSession())
         val launchEnabled = appLaunchEnabled || hotspotLaunchEnabled
         StartupDiagnosticSnapshot.received(context, launchEnabled, hotspotLaunchEnabled)

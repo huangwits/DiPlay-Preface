@@ -107,6 +107,8 @@ def audit(apk, mapping):
         'E01NaviServiceProtocol': {'writeNavigationInfo'},
         'E01NavigationOutput': {'enabled', 'available'},
         'NavigationFlyGesture': {'detect'},
+        'media.MicrophoneHealthCheck': {'run'},
+        'media.AndroidMicrophoneProbeBackend': {'minimumBufferBytes', 'open', 'effects'},
         'FactorySteeringKeys': {'keys', 'action', 'dispatch'},
         'FactoryKeyAction': set(),
         'license.AppLicense': {'canStart', 'requireActivation'},

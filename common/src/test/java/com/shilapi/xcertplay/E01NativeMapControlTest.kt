@@ -44,6 +44,7 @@ class E01NativeMapControlTest {
     private fun gesture(direction: String) {
         app.sendBroadcast(Intent(E01NativeMapControl.ACTION).putExtra(E01NativeMapControl.DIRECTION, direction))
         idle()
+        shadowOf(Looper.getMainLooper()).idleFor(100, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
     @Before fun prepare() {
@@ -91,13 +92,15 @@ class E01NativeMapControlTest {
         val pkg = "ecarx.naviservice"
         val info = ApplicationInfo().apply { packageName = pkg; enabled = true }
         shadowOf(app.packageManager).installPackage(PackageInfo().apply {
-            packageName = pkg; applicationInfo = info
+            packageName = pkg; applicationInfo = info; versionName = "3.2.4272"; versionCode = 4272
             services = arrayOf(android.content.pm.ServiceInfo().apply {
                 packageName = pkg; name = "$pkg.service.NaviService"; applicationInfo = info
                 enabled = true; exported = true
             })
         })
-        assertTrue(E01NativeMapControl.diagnosticReport(app).contains("xcNaviService=declared-accessible"))
+        val report = E01NativeMapControl.diagnosticReport(app)
+        assertTrue(report.contains("xcNaviService=declared-accessible@3.2.4272(4272)"))
+        assertTrue(report.contains("mapRenderPath=Presentation"))
         assertTrue(shadowOf(app).boundServiceConnections.isEmpty())
         assertNull(shadowOf(app).nextStartedService)
         assertTrue(messages().isEmpty())
@@ -185,6 +188,25 @@ class E01NativeMapControlTest {
         assertEquals(2, gestures.size)
     }
 
+    @Test fun gestureDuringRouteStartupRetriesAfterTheOEMRouteStateIsPublished() {
+        control = E01NativeMapControl(app, prepareGesture = {
+            val glance = com.shilapi.xcertplay.glance.CarPlayGlance
+            glance.setConnected(true)
+            glance.onFrame(com.shilapi.xcertplay.iap2.message.Iap2Messages.buildRaw(0x5201) { u8(1, 1) })
+            control?.sync(connected)
+            connected
+        }, onGesture = { gestures.add(it) })
+        control!!.sync(true)
+
+        gesture("left")
+
+        assertTrue(control!!.desired)
+        assertEquals(8, messages().single().getIntExtra("EXTRA_STATE", -1))
+        assertTrue(modeMessages().isEmpty())
+        assertTrue(control!!.frameReady())
+        assertEquals(listOf("left"), modeMessages().map { it.getStringExtra("direction") })
+    }
+
     @Test fun gestureBeforeRouteDetailsWaitsAndStateOnlyNavigationCanOpenTheMap() {
         start()
         gesture("left")
@@ -261,27 +283,56 @@ class E01NativeMapControlTest {
         assertFalse(E01NativeMapControl.supported(app))
     }
 
-    @Test fun factoryPlanFollowsOriginalGesturesWithoutAnyUpstreamMapSettings() {
+    @Test fun legacyLbsVersionUsesThePresentationPathAndOriginalGestures() {
         ShadowBuild.setDevice("FS11GQJ")
         ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", 22)
         ShadowSettings.setCanDrawOverlays(true)
         shadowOf(app).grantPermissions(android.Manifest.permission.SYSTEM_ALERT_WINDOW)
+        val naviPackage = "ecarx.naviservice"
+        val naviInfo = ApplicationInfo().apply { packageName = naviPackage; enabled = true }
+        shadowOf(app.packageManager).installPackage(PackageInfo().apply {
+            packageName = naviPackage; applicationInfo = naviInfo
+            versionName = "3.2.4272"; versionCode = 4272
+            services = arrayOf(android.content.pm.ServiceInfo().apply {
+                packageName = naviPackage; name = "$naviPackage.service.NaviService"
+                applicationInfo = naviInfo; enabled = true; exported = true
+            })
+        })
         val id = ShadowDisplayManager.addDisplay("w1920dp-h720dp")
         VehicleMapSettings.setEnabled(app, false)
         VehicleMapSettings.setVehicleMode(app, false)
         val plan = E01FactoryMapTarget.select(app, E01FactoryMapTarget.Spec(id, 1920, 720))!!
         val current = mock(CarPlayController::class.java)
-        `when`(current.clusterProjectionSessionToken()).thenReturn(Any())
-        VehicleMapProjection.attach(app, current, mock(AndroidMediaSink::class.java), plan)
+        `when`(current.activeAirPlaySessionToken()).thenReturn(Any())
+        `when`(current.configuredMainSize()).thenReturn(1280 to 720)
+        val renderer = mock(AndroidMediaSink::class.java)
+        VehicleMapProjection.attach(app, current, renderer, plan)
         GeelyHudProjection.update(turn); idle()
+        assertTrue(E01NativeMapControl.diagnosticReport(app).contains("mapRenderPath=Presentation"))
         assertTrue(VehicleMapProjection.usesFactoryGestures())
         gesture("left")
         assertTrue(ReflectionHelpers.getField<E01NativeMapControl>(VehicleMapProjection, "native").desired)
         assertNotNull(ReflectionHelpers.getField<Any?>(VehicleMapProjection, "presentation"))
         assertTrue(modeMessages().isEmpty())
+        // This phone has no stream 111. The accepted primary stream alone must
+        // deliver identical pixels without requesting a second CarPlay scene.
+        val output = mock(android.view.Surface::class.java)
+        `when`(output.isValid).thenReturn(true)
+        ReflectionHelpers.callInstanceMethod<Unit>(VehicleMapProjection, "setOutputSurface",
+            ReflectionHelpers.ClassParameter.from(android.view.Surface::class.java, output))
+        ReflectionHelpers.callInstanceMethod<Unit>(VehicleMapProjection, "refresh")
+        assertTrue(ReflectionHelpers.getField(VehicleMapProjection, "delivered"))
+        assertFalse(VehicleMapProjection.mapVisible())
+        ReflectionHelpers.setField(VehicleMapProjection, "firstFrame", true)
+        ReflectionHelpers.callInstanceMethod<Unit>(VehicleMapProjection, "refresh")
+        assertTrue(VehicleMapProjection.mapVisible())
+        verify(renderer).setMirrorSurface(110, "fs11-centre-screen", output)
+        assertTrue(mockingDetails(current).invocations.none { it.method.name == "setProjectionUiShown" })
+        val modeRequests = modeMessages().size
         gesture("right")
         assertNull(ReflectionHelpers.getField<Any?>(VehicleMapProjection, "presentation"))
-        assertTrue(modeMessages().isEmpty())
+        assertEquals(modeRequests, modeMessages().size)
+        verify(renderer).setMirrorSurface(110, "fs11-centre-screen", null)
     }
 
     @Test fun missingFactoryBroadcastFallsBackButReceivedBroadcastDoesNotToggleTwice() {
@@ -292,7 +343,7 @@ class E01NativeMapControlTest {
         val id = ShadowDisplayManager.addDisplay("w1920dp-h720dp")
         val plan = E01FactoryMapTarget.select(app, E01FactoryMapTarget.Spec(1, 1920, 720))!!
         val current = mock(CarPlayController::class.java)
-        `when`(current.clusterProjectionSessionToken()).thenReturn(Any())
+        `when`(current.activeAirPlaySessionToken()).thenReturn(Any())
         VehicleMapProjection.attach(app, current, mock(AndroidMediaSink::class.java), plan)
         idle()
         val native = ReflectionHelpers.getField<E01NativeMapControl>(VehicleMapProjection, "native")
@@ -309,7 +360,7 @@ class E01NativeMapControlTest {
         assertTrue(modeMessages().isEmpty())
         // A pending fallback may never move a replacement iPhone session.
         VehicleMapProjection.followFactoryGesture(true, android.os.SystemClock.elapsedRealtime())
-        `when`(current.clusterProjectionSessionToken()).thenReturn(Any())
+        `when`(current.activeAirPlaySessionToken()).thenReturn(Any())
         shadowOf(Looper.getMainLooper()).idleFor(250, java.util.concurrent.TimeUnit.MILLISECONDS)
         assertFalse(native.desired)
         assertEquals(id, plan.screen.id)

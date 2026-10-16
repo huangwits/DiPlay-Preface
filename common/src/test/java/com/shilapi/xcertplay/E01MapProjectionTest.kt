@@ -99,6 +99,57 @@ class E01MapProjectionTest {
         assertNull(ReflectionHelpers.getField<VehicleMapPlan?>(activity, "vehicleMapPlan"))
     }
 
+    @Test fun factoryOutputUsesAnIndependentMirrorOfTheMainStream() {
+        ShadowDisplayManager.addDisplay("w1920dp-h720dp")
+        val screen = GeelyHudProjection.availableDisplays(activity).single()
+        val selection = VehicleMapPlan(screen, 1920, 720, 720, vehicleMode = true, factoryNative = true)
+        assertEquals(110, selection.videoStreamType)
+        val renderer = mock(AndroidMediaSink::class.java)
+        ReflectionHelpers.setField(VehicleMapProjection, "plan", selection)
+        ReflectionHelpers.setField(VehicleMapProjection, "sink", renderer)
+        val output = mock(Surface::class.java)
+        ReflectionHelpers.callInstanceMethod<Unit>(VehicleMapProjection, "setOutputSurface",
+            ReflectionHelpers.ClassParameter.from(Surface::class.java, output))
+        verify(renderer).setMirrorSurface(110, "fs11-centre-screen", output)
+        ReflectionHelpers.callInstanceMethod<Unit>(VehicleMapProjection, "setOutputSurface",
+            ReflectionHelpers.ClassParameter.from(Surface::class.java, null))
+        verify(renderer).setMirrorSurface(110, "fs11-centre-screen", null)
+        assertTrue(mockingDetails(renderer).invocations.none { it.method.name == "setSurface" || it.method.name == "clearSurface" })
+    }
+
+    @Test fun genericMapOutputRetainsItsSeparateClusterStream() {
+        ShadowDisplayManager.addDisplay("w1280dp-h480dp")
+        val screen = GeelyHudProjection.availableDisplays(activity).single()
+        val selection = VehicleMapPlan(screen, 1280, 480, 480, vehicleMode = false)
+        assertEquals(111, selection.videoStreamType)
+        val renderer = mock(AndroidMediaSink::class.java)
+        ReflectionHelpers.setField(VehicleMapProjection, "plan", selection)
+        ReflectionHelpers.setField(VehicleMapProjection, "sink", renderer)
+        val output = mock(Surface::class.java)
+        ReflectionHelpers.callInstanceMethod<Unit>(VehicleMapProjection, "setOutputSurface",
+            ReflectionHelpers.ClassParameter.from(Surface::class.java, output))
+        verify(renderer).setSurface(111, output)
+        ReflectionHelpers.callInstanceMethod<Unit>(VehicleMapProjection, "setOutputSurface",
+            ReflectionHelpers.ClassParameter.from(Surface::class.java, null))
+        verify(renderer).clearSurface(111, output)
+        assertTrue(mockingDetails(renderer).invocations.none { it.method.name == "setMirrorSurface" })
+    }
+
+    @Test fun factoryMirrorSessionDoesNotRequireThePhoneToOfferAClusterStream() {
+        ShadowDisplayManager.addDisplay("w1920dp-h720dp")
+        val screen = GeelyHudProjection.availableDisplays(activity).single()
+        val current = mock(CarPlayController::class.java)
+        val primary = Any()
+        `when`(current.activeAirPlaySessionToken()).thenReturn(primary)
+        `when`(current.clusterProjectionSessionToken()).thenReturn(null)
+        ReflectionHelpers.setField(VehicleMapProjection, "controller", current)
+        ReflectionHelpers.setField(VehicleMapProjection, "plan",
+            VehicleMapPlan(screen, 1920, 720, 720, vehicleMode = true, factoryNative = true))
+        assertSame(primary, ReflectionHelpers.callInstanceMethod<Any?>(VehicleMapProjection, "projectionSessionToken"))
+        `when`(current.activeAirPlaySessionToken()).thenReturn(null)
+        assertNull(ReflectionHelpers.callInstanceMethod<Any?>(VehicleMapProjection, "projectionSessionToken"))
+    }
+
     @Test fun closingProjectionRetainsTheLastFailureAndSelectedTargetInTheReport() {
         DisplayDiagnosticSnapshot.begin(activity, "request", "capability", "effective")
         ShadowDisplayManager.addDisplay("w1280dp-h480dp")

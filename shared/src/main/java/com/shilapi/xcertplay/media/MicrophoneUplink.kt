@@ -137,6 +137,7 @@ internal class MicrophoneUplink(
         }
         val bufferSize = maxOf(minBuffer * 2, config.frameBytes * 4)
         // Some head units throw on VOICE_RECOGNITION at build(); VOICE_COMMUNICATION works there.
+        // Some head units throw on VOICE_RECOGNITION at build(); VOICE_COMMUNICATION works there.
         // Match GeekPlay's FS11 call source preference, keeping the OEM source as fallback.
         val sources = microphoneSourceCandidates(factorySource, source, legacyFs11Telephony, legacyFs11Speech)
         val nextRecorder = sources.firstNotNullOfOrNull { candidate ->

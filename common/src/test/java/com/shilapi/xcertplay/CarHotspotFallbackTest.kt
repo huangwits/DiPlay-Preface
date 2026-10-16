@@ -43,19 +43,15 @@ class CarHotspotFallbackTest {
 
     @Before fun setUp() {
         app.getSharedPreferences("diplay_byd_outputs", 0).edit().clear().commit()
-        CarHotspotSettings.setEnabled(app, true)
         CarHotspotAdbGrantTest.WritePermission.allowed = true
         ApState.enabled = null
         ManualAttachment.starts = 0
     }
 
-    @Test fun unreadableApStateAllowsManualAttachmentWithOrWithoutAutoStartup() {
+    @Test fun unreadableApStateAllowsManualAttachmentWithoutASeparateHotspotSwitch() {
         assertNull(CarHotspotStatus.isEnabled(app))
-        for (optIn in listOf(false, true)) {
-            CarHotspotSettings.setEnabled(app, optIn)
-            controller().use { assertEquals(WirelessHotspotBackend.MANUAL_HOTSPOT, start(it).backend) }
-        }
-        assertEquals(2, ManualAttachment.starts)
+        controller().use { assertEquals(WirelessHotspotBackend.MANUAL_HOTSPOT, start(it).backend) }
+        assertEquals(1, ManualAttachment.starts)
     }
 
     @Test fun enabledHotspotStillAttachesWithoutControlPermission() {
@@ -83,7 +79,7 @@ class CarHotspotFallbackTest {
         assertStartupFailure("Hotspot startup was cancelled", generation = 1)
     }
 
-    @Test fun existingWifiBypassesHotspotControlEvenWithAutoStartupSavedAndApOff() {
+    @Test fun existingWifiBypassesCarHotspotControlWhenApIsOff() {
         ApState.enabled = false
         CarHotspotAdbGrantTest.WritePermission.allowed = false
         controller(WirelessHotspotMode.EXISTING_WIFI).use {

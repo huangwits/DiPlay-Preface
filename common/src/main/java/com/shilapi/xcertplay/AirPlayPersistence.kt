@@ -54,6 +54,7 @@ object AirPlayPersistence {
     private const val KEY_NAVIGATION_STREAM_TYPE = "navigation_stream_type"
     private const val KEY_WIRELESS_ENABLED = "wireless_enabled"
     private const val KEY_WIRELESS_HOTSPOT_MODE = "wireless_hotspot_mode"
+    private const val KEY_WIRELESS_HOTSPOT_DEFAULT_MIGRATED = "wireless_hotspot_default_auto_migrated"
     private const val KEY_WIFI_P2P_PREFERRED_CHANNEL = "wifi_p2p_preferred_channel"
     private const val KEY_MANUAL_HOTSPOT_SSID = "manual_hotspot_ssid"
     private const val KEY_MANUAL_HOTSPOT_PASSPHRASE = "manual_hotspot_passphrase"
@@ -344,24 +345,32 @@ object AirPlayPersistence {
     fun loadWirelessHotspotMode(context: Context): WirelessHotspotMode {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = prefs.getString(KEY_WIRELESS_HOTSPOT_MODE, null)
+        val migrationComplete = prefs.getBoolean(KEY_WIRELESS_HOTSPOT_DEFAULT_MIGRATED, false)
         // Preface uses the car's existing hotspot by default. Preserve an explicit
-        // Wi-Fi Direct selection on older Android because the vehicle path supports it.
-        val mode = WirelessHotspotMode.entries.firstOrNull { it.name == stored }
-            ?: WirelessHotspotMode.MANUAL
-        val supported = when (mode) {
-            WirelessHotspotMode.AUTOMATIC,
-            WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> WirelessHotspotMode.MANUAL
+        // Wi-Fi Direct selection on supported Android. Previous releases wrote MANUAL
+        // while reading their default; migrate that old implicit default to AUTOMATIC.
+        val mode = if (!migrationComplete && stored == WirelessHotspotMode.MANUAL.name) {
+            WirelessHotspotMode.AUTOMATIC
+        } else {
+            WirelessHotspotMode.entries.firstOrNull { it.name == stored }
+                ?: WirelessHotspotMode.AUTOMATIC
+        }
+        val supported = when {
+            mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> WirelessHotspotMode.AUTOMATIC
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && mode == WirelessHotspotMode.WIFI_P2P ->
+                WirelessHotspotMode.AUTOMATIC
             else -> mode
         }
-        if (stored != supported.name) saveWirelessHotspotMode(context, supported)
+        if (stored != supported.name || !migrationComplete) saveWirelessHotspotMode(context, supported)
         return supported
     }
 
     fun saveWirelessHotspotMode(context: Context, mode: WirelessHotspotMode) {
-        val supported = if (mode == WirelessHotspotMode.AUTOMATIC || mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT)
-            WirelessHotspotMode.MANUAL else mode
+        val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT)
+            WirelessHotspotMode.AUTOMATIC else mode
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_WIRELESS_HOTSPOT_MODE, supported.name)
+            .putBoolean(KEY_WIRELESS_HOTSPOT_DEFAULT_MIGRATED, true)
             .apply()
     }
 
@@ -466,7 +475,7 @@ object AirPlayPersistence {
 
     fun loadAutoStartOnBoot(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_AUTO_START_ON_BOOT, false)
+            .getBoolean(KEY_AUTO_START_ON_BOOT, true)
 
     fun saveAutoStartOnBoot(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -598,12 +607,7 @@ object AirPlayPersistence {
     )
 
     /** Wired and wireless music settings stay independent; old settings seed both on first use. */
-    fun loadMediaBufferMillis(context: Context, wireless: Boolean): Int {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val shared = prefs.getInt(KEY_MEDIA_BUFFER_MS, com.shilapi.xcertplay.media.MediaAudioBuffer.DEFAULT_MILLIS)
-        return if (wireless) com.shilapi.xcertplay.media.MediaAudioBuffer.sanitizeWireless(shared)
-        else com.shilapi.xcertplay.media.MediaAudioBuffer.sanitizeWired(prefs.getInt(KEY_WIRED_MEDIA_BUFFER_MS, shared))
-    }
+    fun loadMediaBufferMillis(context: Context, wireless: Boolean): Int = loadMediaBufferMillis(context)
 
     /** CarPlay's buffered music (Apple Music sends ahead over TCP); off by default, applies at reconnect. */
     fun loadMainBufferedAudio(context: Context): Boolean =
@@ -655,17 +659,7 @@ object AirPlayPersistence {
     }
 
     fun saveMediaBufferMillis(context: Context, wireless: Boolean, millis: Int) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (wireless) {
-            val wired = loadMediaBufferMillis(context, wireless = false)
-            prefs.edit()
-                .putInt(KEY_WIRED_MEDIA_BUFFER_MS, wired)
-                .putInt(KEY_MEDIA_BUFFER_MS, com.shilapi.xcertplay.media.MediaAudioBuffer.sanitizeWireless(millis))
-                .apply()
-        } else {
-            prefs.edit().putInt(KEY_WIRED_MEDIA_BUFFER_MS,
-                com.shilapi.xcertplay.media.MediaAudioBuffer.sanitizeWired(millis)).apply()
-        }
+        saveMediaBufferMillis(context, millis)
     }
 
     /** DiPlay's own experimental echo canceller on CarPlay call audio; opt-in, applies at reconnect. */
