@@ -24,6 +24,8 @@ LEGAL_DOCS = {'disclaimer.md', 'third_party_notices.md'}
 
 def check_public_scope(parts, name):
     normalized = '/'.join(parts)
+    if 'server' in parts[:2]:
+        raise ValueError('Server deployment source: ' + name)
     for directory in ('license-server', 'license-workers'):
         if directory in parts:
             raise ValueError('Private administration source: ' + name)

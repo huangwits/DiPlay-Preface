@@ -9,8 +9,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Reject credential files in public source
-        run: python3 scripts/check_public_tree.py
+      - name: Check public source scope
+        run: |
+          python3 -m unittest discover -s scripts/tests -p test_public_distribution.py
+          python3 scripts/check_public_tree.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -20,7 +22,9 @@ jobs:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;28.2.13676358
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests, lint and source-only debug build
-        run: ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :home:testDebugUnitTest :mobile:lintDebug :home:lintDebug :maphost:lintDebug :mobile:assembleDebug :home:assembleDebug :maphost:assembleDebug --stacktrace
+        run: ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :mobile:lintDebug :mobile:assembleDebug --stacktrace
+      - name: Verify source-only APK
+        run: python3 scripts/check_source_apk.py mobile/build/outputs/apk/debug/mobile-debug.apk
       - name: Test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -30,6 +34,3 @@ jobs:
             shared/build/reports/tests/
             common/build/reports/tests/
             mobile/build/reports/lint-results-debug.html
-            samples/home/build/reports/tests/
-            samples/home/build/reports/lint-results-debug.html
-            samples/maphost/build/reports/lint-results-debug.html

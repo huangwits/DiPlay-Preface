@@ -63,6 +63,7 @@ admin-token.txt
 /PRODUCT.md
 /license-server/
 /license-workers/
+/server/
 /offline-license/
 /scripts/build-beta.py
 /scripts/build-signed-e01.ps1
