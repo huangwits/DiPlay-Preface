@@ -53,6 +53,7 @@ class PublicDistributionTest(unittest.TestCase):
 class PublicScopeTest(unittest.TestCase):
     def test_rejects_administration_source_in_tree_or_wrapped_archive(self):
         for name in ['license-server/app.py', 'license-workers/src/worker.ts',
+                     'server/steering_profiles/server.py', 'snapshot/server/steering_profiles/install.py',
                      'offline-license/issue.py', 'snapshot/license-workers/package.json',
                      'snapshot/offline-license/renamed.txt', 'AGENTS.md', 'docs/BUILD.md',
                      'snapshot/docs/PREFACE-0.2.20.4.md', '.github/workflows/sync-upstream.yml',

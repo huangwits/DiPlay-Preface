@@ -25,14 +25,9 @@ dependencyResolutionManagement {
 rootProject.name = "xcertplay"
 include(":common")
 include(":mobile")
-include(":automotive")
 include(":shared")
 // carlito | Client for the separate GD vehicle bridge APK.
 include(":vehicle-probe")
-include(":maphost")
-project(":maphost").projectDir = file("samples/maphost")
-include(":home")
-project(":home").projectDir = file("samples/home")
 
 include(":jmdns")
 project(":jmdns").projectDir = file("vendor/jmdns")
