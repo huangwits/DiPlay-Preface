@@ -149,6 +149,10 @@ class CarPlayMediaEngine(
         val port = screen.listen(
             object : ScreenStream.Listener by currentScreenListener(type, sink, isCurrent = { streams[streamKey] === screen }) {
                 override fun onClosed(cause: Throwable?) {
+                    session.logDebug(
+                        "Video: screen stream ended type=$type failureClass=${cause?.javaClass?.simpleName ?: "none"} " +
+                            "reason=${cause?.message ?: "peer EOF"}",
+                    )
                     Log.w(
                         TAG,
                         "screen stream ended type=$type reason=${cause?.message ?: "peer EOF"}",
@@ -613,11 +617,22 @@ class CarPlayMediaEngine(
         val host = session.remoteAddress ?: return null
         val key = dataStreamKey(session, stream, DATASTREAM_INPUT_KEY) ?: return null
         val formatBits = (stream["audioFormat"] as? Number)?.toLong() ?: 0L
-        val framesPerPacket = (stream["framesPerPacket"] as? Number)?.toInt() ?: 0
+        val framesPerPacket = (stream["framesPerPacket"] as? Number)?.toInt()
+        val eldFramesPerPacket = if (format.codec == AudioCodecKind.AAC_ELD) {
+            (framesPerPacket ?: com.shilapi.xcertplay.media.AacEldFormat.DEFAULT_FRAMES_PER_PACKET)
+                .takeIf { it == 480 || it == 512 } ?: return null
+        } else null
+        if (format.channels != 1 || format.sampleRate !in 8_000..16_000) {
+            Log.w(TAG, "microphone format exceeds mono/16 kHz input limits")
+            return null
+        }
+        val declaredFramesPerPacket = framesPerPacket ?: 0
         val frameMillis = if (format.codec == AudioCodecKind.OPUS) {
             20
-        } else if (framesPerPacket > 0) {
-            Math.round(framesPerPacket * 1000.0 / format.sampleRate).toInt().coerceIn(5, 60)
+        } else if (eldFramesPerPacket != null) {
+            (eldFramesPerPacket * 1000L / format.sampleRate).toInt().coerceIn(5, 60)
+        } else if (declaredFramesPerPacket > 0) {
+            Math.round(declaredFramesPerPacket * 1000.0 / format.sampleRate).toInt().coerceIn(5, 60)
         } else {
             20
         }
@@ -629,15 +644,20 @@ class CarPlayMediaEngine(
         return MicrophoneConfig(
             audioType = format.audioType,
             sampleRate = format.sampleRate,
-            channels = format.channels,
+            channels = 1,
             payloadType = type,
             frameMillis = frameMillis,
             host = host,
             port = port,
             key = key,
             codec = format.codec,
-            bitrate = if (format.codec == AudioCodecKind.OPUS) opusBitrate else null,
+            bitrate = when (format.codec) {
+                AudioCodecKind.OPUS -> opusBitrate
+                AudioCodecKind.AAC_ELD -> 48_000
+                else -> null
+            },
             opusClockRate = MicrophoneConfig.opusClockRate(formatBits),
+            framesPerPacket = eldFramesPerPacket ?: framesPerPacket?.takeIf { it > 0 && format.codec != AudioCodecKind.OPUS },
         )
     }
 

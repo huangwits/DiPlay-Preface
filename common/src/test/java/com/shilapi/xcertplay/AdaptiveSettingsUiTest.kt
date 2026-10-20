@@ -40,9 +40,11 @@ import org.robolectric.util.ReflectionHelpers
 class AdaptiveSettingsUiTest {
     private val context get() = RuntimeEnvironment.getApplication()
     private var activity: DiPlayActivity? = null
+    private val uiControllers = mutableListOf<org.robolectric.android.controller.ActivityController<DiPlayActivity>>()
 
     @After fun tearDown() {
-        activity?.finish()
+        uiControllers.forEach { it.pause().stop().destroy() }
+        uiControllers.clear()
         context.getSharedPreferences("diplay", 0).edit().clear().commit()
         context.getSharedPreferences("xcertplay_airplay", 0).edit().clear().commit()
     }
@@ -54,15 +56,16 @@ class AdaptiveSettingsUiTest {
         assertTrue(texts(screen).any { it.text == screen.getString(R.string.settings_quick_settings) })
     }
 
-    @Test fun readinessAsksForAnIphoneBeforeWirelessCanConnect() {
+    @Test fun readinessOffersPhoneSelectionBeforeWirelessCanConnect() {
         AirPlayPersistence.saveWirelessEnabled(context, true)
         val screen = openSettings()
         // Robolectric has no CarPlay authentication assets, which is a setup error of its own.
         ReflectionHelpers.setField(screen, "setupError", null)
         ReflectionHelpers.callInstanceMethod<Unit>(screen, "render")
 
-        assertTrue(texts(screen).any { it.text == screen.getString(R.string.settings_choose_iphone_title) })
-        assertTrue(texts(screen).any { it.text == screen.getString(R.string.settings_choose_iphone_action) })
+        assertTrue(texts(screen).any { it.text == "尚未选择手机" })
+        assertTrue(texts(screen).any { it.text == "无线 CarPlay 需要先与手机配对。" })
+        assertTrue(texts(screen).any { it.text == "选择手机" })
         assertFalse(texts(screen).any { it.text == screen.getString(R.string.ready) })
     }
 
@@ -229,7 +232,7 @@ class AdaptiveSettingsUiTest {
         val screen = Robolectric.buildActivity(
             DiPlayActivity::class.java,
             Intent(context, DiPlayActivity::class.java).putExtra("page", "connection"),
-        ).setup().get().also { activity = it }
+        ).setup().visible().also { uiControllers += it }.get().also { activity = it }
 
         screen.onBackPressedDispatcher.onBackPressed()
 
@@ -428,7 +431,7 @@ class AdaptiveSettingsUiTest {
     private fun openSettings(): DiPlayActivity = Robolectric.buildActivity(
         DiPlayActivity::class.java,
         Intent(context, DiPlayActivity::class.java).putExtra("page", "settings"),
-    ).setup().get().also { activity = it }
+    ).setup().visible().also { uiControllers += it }.get().also { activity = it }
 
     private fun installSystemPackage(name: String) {
         shadowOf(context.packageManager).installPackage(PackageInfo().apply {
@@ -455,6 +458,8 @@ class AdaptiveSettingsUiTest {
     private fun texts(screen: DiPlayActivity) = descendants(screen.window.decorView).filterIsInstance<TextView>()
 
     private fun descendants(view: View): Sequence<View> = sequence {
+        if (view === view.rootView && view.isAttachedToWindow)
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(20, java.util.concurrent.TimeUnit.MILLISECONDS)
         yield(view)
         if (view is ViewGroup) for (index in 0 until view.childCount) yieldAll(descendants(view.getChildAt(index)))
     }

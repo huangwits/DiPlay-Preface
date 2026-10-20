@@ -109,6 +109,30 @@ class DashboardContentDeliveryTest {
         }
     }
 
+    @Test fun physicalProjectionKeepsTheMapWhileRetainingADashboardTurnCardChoice() {
+        Fixture().use { f ->
+            val phone = f.phone()
+            f.activate(phone)
+            eventReady(phone)
+            val owner = Any()
+            val shown = Completion()
+            f.controller.setProjectionUiShown(owner, true, shown::accept)
+            assertTrue(shown.await())
+            assertEquals(CarPlayClusterDisplay.MAP_URL, phone.clusterUrl())
+            val choice = Completion()
+            f.controller.showDashboardContent(CarPlayClusterDisplay.Content.TURN_CARD.url, choice::accept)
+            assertTrue(choice.await())
+            assertEquals(CarPlayClusterDisplay.MAP_URL, phone.clusterUrl())
+            val hidden = Completion()
+            f.controller.setProjectionUiShown(owner, false, hidden::accept)
+            assertTrue(hidden.await())
+            f.controller.releaseProjectionUi(owner)
+            f.awaitCommands()
+            visibility(f.controller, true)
+            assertEquals(CarPlayClusterDisplay.Content.TURN_CARD.url, phone.clusterUrl())
+        }
+    }
+
     @Test fun anEnqueuedSwitchReportsActualFailureAndKeepsTurnCardZoomIneligible() {
         Fixture().use { f ->
             val phone = f.phone()
@@ -169,9 +193,10 @@ class DashboardContentDeliveryTest {
                 val complete = Completion()
                 f.controller.showDashboardContent(CarPlayClusterDisplay.MAP_URL, complete::accept)
                 setup(phone)
+                val afterSetup = event.writes
                 release.countDown()
                 assertFalse(complete.await())
-                assertEquals(0, event.writes)
+                assertEquals(afterSetup, event.writes)
                 assertEquals(CarPlayClusterDisplay.Content.TURN_CARD.url, phone.clusterUrl())
             } finally { release.countDown() }
         }
@@ -197,8 +222,9 @@ class DashboardContentDeliveryTest {
             val event = eventReady(phone, EventSocket { setup(phone) })
             assertFalse(phone.setClusterUiShown(false))
             assertNull(phone.clusterUrl())
+            val beforeRedraw = event.writes
             visibility(f.controller, true)
-            assertEquals(3, event.writes)
+            assertEquals(beforeRedraw + 2, event.writes)
             assertEquals(CarPlayClusterDisplay.Content.TURN_CARD.url, phone.clusterUrl())
         }
     }
@@ -261,7 +287,7 @@ class DashboardContentDeliveryTest {
             f.awaitCommands()
             assertEquals(0, event.writes)
             assertNull(second.clusterUrl())
-            setup(second)
+            setup(second, answered = false)
             assertEquals(CarPlayClusterDisplay.Content.TURN_CARD.url, second.clusterUrl())
             second.javaClass.getDeclaredMethod("notifySetupResponseSent").apply { isAccessible = true }.invoke(second)
             assertEquals(2, event.writes)
@@ -340,13 +366,14 @@ class DashboardContentDeliveryTest {
             val event = eventReady(first)
             f.record(first)
             f.awaitCommands()
+            val initialWrites = event.writes
             visibility(f.controller, false)
             val accepted = Completion()
             f.controller.showDashboardContent(CarPlayClusterDisplay.MAP_URL, accepted::accept)
             assertTrue(accepted.await())
             f.record(first)
             f.awaitCommands()
-            assertEquals(1, event.writes)
+            assertEquals(initialWrites + 1, event.writes)
             assertEquals(CarPlayClusterDisplay.Content.TURN_CARD.url, first.clusterUrl())
             visibility(f.controller, true)
             assertEquals(CarPlayClusterDisplay.MAP_URL, first.clusterUrl())
@@ -357,9 +384,10 @@ class DashboardContentDeliveryTest {
         private fun set(target: Any, name: String, value: Any?) {
             target.javaClass.getDeclaredField(name).apply { isAccessible = true }.set(target, value)
         }
-        private fun setup(phone: AirPlaySession) {
+        private fun setup(phone: AirPlaySession, answered: Boolean = true) {
             phone.javaClass.getDeclaredMethod("handleStreams", List::class.java).apply { isAccessible = true }
                 .invoke(phone, listOf(mapOf("type" to 111L)))
+            if (answered) phone.javaClass.getDeclaredMethod("notifySetupResponseSent").apply { isAccessible = true }.invoke(phone)
         }
         private fun visibility(controller: CarPlayController, shown: Boolean) {
             controller.javaClass.getDeclaredMethod("applyClusterUi", Boolean::class.javaPrimitiveType)

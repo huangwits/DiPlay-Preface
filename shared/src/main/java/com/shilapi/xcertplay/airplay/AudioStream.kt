@@ -9,7 +9,7 @@ import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-enum class AudioCodecKind { AAC_LC, OPUS, LPCM }
+enum class AudioCodecKind { AAC_LC, AAC_ELD, OPUS, LPCM }
 
 data class AudioFormat(
     val codec: AudioCodecKind,
@@ -22,6 +22,7 @@ data class AudioFormat(
      * 0x10000000 and 0x20000000 count at 16 and 24 kHz (see [MicrophoneConfig.opusClockRate]).
      */
     val rtpClockRate: Int = sampleRate,
+    val framesPerPacket: Int? = null,
 )
 
 /**
@@ -200,9 +201,6 @@ class AudioStream(
             ((source[offset + 2].toInt() and 0xff) shl 8) or
             (source[offset + 3].toInt() and 0xff)
 
-    private fun ByteArray.toHexString(): String =
-        joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
-
     private companion object {
         const val TAG = "xcertplay-usb"
         const val DATAGRAM_BYTES = 4_096
@@ -219,10 +217,12 @@ class AudioStream(
 /** Maps the phone's negotiated audioFormat bits to a decode/render format. */
 object AudioStreamCodec {
     fun fromFormatBits(bits: Long, payloadType: Int, audioType: String = "media"): AudioFormat {
-        val isAacLc = (bits and (AAC_LC_44K_STEREO or AAC_LC_48K_STEREO)) != 0L
-        val isOpus = (bits and OPUS_MONO) != 0L
+        val isAacLc = bits == AAC_LC_44K_STEREO || bits == AAC_LC_48K_STEREO
+        val isOpus = bits == 0x10000000L || bits == 0x20000000L || bits == 0x40000000L
         val pcm = PCM_FORMAT[bits]
+        val eld = ELD_FORMAT[bits]
         return when {
+            eld != null -> AudioFormat(AudioCodecKind.AAC_ELD, eld.first, eld.second, payloadType, audioType)
             isOpus -> AudioFormat(
                 AudioCodecKind.OPUS, 48_000, 1, payloadType, audioType,
                 rtpClockRate = MicrophoneConfig.opusClockRate(bits),
@@ -241,7 +241,15 @@ object AudioStreamCodec {
 
     private const val AAC_LC_44K_STEREO = 0x400000L
     private const val AAC_LC_48K_STEREO = 0x800000L
-    private const val OPUS_MONO = 0x10000000L or 0x20000000L or 0x40000000L
+    private val ELD_FORMAT = mapOf(
+        (1L shl 24) to (44_100 to 2),
+        (1L shl 25) to (48_000 to 2),
+        (1L shl 26) to (16_000 to 1),
+        (1L shl 27) to (24_000 to 1),
+        (1L shl 31) to (44_100 to 1),
+        (1L shl 32) to (48_000 to 1),
+        (1L shl 43) to (32_000 to 1),
+    )
 
     private val PCM_FORMAT = mapOf(
         0x4L to (8_000 to 1),

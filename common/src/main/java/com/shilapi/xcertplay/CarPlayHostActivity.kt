@@ -34,6 +34,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.provider.Settings
 import android.text.Editable
 import android.text.InputType
 import android.text.TextUtils
@@ -113,6 +114,12 @@ import com.shilapi.xcertplay.transport.Iap2LocationProvider
 import com.shilapi.xcertplay.transport.IphoneUsbMatcher
 import com.shilapi.xcertplay.transport.UsbDeviceId
 import com.shilapi.xcertplay.transport.VehicleSpeedLocationProvider
+import com.shilapi.xcertplay.vehicle.VehicleDataConfig
+import com.shilapi.xcertplay.vehicle.VehicleDataFeature
+import com.shilapi.xcertplay.vehicle.source.VehicleDataEntries
+import com.shilapi.xcertplay.vehicle.source.VehicleDataSource
+import com.shilapi.xcertplay.vehicle.source.VehicleDataSourceRequest
+import com.shilapi.xcertplay.vehicle.profile.VehicleProfileParser
 import com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay
 import com.shilapi.xcertplay.media.VideoDecoderSupport
 import java.io.ByteArrayOutputStream
@@ -145,6 +152,8 @@ import com.geelyplay.preface.NavigationFlyGesture
  * Apple devices are discovered by vendor ID; CH341 uses the configured VID/PID below.
  */
 class CarPlayHostActivity : ComponentActivity() {
+    private var audioCapabilityProbePending = false
+    private var audioCapabilityProbeFinished = false
     private val geelyFactory by lazy { GeelyFactoryCarPlay.load(applicationContext) }
     private fun supportsOpusOutput(): Boolean {
         if (!wirelessEnabled) {
@@ -180,7 +189,10 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     // CH341 USB\VID_1A86&PID_5512&REV_0304 is the deployment-supplied bridge identity.
-    private fun createRuntimeConfig(): CarPlayRuntimeConfig = CarPlayRuntimeConfig(
+    private fun createRuntimeConfig(profileWheelSpeed: Boolean = false): CarPlayRuntimeConfig {
+        val wheelSpeed = profileWheelSpeed || locationReportingEnabled && BridgeVehicleSpeedSource.enabled(this)
+        val locationInfo = locationReportingEnabled || wheelSpeed
+        return CarPlayRuntimeConfig(
         mfiTarget = mfiTarget,
         ch341Devices = if (mfiTarget == MfiTarget.USB_CH341) {
             listOf(UsbDeviceId(0x1a86, 0x5512))
@@ -204,8 +216,9 @@ class CarPlayHostActivity : ComponentActivity() {
             firmwareVersion = "0.1.0",
             hardwareVersion = "1.0",
             carPlayUsbInterfaceNumber = 3,
-            locationInformationEnabled = locationReportingEnabled,
-            vehicleSpeedEnabled = locationReportingEnabled && BridgeVehicleSpeedSource.enabled(this),
+            locationInformationEnabled = locationInfo,
+            gpsLocationEnabled = locationReportingEnabled,
+            vehicleSpeedEnabled = wheelSpeed,
         ),
         label = "DiPlay",
         hostName = "diplay-" + DiPlayBootstrap.deviceId(airPlayIdentity).replace(":", "").lowercase(),
@@ -222,8 +235,37 @@ class CarPlayHostActivity : ComponentActivity() {
         manualHotspotSecurity = manualHotspotSecurity,
         existingWifiSsid = existingWifiSsid,
         existingWifiPassphrase = existingWifiPassphrase,
-        locationReportingEnabled = locationReportingEnabled,
+        locationReportingEnabled = locationInfo,
     )
+    }
+
+    private data class VehicleDataSession(
+        val config: VehicleDataConfig,
+        val source: VehicleDataSource,
+        val wheelSpeedEnabled: Boolean,
+        val statusEnabled: Boolean,
+    )
+
+    private fun createVehicleDataSession(): VehicleDataSession {
+        val dataConfig = AirPlayPersistence.loadVehicleDataConfig(this)
+        val selection = VehicleProfileRepository(this).load()
+        val profile = VehicleProfileParser.parse(selection.text)
+        val entries = InstalledVehicleDataEntries.all(applicationContext) { profile }
+        if (entries.isEmpty()) {
+            val unavailable = JsonProfileVehicleDataEntry { profile }
+            return VehicleDataSession(dataConfig, unavailable.create(
+                VehicleDataSourceRequest(applicationContext, dataConfig)), wheelSpeedEnabled = false, statusEnabled = false)
+        }
+        val entry = VehicleDataEntries.select(entries, dataConfig.sourceId)
+        val source = entry.create(VehicleDataSourceRequest(applicationContext, dataConfig))
+        val wheelSpeed = dataConfig.isEnabled(VehicleDataFeature.WHEEL_SPEED) && entry.canProvide(VehicleDataFeature.WHEEL_SPEED)
+        val statusEnabled = listOf(
+            VehicleDataFeature.OUTSIDE_TEMPERATURE,
+            VehicleDataFeature.BAROMETRIC_PRESSURE, VehicleDataFeature.PASSENGER_SEAT,
+            VehicleDataFeature.WIPERS,
+        ).any { dataConfig.isEnabled(it) && entry.canProvide(it) }
+        return VehicleDataSession(dataConfig, source, wheelSpeed, statusEnabled)
+    }
 
     private val vpnConsent =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -430,6 +472,10 @@ class CarPlayHostActivity : ComponentActivity() {
     private var manualHotspotChannel = 0
     private var manualHotspotSecurity = ManualHotspotSecurity.OPEN
     private var awaitingVpnConsent = false
+    private var vpnRecoveryInFlight = false
+    private var vpnRecoveryAttempted = false
+    @Volatile private var vpnRecoveryGeneration = 0
+    private var vpnSettingsFallbackPending = false
     private var awaitingWirelessPermissions = false
     private var awaitingLocationPermission = false
     private var vpnReady = false
@@ -801,7 +847,7 @@ class CarPlayHostActivity : ComponentActivity() {
             PackageManager.PERMISSION_GRANTED
 
     private fun requestVpnConsent() {
-        if (awaitingVpnConsent) return
+        if (awaitingVpnConsent || vpnRecoveryInFlight) return
         val consent = try {
             CarPlayVpnService.prepare(this)
         } catch (error: ActivityNotFoundException) {
@@ -847,7 +893,63 @@ class CarPlayHostActivity : ComponentActivity() {
             "component=${consent?.component?.flattenToString() ?: "none"}"
         Log.w(TAG, diagnostic, error)
         appendLog(diagnostic)
-        setStatus(getString(R.string.vpn_authorization_unavailable))
+        if (recoverLegacyVpnConsent(operation)) return
+        if (!openVpnSettingsFallback(operation)) {
+            setStatus(getString(R.string.vpn_authorization_unavailable))
+        }
+    }
+
+    private fun recoverLegacyVpnConsent(operation: String): Boolean {
+        if (vpnRecoveryAttempted || wirelessEnabled || shuttingDown.get() || controller != null || CarPlayBackgroundSession.hasSession() ||
+            !com.geelyplay.preface.network.LegacyVpnConsentRecovery.supported(this)) return false
+        vpnRecoveryAttempted = true
+        vpnRecoveryInFlight = true
+        val generation = ++vpnRecoveryGeneration
+        val app = applicationContext
+        val cancelled = { generation != vpnRecoveryGeneration || shuttingDown.get() || wirelessEnabled ||
+            CarPlayBackgroundSession.hasSession() || isFinishing || isDestroyed }
+        Thread({
+            val result = runCatching {
+                com.geelyplay.preface.network.LegacyVpnConsentRecovery.grant(app, cancelled)
+            }.getOrDefault("FAILED")
+            runOnUiThread {
+                if (generation != vpnRecoveryGeneration) return@runOnUiThread
+                vpnRecoveryInFlight = false
+                if (wirelessEnabled || shuttingDown.get() || CarPlayBackgroundSession.hasSession() || isFinishing || isDestroyed) return@runOnUiThread
+                appendLog("VPN consent recovery result=$result operation=$operation")
+                // A root helper's reply cannot authorize a connection; verify in this application's UID.
+                val prepared = runCatching { CarPlayVpnService.prepare(this) == null }.getOrDefault(false)
+                vpnReady = prepared
+                if (prepared) {
+                    vpnSettingsFallbackPending = false
+                    if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) maybeStartCarPlay()
+                } else if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                    if (!openVpnSettingsFallback(operation)) setStatus(getString(R.string.vpn_authorization_unavailable))
+                } else {
+                    vpnSettingsFallbackPending = true
+                }
+            }
+        }, "diplay-vpn-recovery").apply { isDaemon = true; start() }
+        return true
+    }
+
+    /** Some Android 5.1 head units do not ship the standard com.android.vpndialogs activity. */
+    private fun openVpnSettingsFallback(operation: String): Boolean {
+        return try {
+            vpnSettingsFallbackPending = true
+            appendLog("VPN consent fallback=settings operation=$operation")
+            startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
+            setStatus(getString(R.string.vpn_authorization_settings_fallback))
+            true
+        } catch (error: ActivityNotFoundException) {
+            vpnSettingsFallbackPending = false
+            Log.w(TAG, "VPN settings unavailable", error)
+            false
+        } catch (error: SecurityException) {
+            vpnSettingsFallbackPending = false
+            Log.w(TAG, "VPN settings blocked", error)
+            false
+        }
     }
 
     private fun requestWirelessPermissions() {
@@ -959,6 +1061,12 @@ class CarPlayHostActivity : ComponentActivity() {
             requestLocationPermission()
         }
         wirelessPermissionsReady = !wirelessEnabled || hasRequiredWirelessPermissions()
+        if (!menuOpen && vpnSettingsFallbackPending && !wirelessEnabled && controller == null) {
+            // Re-check after the user returns from system VPN settings. Opening that page does
+            // not itself grant consent, so the normal VpnService.prepare() path must run again.
+            vpnSettingsFallbackPending = false
+            requestVpnConsent()
+        }
         advancedAudioChannelMapping =
             advancedAudioChannelMappingSupported &&
                 AirPlayPersistence.loadAdvancedAudioChannelMapping(this)
@@ -996,13 +1104,8 @@ class CarPlayHostActivity : ComponentActivity() {
         vehicleMapPlan?.let { selection ->
             recordMapDiagnostic("Map plan: target=${selection.screen.id} canvas=${selection.width}x${selection.height} " +
                 "factoryNative=${selection.factoryNative} ${E01FactoryMapTarget.diagnostics()}")
-            if (!selection.factoryNative) {
-                MapMirrors.streamAspect = selection.width.toDouble() / selection.height
-                return selection.config()
-            }
-            // FS11 mirrors stream 110. Only request an independent scene when the
-            // owner separately enabled the centre/launcher map feature below.
-            recordMapDiagnostic("Map plan: videoStream=110 source=centre-screen mirror=true")
+            MapMirrors.streamAspect = selection.width.toDouble() / selection.height
+            return selection.config()
         }
         if (vehicleMapPlan == null) recordMapDiagnostic("Map plan: target=none nativeSupported=$nativeSupported " +
             "${E01NativeMapControl.capabilityReason(this)} threeFinger=${GeelyHudProjection.threeFingerEnabled(this)} " +
@@ -1258,11 +1361,6 @@ class CarPlayHostActivity : ComponentActivity() {
             scaleType = ImageView.ScaleType.FIT_XY
         }.also { root.addView(it, FrameLayout.LayoutParams(0, 0)) }
         sidePanel = buildSidePanel().also { root.addView(it, FrameLayout.LayoutParams(0, 0)) }
-        ViewCompat.setOnApplyWindowInsetsListener(viewport) { _, insets ->
-            val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            viewport.setPadding(safe.left, safe.top, safe.right, safe.bottom)
-            insets
-        }
         ViewCompat.requestApplyInsets(viewport)
         // Over the picture and the connection panel, under the settings menu.
         fpsCounter = FpsCounterOverlay(this, mainHandler) { sink?.liveVideoCounters() }.also { counter ->
@@ -1919,11 +2017,16 @@ class CarPlayHostActivity : ComponentActivity() {
     private fun buildSettingsMenu(): View {
         val overlay = object : FrameLayout(this) {
             var fitNavigation: ((Int) -> Unit)? = null
+            override fun onAttachedToWindow() {
+                super.onAttachedToWindow()
+                ViewCompat.requestApplyInsets(this)
+            }
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
                 getChildAt(0)?.let { panel ->
-                    panel.layoutParams.width = settingsMenuWidth(MeasureSpec.getSize(widthMeasureSpec))
+                    val availableWidth = (MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight).coerceAtLeast(1)
+                    val availableHeight = (MeasureSpec.getSize(heightMeasureSpec) - paddingTop - paddingBottom).coerceAtLeast(1)
+                    panel.layoutParams.width = settingsMenuWidth(availableWidth)
                     fitNavigation?.invoke(panel.layoutParams.width)
-                    val availableHeight = MeasureSpec.getSize(heightMeasureSpec)
                     panel.layoutParams.height = minOf(
                         availableHeight * SWIPE_PANEL_HEIGHT_PERCENT / 100,
                         (availableHeight - dp(SWIPE_PANEL_MARGIN_DP * 2)).coerceAtLeast(1),
@@ -1935,6 +2038,12 @@ class CarPlayHostActivity : ComponentActivity() {
             setBackgroundColor(SWIPE_SCRIM_COLOR)
             isClickable = true
             layoutDirection = resources.configuration.layoutDirection
+            // Reserve system chrome for this menu only; keep the negotiated video canvas intact.
+            ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+                val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+                view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+                insets
+            }
         }
         val panel = FrameLayout(this).apply {
             background = swipeMenuChrome()
@@ -3925,6 +4034,11 @@ class CarPlayHostActivity : ComponentActivity() {
         appendLog(effectiveSummary)
         val carBluetoothAudio = AirPlayPersistence.loadCarBluetoothAudio(this)
         if (carBluetoothAudio) logCarBluetoothAudio()
+        val audioCapabilities = com.shilapi.xcertplay.media.AudioQualityCapabilities.cached(this)
+        val savedAudioQuality = AirPlayPersistence.loadAudioQuality(this)
+        val effectiveAudioQuality = if (
+            savedAudioQuality.opusEnabled || audioCapabilities?.compatibleModeAvailable == true
+        ) savedAudioQuality else savedAudioQuality.copy(opusEnabled = true)
         return AirPlayConfig(
             deviceName = "DiPlay",
             deviceId = DiPlayBootstrap.deviceId(airPlayIdentity),
@@ -3936,6 +4050,14 @@ class CarPlayHostActivity : ComponentActivity() {
             hevc = effectiveHevc,
             microphone = microphoneAvailable,
             microphoneOpus = com.shilapi.xcertplay.media.OpusEncoderSupport.isAvailable(),
+            opusOutputSupported = audioCapabilities?.rates(com.shilapi.xcertplay.airplay.AudioCodecKind.OPUS, 1)
+                ?.isNotEmpty() ?: true,
+            audioQuality = effectiveAudioQuality,
+            audioSupportedFormats = audioCapabilities?.allowedFormatBits,
+            wirelessAudio = wirelessEnabled,
+            microphoneEldAvailable = audioCapabilities?.eldMicrophoneRates?.contains(16_000) == true,
+            microphonePcmAvailable = audioCapabilities?.let { 16_000 in it.microphoneCaptureRates } ?: true,
+            aacEldSupported = audioCapabilities?.compatibleModeAvailable == true,
             manufacturer = normalizedManufacturer(),
             model = normalizedModel(),
             oemLabel = oemLabel,
@@ -4080,6 +4202,7 @@ class CarPlayHostActivity : ComponentActivity() {
         safeAreaEditSize = null
         safeAreaEditor?.visibility = View.GONE
         settingsMenu?.visibility = View.VISIBLE
+        settingsMenu?.let(ViewCompat::requestApplyInsets)
         updateSafeAreaSummary()
         updateResolutionMenu()
         appendLog("Safe area editor closed")
@@ -4310,7 +4433,7 @@ class CarPlayHostActivity : ComponentActivity() {
             }
             CarPlayStatus.MfiReady, CarPlayStatus.RunningControl,
             CarPlayStatus.RunningWireless, CarPlayStatus.WirelessActive -> {
-                if (status == CarPlayStatus.WirelessActive) connectionWaitingView?.clearFailure()
+                if (status == CarPlayStatus.WirelessActive) connectionWaitingView?.clearFailure(resetProgress = false)
                 connectionWaitingView?.confirmed?.apply {
                     text = "最近确认节点：$description"
                     visibility = if (wirelessEnabled) View.GONE else View.VISIBLE
@@ -4431,7 +4554,8 @@ class CarPlayHostActivity : ComponentActivity() {
         }
         cancelReconnect()
         val controllerGeneration = restartGeneration
-        val config = createRuntimeConfig()
+        val vehicleData = createVehicleDataSession()
+        val config = createRuntimeConfig(vehicleData.wheelSpeedEnabled)
         val effectiveSize = if (isMultiWindowActive() && !AirPlayPersistence.loadAdaptPipResolution(this) &&
             maximumDetectedWidthPixels >= size.width && maximumDetectedHeightPixels >= size.height &&
             (maximumDetectedWidthPixels > size.width || maximumDetectedHeightPixels > size.height)) {
@@ -4440,14 +4564,18 @@ class CarPlayHostActivity : ComponentActivity() {
             size
         }
         val airPlayConfig = createAirPlayConfig(effectiveSize)
-        val locationProvider: Iap2LocationProvider? =
-            when {
-                !config.locationReportingEnabled -> null
-                config.identification.vehicleSpeedEnabled -> VehicleSpeedLocationProvider(
-                    AndroidCarPlayLocationProvider(this), BridgeVehicleSpeedSource(applicationContext),
-                )
-                else -> AndroidCarPlayLocationProvider(this)
-            }
+        val gpsProvider = if (locationReportingEnabled || vehicleData.config.isEnabled(VehicleDataFeature.PRECISE_POSITIONING)) com.shilapi.xcertplay.vehicle.VehicleLocationProvider(
+            com.shilapi.xcertplay.location.AndroidVehicleLocationSource(this,
+                precise = vehicleData.config.isEnabled(VehicleDataFeature.PRECISE_POSITIONING)),
+            vehicleData.config, android.os.SystemClock::elapsedRealtime,
+        ) else null
+        val speedSource = if (vehicleData.wheelSpeedEnabled) vehicleData.source
+            else BridgeVehicleSpeedSource(applicationContext)
+        val locationProvider: Iap2LocationProvider? = when {
+            config.identification.vehicleSpeedEnabled -> VehicleSpeedLocationProvider(gpsProvider, speedSource)
+            locationReportingEnabled -> gpsProvider
+            else -> null
+        }
         appendLog(
             "Starting CarPlay controller at ${size.width}x${size.height} -> " +
                 "${airPlayConfig.main.widthPixels}x${airPlayConfig.main.heightPixels} " +
@@ -4498,6 +4626,7 @@ class CarPlayHostActivity : ComponentActivity() {
             savePairRecord = { record -> AirPlayPersistence.saveLockdownRecord(this, record) },
             clearPairRecord = { AirPlayPersistence.clearLockdownRecord(this) },
             locationProvider = locationProvider,
+            vehicleStatusProvider = vehicleData.source.takeIf { vehicleData.statusEnabled || vehicleData.wheelSpeedEnabled },
             onNativeBluetoothPlaying = renderer::setNativeBluetoothPlaying,
         )
         controller = next
@@ -4802,6 +4931,24 @@ class CarPlayHostActivity : ComponentActivity() {
             return
         }
         if (controller == null && adoptBackgroundSession()) return
+        if (audioCapabilityProbePending) return
+        if (controller == null && wirelessEnabled && !AirPlayPersistence.loadCarBluetoothAudio(this) &&
+            !AirPlayPersistence.loadAudioQuality(this).opusEnabled && !audioCapabilityProbeFinished &&
+            com.shilapi.xcertplay.media.AudioQualityCapabilities.cached(this) == null) {
+            if (!audioCapabilityProbePending) {
+                audioCapabilityProbePending = true
+                setConnectionStage("正在检测 AAC‑ELD 音频能力…")
+                Thread({
+                    runCatching { com.shilapi.xcertplay.media.AudioQualityCapabilities.probe(applicationContext) }
+                    runOnUiThread {
+                        audioCapabilityProbePending = false
+                        audioCapabilityProbeFinished = true
+                        if (!isDestroyed && !shuttingDown.get()) maybeStartCarPlay()
+                    }
+                }, "diplay-audio-startup-probe").apply { isDaemon = true; start() }
+            }
+            return
+        }
         // The video view is chosen once per activity; a changed Smooth video or Direct video output
         // setting needs a new one.
         if (controller == null && (AirPlayPersistence.loadSmoothVideo(this) != smoothVideo ||
@@ -4976,6 +5123,7 @@ class CarPlayHostActivity : ComponentActivity() {
         menuOpen = true
         gestureOverlay?.visibility = View.GONE
         settingsMenu?.visibility = View.VISIBLE
+        settingsMenu?.let(ViewCompat::requestApplyInsets)
         safeAreaEditor?.visibility = View.GONE
         updateSafeAreaSummary()
         updateResolutionMenu()
@@ -5086,6 +5234,7 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun exitApplication() {
+        com.geelyplay.preface.network.BootHotspotJobService.cancel(this)
         if (!shuttingDown.get()) restoreSettingsBaseline()
         finishAndRemoveTask()
         shutdown(terminateProcess = true, reason = "settings exit application")
@@ -5095,6 +5244,8 @@ class CarPlayHostActivity : ComponentActivity() {
     private val shutdownWaiters = mutableListOf<() -> Unit>()
 
     private fun shutdown(terminateProcess: Boolean, reason: String, completion: () -> Unit = {}) {
+        vpnRecoveryGeneration++
+        vpnRecoveryInFlight = false
         val firstRequest = shuttingDown.begin(terminateProcess)
         if (shutdownComplete) {
             completion()
@@ -5435,6 +5586,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private fun appendLog(message: String) {
         val safe = DiagnosticRedactor.redact(message) ?: return
         val now = System.currentTimeMillis()
+        connectionWaitingView?.acceptProgress(safe, now)
         val line = formattedLogLine(safe, now)
         sessionLog?.append(line)
         appendScreenLog(line, now)

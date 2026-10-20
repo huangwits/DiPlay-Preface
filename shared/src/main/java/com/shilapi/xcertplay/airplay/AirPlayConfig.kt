@@ -42,7 +42,11 @@ data class AirPlayViewArea(
     val originX: Int = 0,
     val originY: Int = 0,
     val dockEdge: Int? = null,
-)
+    val safeArea: AirPlayInsets? = null,
+) {
+    val widthPixels get() = width
+    val heightPixels get() = height
+}
 
 /** One OEM homescreen icon. */
 data class AirPlayIcon(
@@ -83,6 +87,12 @@ data class AirPlayConfig(
      * ahead of time over TCP, so short Wi-Fi gaps do not interrupt it.
      */
     val mainBufferedAudio: Boolean = false,
+    val audioQuality: AudioQualitySettings = AudioQualitySettings(),
+    val audioSupportedFormats: Set<Long>? = null,
+    val wirelessAudio: Boolean = true,
+    val microphoneEldAvailable: Boolean = false,
+    val microphonePcmAvailable: Boolean = true,
+    val aacEldSupported: Boolean = false,
 )
 
 /** The offer, SETUP and controls must all honor the user's audio-output setting. */

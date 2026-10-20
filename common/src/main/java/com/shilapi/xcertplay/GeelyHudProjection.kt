@@ -179,7 +179,9 @@ internal object GeelyHudProjection : DisplayManager.DisplayListener {
     internal fun refreshFactoryNavigation() {
         val visible = !(navigationHidden && factoryNavigationOwner == null)
         val active = navigationActive()
-        if (factoryRouteActive && !active) beforeFactoryNavigationEnds?.invoke()
+        // A route update can briefly lose guidance while the car is moving. The map owner keeps
+        // its explicit display request; releaseFactoryNavigation() remains the only owner teardown.
+        if (!active) (factoryNavigationOwner as? com.geelyplay.preface.E01NativeMapControl)?.preserveMapAfterRoute()
         factoryRouteActive = active
         factoryNavigation?.update(guidance.takeIf { visible }, requiredByMap = factoryNavigationOwner != null,
             routeActive = visible && active,

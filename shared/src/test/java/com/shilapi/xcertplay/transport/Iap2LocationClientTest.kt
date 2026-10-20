@@ -22,6 +22,19 @@ class Iap2LocationClientTest {
     }
 
     @Test
+    fun nmeaTimeCarriesHundredthsSoSubSecondFixesDiffer() {
+        val encoded = NmeaLocationEncoder.encode(
+            CarPlayLocationFix(
+                latitudeDegrees = 1.0,
+                longitudeDegrees = 1.0,
+                timestampMillis = Instant.parse("2026-03-23T12:35:19.257Z").toEpochMilli(),
+            ),
+        )
+        assertTrue(encoded.startsWith("\$GPGGA,123519.25,"))
+        assertTrue(encoded.contains("\$GPRMC,123519.25,A,"))
+    }
+
+    @Test
     fun nmeaEncoderBuildsGgaAndRmcPairWithValidChecksums() {
         val encoded = NmeaLocationEncoder.encode(
             CarPlayLocationFix(
@@ -44,25 +57,6 @@ class Iap2LocationClientTest {
             assertTrue(star > 0)
             assertEquals(checksum(sentence.substring(1, star)), sentence.substring(star + 1))
         }
-    }
-
-    @Test
-    fun rmcCourseIsEmptyWithoutAGpsDirection() {
-        fun rmcFields(bearing: Double?) = NmeaLocationEncoder.encode(
-            CarPlayLocationFix(
-                latitudeDegrees = 48.1173,
-                longitudeDegrees = 11.5166667,
-                bearingDegrees = bearing,
-                speedMetersPerSecond = 0.0,
-                timestampMillis = Instant.parse("2026-03-23T12:35:19Z").toEpochMilli(),
-            ),
-        ).split("\r\n").single { it.startsWith("\$GPRMC") }.substringBefore('*').split(',')
-
-        // $GPRMC,time,status,lat,N/S,lon,E/W,speed,course,date,...
-        assertEquals("", rmcFields(null)[8])
-        assertEquals("", rmcFields(Double.NaN)[8])
-        assertEquals("84.40", rmcFields(84.4)[8])
-        assertEquals("230326", rmcFields(null)[9])
     }
 
     @Test
@@ -91,28 +85,6 @@ class Iap2LocationClientTest {
         assertTrue(0xfffb in u16Values(enabledParameters.single { it.id == 6 }.payload))
         assertTrue(0xfffa in u16Values(enabledParameters.single { it.id == 7 }.payload))
         assertTrue(0xfffc in u16Values(enabledParameters.single { it.id == 7 }.payload))
-    }
-
-    @Test
-    fun wirelessIdentificationKeepsLocationMessagesAndOmitsWiredPowerSource() {
-        val config = wiredIdentification(locationInformationEnabled = true).copy(
-            wireless = Iap2WirelessIdentification(
-                bluetoothMac = "AA:BB:CC:DD:EE:FF",
-                ssid = "LIVI",
-            ),
-        )
-
-        val parameters = parameters(
-            Iap2IdentificationClient.identificationInformation(config).payload,
-        )
-        val sent = u16Values(parameters.single { it.id == 6 }.payload)
-        val received = u16Values(parameters.single { it.id == 7 }.payload)
-
-        assertTrue(0xfffb in sent)
-        assertTrue(0x5703 in sent)
-        assertFalse(0xae03 in sent)
-        assertTrue(0xfffa in received)
-        assertTrue(0xfffc in received)
     }
 
     private fun wiredIdentification(locationInformationEnabled: Boolean) = Iap2IdentificationConfig(

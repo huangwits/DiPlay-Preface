@@ -162,9 +162,11 @@ class AirPlaySession(
     fun setClusterUiShown(shown: Boolean): Boolean {
         synchronized(clusterCommandLock) {
             if (closed.get() || clusterStream <= 0) return false
-            val content = synchronized(clusterContentLock) { clusterContent } ?: return false
+            val content = synchronized(clusterContentLock) {
+                clusterContent?.copy(shown = shown)?.also { clusterContent = it }
+            } ?: return false
             if (!shown) {
-                val sent = sendCommand(mapOf("type" to "stopUI",
+                val sent = content.setupAnswered && sendCommand(mapOf("type" to "stopUI",
                     "params" to mapOf("uuid" to AirPlayInfoPlist.ALT_UUID)))
                 return synchronized(clusterContentLock) {
                     val current = clusterContent ?: return false
@@ -172,7 +174,7 @@ class AirPlaySession(
                         if (sent) clusterContent = current.copy(displayed = null, shown = false, token = Any())
                         return false
                     }
-                    if (sent) clusterContent = current.copy(shown = false)
+                    clusterContent = current.copy(shown = false, displayed = if (sent) current.displayed else null)
                     sent
                 }
             }
@@ -181,7 +183,8 @@ class AirPlaySession(
     }
 
     private data class ClusterContent(val stream: Int, val requested: String?, val displayed: String?,
-        val shown: Boolean = true, val token: Any = Any())
+        val shown: Boolean = true, val token: Any = Any(),
+        val setupAnswered: Boolean = false, val activationPending: Boolean = true)
     private val clusterContentLock = Any()
     private val clusterCommandLock = Any()
     @Volatile private var clusterContent: ClusterContent? = null
@@ -221,12 +224,13 @@ class AirPlaySession(
             requestedClusterUrl = url
             clusterContent?.copy(requested = url)?.also { clusterContent = it }
         }
-        if (content == null || !send || (content.shown && content.displayed == url)) true
+        if (content == null || !send || (content.shown && content.displayed == url && !content.activationPending)) true
         else showClusterUrl(content, url)
     }
 
     private fun showClusterUrl(content: ClusterContent, url: String): Boolean {
         if (closed.get() || clusterStream != content.stream) return false
+        if (clusterContent?.setupAnswered != true) return false
         val uuid = AirPlayInfoPlist.ALT_UUID
         val uiSent = sendCommand(mapOf("type" to "showUI", "params" to mapOf("uuid" to uuid, "url" to url)))
         val sent = uiSent && clusterStream == content.stream && !closed.get() &&
@@ -239,7 +243,7 @@ class AirPlaySession(
                 return false
             }
             if (uiSent) clusterContent = current.copy(displayed = if (sent) url else null,
-                shown = true, token = Any())
+                shown = true, token = Any(), activationPending = !sent)
             sent
         }
     }
@@ -262,7 +266,9 @@ class AirPlaySession(
         synchronized(clusterCommandLock) {
             val content = clusterContent ?: return
             val requested = content.requested ?: return
-            if (content.shown && requested != content.displayed) showClusterUrl(content, requested)
+            if (content.setupAnswered && content.shown && (content.activationPending || requested != content.displayed)) {
+                showClusterUrl(content, requested)
+            }
         }
     }
 
@@ -485,6 +491,8 @@ class AirPlaySession(
                     val response = try {
                         handle(request)
                     } catch (error: Exception) {
+                        debugLog(AirPlayControlDiagnostics.request(request.method, request.path, request.body.size) +
+                            " failed failureClass=${error.javaClass.simpleName}")
                         Log.e(
                             TAG,
                             "airplay handler failed ${request.method} ${request.path} cseq=$cseq",
@@ -568,6 +576,11 @@ class AirPlaySession(
                         "<unparseable ${request.body.size} bytes>"
                     }
                     debugLog("airplay /info request=$requestInfo")
+                    runCatching { asMap(BplistCodec.decode(request.body)) }.getOrNull()?.let { peer ->
+                        if (peer.containsKey("altScreenURLs")) {
+                            debugLog(AirPlayPeerDiagnostics.clusterContentSummary(peer["altScreenURLs"]))
+                        }
+                    }
                 }
                 Log.i(
                     TAG,
@@ -579,6 +592,7 @@ class AirPlaySession(
                     "airplay /info videoInCar=${config.videoInCar} " +
                         "videoPlaybackAllowed=${if (config.videoInCar) VideoInCar.allowed else "not-offered"}",
                 )
+                debugLog("airplay /info audioFormats=${info["audioFormats"]}")
                 debugLog("airplay /info displays=${info["displays"]}")
                 RtspMessage.Response(
                     headers = mapOf("Content-Type" to PLIST_CONTENT_TYPE),
@@ -602,6 +616,9 @@ class AirPlaySession(
     }
 
     private fun notifySetupResponseSent() {
+        synchronized(clusterContentLock) {
+            clusterContent = clusterContent?.copy(setupAnswered = true)
+        }
         try {
             media.onSetupResponseSent(this)
         } catch (error: Exception) {
@@ -650,6 +667,7 @@ class AirPlaySession(
         val wifiMac = string(dict["macAddress"]).lowercase()
         val model = string(dict["model"])
         debugLog(AirPlayPeerDiagnostics.summary(model, string(dict["osVersion"]), string(dict["sourceVersion"])))
+        if (dict.containsKey("altScreenURLs")) debugLog(AirPlayPeerDiagnostics.clusterContentSummary(dict["altScreenURLs"]))
         if (deviceId.isNotEmpty()) deviceBtMac = deviceId
         if (name.isNotEmpty() || deviceId.isNotEmpty() || wifiMac.isNotEmpty()) {
             listener.onDeviceInfo(this, AirPlayDeviceInfo(name, deviceId, wifiMac, model))
@@ -996,8 +1014,7 @@ internal fun safeClose(closeable: Closeable?) {
     }
 }
 
-private fun ByteArray.toHex(): String =
-    joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
+private fun ByteArray.toHex(): String = toHexString()
 
 private fun asMap(value: Any?): Map<String, Any?>? {
     val map = value as? Map<*, *> ?: return null

@@ -70,8 +70,8 @@ class HostConnectionSettingsRefreshTest {
     private fun runtimeConfig(host: CarPlayHostActivity): CarPlayRuntimeConfig {
         CarPlayHostActivity::class.java.getDeclaredField("airPlayIdentity").apply { isAccessible = true }
             .set(host, AirPlayPersistence.loadIdentity(host))
-        return CarPlayHostActivity::class.java.getDeclaredMethod("createRuntimeConfig")
-            .apply { isAccessible = true }.invoke(host) as CarPlayRuntimeConfig
+        return CarPlayHostActivity::class.java.getDeclaredMethod("createRuntimeConfig", Boolean::class.javaPrimitiveType)
+            .apply { isAccessible = true }.invoke(host, false) as CarPlayRuntimeConfig
     }
 
     /** The projection screen must start without the private MFi identity used by real cars. */

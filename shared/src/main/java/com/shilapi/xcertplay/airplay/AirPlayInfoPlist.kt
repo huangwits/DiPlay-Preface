@@ -50,13 +50,30 @@ object AirPlayInfoPlist {
         )
         if (!config.disableAudioOutput) {
             info["audioLatencies"] = audioLatencies()
-            info["audioFormats"] = audioFormats(
-                config.entertainmentSampleRate,
-                config.microphone,
-                config.microphoneOpus,
-                config.opusOutputSupported,
-                config.mainBufferedAudio,
-            )
+            // Preserve the working Preface .25 offer for unchanged wireless settings.
+            // The newer route-specific offer removes PCM compatibility/fallback formats;
+            // applying it during an ordinary upgrade changes the phone's initial handshake.
+            // Explicit quality choices and wired sessions retain the newer format limits.
+            val preserveWirelessDefaults = config.wirelessAudio && config.audioQuality == AudioQualitySettings()
+            val audioFormats = if (preserveWirelessDefaults) audioFormats(
+                config.entertainmentSampleRate, config.microphone, config.microphoneOpus,
+                config.opusOutputSupported, config.bufferedAudioOutputEnabled,
+            ).toMutableList() else CarPlayAudioFormats.build(
+                quality = if (config.audioQuality.opusEnabled || config.aacEldSupported) config.audioQuality
+                    else config.audioQuality.copy(opusEnabled = true),
+                microphone = config.microphone,
+                wireless = config.wirelessAudio,
+                supportedOutput = config.audioSupportedFormats,
+                microphoneOpusAvailable = config.microphoneOpus,
+                opusOutputAvailable = config.opusOutputSupported,
+                microphoneEldAvailable = config.microphoneEldAvailable,
+                microphonePcmAvailable = config.microphonePcmAvailable,
+            ).toMutableList()
+            if (config.bufferedAudioOutputEnabled && !preserveWirelessDefaults) {
+                audioFormats.firstOrNull { it["type"] == 102 && it["audioType"] == "media" }
+                    ?.let { source -> audioFormats += source.toMutableMap().apply { put("type", BufferedAudioStream.STREAM_TYPE) } }
+            }
+            info["audioFormats"] = audioFormats
         }
         info["extendedFeatures"] = listOf("vocoderInfo", "enhancedRequestCarUI")
         info["displays"] = displays
@@ -135,9 +152,9 @@ object AirPlayInfoPlist {
             val entry = linkedMapOf<String, Any?>(
                 "type" to type,
                 "audioType" to audioType,
-                "audioOutputFormats" to outputFormats,
+                "audioOutputFormats" to outputFormats.toLong(),
             )
-            if (inputFormats != null) entry["audioInputFormats"] = inputFormats
+            if (inputFormats != null) entry["audioInputFormats"] = inputFormats.toLong()
             return entry
         }
 

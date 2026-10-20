@@ -54,8 +54,12 @@ class GeelyProjectionEditorActivity : ComponentActivity() {
             ?: GeelyProjectionLayout.load(this)
         selected = savedInstanceState?.getString("selected")?.let { runCatching { ProjectionField.valueOf(it) }.getOrNull() }
             ?: draft.firstOrNull()?.field ?: ProjectionField.NAVIGATION
+        window.statusBarColor = BG; window.navigationBarColor = BG
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !resolveAppNightNow()
+            isAppearanceLightNavigationBars = !resolveAppNightNow()
+        }
         buildPanel()
         savedInstanceState?.getStringArrayList("geometry_input")?.takeIf { it.size == fields.size }?.let { values ->
             fields.forEachIndexed { index, input -> if (input.isEnabled) input.setText(values[index]) }
@@ -88,8 +92,8 @@ class GeelyProjectionEditorActivity : ComponentActivity() {
         val content = column().apply { setPadding(dp(24), dp(20), dp(24), dp(28)) }
         scroll.addView(content)
         val header = row()
+        header.addView(label(R.string.projection_editor, 26f).apply { setPadding(0, 0, dp(12), 0) }, LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(button(R.string.back) { finish() })
-        header.addView(label(R.string.projection_editor, 26f).apply { setPadding(dp(12), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(header)
         content.addView(label(R.string.projection_editor_hint, 16f, MUTED), params(12))
         val screen = GeelyHudProjection.selectedDisplay(this)
@@ -215,11 +219,9 @@ class GeelyProjectionEditorActivity : ComponentActivity() {
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     private fun params(top: Int = 0) = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-    companion object {
-        private val BG = AppPageStyle.background
-        private val SURFACE = AppPageStyle.surface
-        private val ACCENT = AppPageStyle.accent
-        private val TEXT = AppPageStyle.text
-        private val MUTED = AppPageStyle.muted
-    }
+    private val BG get() = AppPageStyle.palette(this).background
+    private val SURFACE get() = AppPageStyle.surface(this)
+    private val ACCENT get() = AppPageStyle.palette(this).accent
+    private val TEXT get() = AppPageStyle.palette(this).primaryText
+    private val MUTED get() = AppPageStyle.palette(this).secondaryText
 }

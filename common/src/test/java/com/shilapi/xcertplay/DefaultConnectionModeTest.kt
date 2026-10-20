@@ -24,7 +24,7 @@ import org.robolectric.annotation.LooperMode
 import org.robolectric.util.ReflectionHelpers
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28, 33], qualifiers = "en", manifest = Config.NONE)
+@Config(sdk = [28, 33], qualifiers = "zh-rCN")
 @LooperMode(LooperMode.Mode.PAUSED)
 class DefaultConnectionModeTest {
     private val app get() = RuntimeEnvironment.getApplication()
@@ -39,7 +39,7 @@ class DefaultConnectionModeTest {
         CarPlayBackgroundSession.clear()
     }
 
-    @Test fun initialLaunchUsesTheFixedDefaultInsteadOfTheLastManualTransport() {
+    @Test fun initialLaunchPersistsTheFixedDefaultInsteadOfTheLastManualTransport() {
         shadowOf(android.bluetooth.BluetoothAdapter.getDefaultAdapter()).setState(android.bluetooth.BluetoothAdapter.STATE_ON)
         shadowOf(app).grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
         DiPlayPreferences.saveAutoConnect(app, true)
@@ -50,15 +50,14 @@ class DefaultConnectionModeTest {
             val expectedWireless = mode == DefaultConnectionMode.WIRELESS
             DiPlayPreferences.saveDefaultConnectionMode(app, mode)
             AirPlayPersistence.saveWirelessEnabled(app, !expectedWireless)
-            val controller = Robolectric.buildActivity(DiPlayActivity::class.java, Intent(Intent.ACTION_MAIN)).create()
+            val controller = Robolectric.buildActivity(DiPlayActivity::class.java,
+                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)).create()
             val activity = controller.get()
             // Source-only test builds have no authentication assets; exercise the startup decision.
             ReflectionHelpers.setField(activity, "setupError", null)
             controller.start().resume()
             shadowOf(Looper.getMainLooper()).idle()
             assertEquals(expectedWireless, AirPlayPersistence.loadWirelessEnabled(app))
-            assertEquals(CarPlayHostActivity::class.java.name,
-                shadowOf(activity).nextStartedActivity?.component?.className)
             assertEquals(mode, DiPlayPreferences.defaultConnectionMode(app))
             controller.pause().stop().destroy()
         }

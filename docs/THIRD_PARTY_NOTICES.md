@@ -2,11 +2,15 @@
 
 ## Receiver
 
-DiPlay is a modified version of [xcertplay by shilapi](https://github.com/shilapi/xcertplay). The upstream receiver is licensed under GNU GPL version 3; the full text is in `LICENSE` and the original project is linked above.
+DiPlay is a modified version of [xcertplay by shilapi](https://github.com/shilapi/xcertplay). The upstream receiver is licensed under GNU GPL version 3; the full text is in `LICENSE` and the original README is retained in `docs/UPSTREAM-README.md`.
 
 Upstream credits [LIVI](https://github.com/f-io/LIVI) and [Showcase](https://github.com/amineross/showcase) for protocol research. Existing source comments and attribution are preserved.
 
 ## Home and settings UI
+
+The Material theme, connection timeline, and UI components under `common/src/main/java/com/shilapi/xcertplay/ui/` are adapted from [xcertplay 1.4.1](https://github.com/shilapi/xcertplay), licensed under GNU GPL version 3. Preface retains its existing vehicle-specific connection, authorization and settings behavior.
+
+The `ic_ms_*` vector resources adapt Google Material Symbols Rounded, copyright Google LLC, under Apache License 2.0. The license text is included in [Apache-2.0.txt](licenses/dependencies/Apache-2.0.txt).
 
 `common/src/main/java/com/shilapi/xcertplay/DiPlayActivity.kt` adapts the palette, visual arrangement and interface copy of the [DiAuto project](https://github.com/shihabal3amri/DiAuto). DiAuto's source is licensed under AGPL version 3. The UI file is marked AGPL-3.0-only; its license text is included in `docs/licenses/DiAuto-AGPL-3.0.txt`.
 

@@ -62,4 +62,14 @@ class StartupDiagnosticSnapshotTest {
         BootReceiver().onReceive(app, Intent("custom.intent.token=secret"))
         assertTrue(StartupDiagnosticSnapshot.report(app).contains("received=false"))
     }
+
+    @Test fun manualOpenResultsAreRetainedEvenWithoutAnyBootDelivery() {
+        StartupDiagnosticSnapshot.hotspotRequested(app, fromBoot = false)
+        StartupDiagnosticSnapshot.hotspotRootResult(app, StartupDiagnosticSnapshot.RootHotspotResult.FALLBACK)
+        StartupDiagnosticSnapshot.hotspotResult(app, com.shilapi.xcertplay.network.CarHotspotTethering.Result.FAILED, false)
+        val report = StartupDiagnosticSnapshot.report(app)
+        assertTrue(report.contains("Boot diagnostics received=false"))
+        assertTrue(report.contains("Hotspot startup source=app-open"))
+        assertTrue(report.contains("root=fallback result=FAILED apEnabled=false"))
+    }
 }

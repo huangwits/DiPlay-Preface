@@ -94,6 +94,62 @@ object MediaCodecSupport {
         return output
     }
 
+    fun toAnnexB(lengthPrefixed: ByteArray, lengthSize: Int, allowAnnexB: Boolean): ByteArray {
+        if (allowAnnexB && hasStartCode(lengthPrefixed)) return lengthPrefixed
+        val size = annexBSize(lengthPrefixed, lengthPrefixed.size, lengthSize)
+        if (size < 0) return ByteArray(0)
+        val output = ByteArray(size)
+        var source = 0
+        var target = 0
+        while (source < lengthPrefixed.size) {
+            val nalu = readLength(lengthPrefixed, source, lengthSize)
+            source += lengthSize
+            START_CODE.copyInto(output, target)
+            target += START_CODE.size
+            lengthPrefixed.copyInto(output, target, source, source + nalu)
+            source += nalu
+            target += nalu
+        }
+        return output
+    }
+
+    fun toAnnexBInPlace(buffer: ByteArray, length: Int = buffer.size): Boolean {
+        if (length !in 0..buffer.size || annexBSize(buffer, length, 4) != length) return false
+        var cursor = 0
+        while (cursor < length) {
+            val nalu = readLength(buffer, cursor, 4)
+            START_CODE.copyInto(buffer, cursor)
+            cursor += 4 + nalu
+        }
+        return true
+    }
+
+    private fun annexBSize(bytes: ByteArray, limit: Int, lengthSize: Int): Int {
+        if (limit !in 0..bytes.size || lengthSize !in setOf(1, 2, 4)) return -1
+        var source = 0
+        var output = 0L
+        while (source < limit) {
+            if (lengthSize > limit - source) return -1
+            val nalu = readLength(bytes, source, lengthSize)
+            source += lengthSize
+            if (nalu <= 0 || nalu > limit - source) return -1
+            output += START_CODE.size + nalu
+            if (output > Int.MAX_VALUE) return -1
+            source += nalu
+        }
+        return output.toInt()
+    }
+
+    private fun readLength(bytes: ByteArray, offset: Int, lengthSize: Int): Int {
+        var value = 0L
+        for (index in offset until offset + lengthSize) value = (value shl 8) or (bytes[index].toLong() and 0xff)
+        return if (value > Int.MAX_VALUE) -1 else value.toInt()
+    }
+
+    private fun hasStartCode(bytes: ByteArray): Boolean = bytes.size >= 3 && bytes[0] == 0.toByte() &&
+        bytes[1] == 0.toByte() && (bytes[2] == 1.toByte() || bytes.size >= 4 &&
+        bytes[2] == 0.toByte() && bytes[3] == 1.toByte())
+
     /** IDR (AVC) or IRAP (HEVC) starts an independently decodable reference chain. */
     fun isRandomAccess(annexB: ByteArray, codec: VideoCodec): Boolean {
         var cursor = 0

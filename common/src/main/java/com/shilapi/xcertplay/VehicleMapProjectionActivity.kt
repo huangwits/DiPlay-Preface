@@ -43,10 +43,10 @@ class VehicleMapProjectionActivity : ComponentActivity() {
             val native = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(24), dp(24), dp(24), dp(24))
-                setBackgroundColor(AppPageStyle.background)
+                setBackgroundColor(AppPageStyle.palette(this@VehicleMapProjectionActivity).background)
                 addView(navigationHeader())
                 addView(TextView(context).apply {
-                    setText(R.string.e01_native_map_hint); textSize = 18f; setTextColor(AppPageStyle.text)
+                    setText(R.string.e01_native_map_hint); textSize = 18f; setTextColor(AppPageStyle.palette(this@VehicleMapProjectionActivity).primaryText)
                 })
             }
             setContentView(native)
@@ -54,12 +54,12 @@ class VehicleMapProjectionActivity : ComponentActivity() {
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(16), dp(24), dp(24)) }
         content.background = AppPageStyle.card(this)
-        val scroll = ScrollView(this).apply { addView(content); setBackgroundColor(AppPageStyle.background) }
+        val scroll = ScrollView(this).apply { addView(content); setBackgroundColor(AppPageStyle.palette(this@VehicleMapProjectionActivity).background) }
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
             val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime())
             view.setPadding(safe.left, safe.top, safe.right, safe.bottom); insets
         }
-        fun text(resource: Int, size: Float = 16f) = TextView(this).apply { setText(resource); textSize = size; setTextColor(AppPageStyle.text) }
+        fun text(resource: Int, size: Float = 16f) = TextView(this).apply { setText(resource); textSize = size; setTextColor(AppPageStyle.palette(this@VehicleMapProjectionActivity).primaryText) }
         fun button(resource: Int, action: () -> Unit) = Button(this).apply {
             setText(resource); AppPageStyle.action(this, resource == R.string.projection_save)
             minHeight = dp(56); setOnClickListener { action() }
@@ -116,13 +116,13 @@ class VehicleMapProjectionActivity : ComponentActivity() {
 
     private fun navigationHeader() = LinearLayout(this).apply {
         gravity = android.view.Gravity.CENTER_VERTICAL
+        addView(TextView(context).apply {
+            setText(R.string.vehicle_map_title); textSize = 26f; setTextColor(AppPageStyle.palette(this@VehicleMapProjectionActivity).primaryText)
+            setPadding(0, 0, dp(12), 0)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
         addView(Button(context).apply {
             setText(R.string.back); AppPageStyle.action(this, false); setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(-2, dp(56)))
-        addView(TextView(context).apply {
-            setText(R.string.vehicle_map_title); textSize = 26f; setTextColor(AppPageStyle.text)
-            setPadding(dp(12), 0, 0, 0)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
     }
 
     private fun updateTarget() {

@@ -76,6 +76,10 @@ class TelephonyMicrophoneTest {
                     Thread.sleep(5)
                     return 0
                 }
+                override fun readInShortArray(buffer: ShortArray, offset: Int, size: Int, blocking: Boolean): Int {
+                    Thread.sleep(5)
+                    return 0
+                }
             }
         }
     }
@@ -134,6 +138,42 @@ class TelephonyMicrophoneTest {
         assertEquals(AudioManager.MODE_NORMAL, manager.mode)
         assertEquals(MediaRecorder.AudioSource.VOICE_RECOGNITION, record.audioSource)
         assertTrue(ShadowAudioEffect.getAudioEffects().isEmpty())
+    }
+
+    @Test @Config(sdk = [23])
+    fun fs11BuiltInCallCaptureWorksWithoutForcingAndroidCommunicationModeOrEffects() {
+        sink.close()
+        org.robolectric.shadows.ShadowBuild.setDevice("FS11GQJ")
+        org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION::class.java, "SDK_INT", 22)
+        try {
+            sink = testSink(context = context, audioFocusEnabled = true, unifiedMediaOutput = true)
+            RejectingAudioManager.rejectModeChanges = true
+            sink.onMicrophoneStarted(telephony, config("telephony"))
+            assertEquals(MediaRecorder.AudioSource.MIC, awaitCapture().audioSource)
+            assertEquals(AudioManager.MODE_NORMAL, manager.mode)
+            val route = org.robolectric.util.ReflectionHelpers.getField<CommunicationAudioRoute>(sink, "communicationRoute")
+            assertFalse(route.held())
+            assertTrue(ShadowAudioEffect.getAudioEffects().isEmpty())
+        } finally {
+            RejectingAudioManager.rejectModeChanges = false
+            sink.close()
+            org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION::class.java, "SDK_INT", 23)
+        }
+    }
+
+    @Test fun nativeBluetoothTakeoverReleasesOurRouteBeforeCarPlayTeardown() {
+        sink.close()
+        sink = testSink(context = context, audioFocusEnabled = true, unifiedMediaOutput = true)
+        sink.onMicrophoneStarted(telephony, config("telephony"))
+        val record = awaitCapture()
+        val route = org.robolectric.util.ReflectionHelpers.getField<CommunicationAudioRoute>(sink, "communicationRoute")
+        assertTrue(route.held())
+        // Model another client's higher-priority native call, independent of our mode request.
+        RejectingAudioManager.externalMode = AudioManager.MODE_IN_CALL
+        org.robolectric.util.ReflectionHelpers.callInstanceMethod<Unit>(sink, "refreshCommunication")
+        assertFalse("CarPlay retained its mode lease during native HFP", route.held())
+        assertEquals(AudioManager.MODE_IN_CALL, manager.mode)
+        assertEquals(AudioRecord.STATE_UNINITIALIZED, record.state)
     }
 
     // carlito | Regression: the production host enables unified MEDIA playback.
@@ -560,6 +600,43 @@ class TelephonyMicrophoneTest {
         awaitCapture()
         assertFalse(microphoneLog().contains("echo canceller"))
     }
+
+    @Test fun terminatedCaptureRetriesAfterADelayAndRetainsItsStreamCounters() {
+        sink.close()
+        sink = testSink(context, unifiedMediaOutput = true)
+        val attempts = java.util.concurrent.atomic.AtomicInteger()
+        val retried = CountDownLatch(1)
+        ShadowAudioRecord.setSourceProvider {
+            val attempt = attempts.incrementAndGet()
+            object : ShadowAudioRecord.AudioRecordSource {
+                override fun readInByteArray(buffer: ByteArray, offset: Int, size: Int, blocking: Boolean): Int {
+                    if (attempt == 1) return AudioRecord.ERROR_DEAD_OBJECT
+                    retried.countDown()
+                    Thread.sleep(5)
+                    return 0
+                }
+            }
+        }
+        sink.onMicrophoneStarted(telephony, config("telephony"))
+        val uplinks = org.robolectric.util.ReflectionHelpers.getField<Map<AudioStreamId, Any>>(sink, "microphoneUplinks")
+        val first = uplinks.getValue(telephony)
+        val capture = org.robolectric.util.ReflectionHelpers.getField<MicrophoneUplink>(first, "uplink")
+        val request = org.robolectric.util.ReflectionHelpers.getField<Any>(first, "request")
+        val counters = org.robolectric.util.ReflectionHelpers.getField<Any>(request, "counters")
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (capture.isRunning() && System.nanoTime() < deadline) Thread.sleep(5)
+        assertFalse("Failed capture worker did not end", capture.isRunning())
+        org.robolectric.util.ReflectionHelpers.callInstanceMethod<Unit>(sink, "refreshCommunication")
+        assertTrue(uplinks.isEmpty())
+        assertFalse(retried.await(0, TimeUnit.MILLISECONDS))
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(5001))
+        org.robolectric.util.ReflectionHelpers.callInstanceMethod<Unit>(sink, "refreshCommunication")
+        assertTrue(retried.await(5, TimeUnit.SECONDS))
+        val second = uplinks.getValue(telephony)
+        assertNotSame(first, second)
+        val retained = org.robolectric.util.ReflectionHelpers.getField<Any>(second, "request")
+        assertSame(counters, org.robolectric.util.ReflectionHelpers.getField<Any>(retained, "counters"))
+    }
     // carlito | Mock recorder/mode state is global: drive refresh explicitly instead of racing its timer.
     private fun testSink(context: Context, audioFocusEnabled: Boolean = false,
                          unifiedMediaOutput: Boolean = false,
@@ -627,6 +704,7 @@ class TelephonyMicrophoneTest {
 
     @Implements(AudioManager::class)
     class RejectingAudioManager : ShadowAudioManager() {
+        @Implementation override fun getMode(): Int = externalMode ?: super.getMode()
         @Implementation
         override fun setMode(mode: Int) {
             if (rejectModeChanges) throw SecurityException("Mode change denied")
@@ -635,7 +713,8 @@ class TelephonyMicrophoneTest {
 
         companion object {
             var rejectModeChanges = false
-            @Resetter @JvmStatic fun resetModeRejection() { rejectModeChanges = false }
+            var externalMode: Int? = null
+            @Resetter @JvmStatic fun resetModeRejection() { rejectModeChanges = false; externalMode = null }
         }
     }
 

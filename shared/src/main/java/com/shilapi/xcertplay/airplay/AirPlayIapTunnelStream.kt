@@ -40,7 +40,7 @@ internal class AirPlayIapTunnelStream(
             }
 
             override fun onClosed(cause: Throwable?) {
-                session.logTrace(
+                session.logDebug(
                     "AirPlay iAP tunnel closed cause=" +
                         "${cause?.javaClass?.simpleName ?: "peer EOF"}: " +
                         "${cause?.message ?: "no detail"}",

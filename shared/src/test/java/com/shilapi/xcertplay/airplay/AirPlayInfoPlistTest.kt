@@ -224,20 +224,20 @@ class AirPlayInfoPlistTest {
                 .containsKey("audioInputFormats"),
         )
         assertEquals(
-            0x70004154,
+            0x70004154L,
             defaultAudio(AirPlayInfoPlist.build(base.copy(microphone = true)))["audioInputFormats"],
         )
         assertEquals(
-            0x70004154,
+            0x70004154L,
             telephony(AirPlayInfoPlist.build(base.copy(microphone = true)))["audioInputFormats"],
         )
 
         // Explicitly disabling Opus describes neither platform nor software encoding being usable.
         val withoutOpus = AirPlayInfoPlist.build(base.copy(microphone = true, microphoneOpus = false))
-        assertEquals(0x4154, telephony(withoutOpus)["audioInputFormats"])
-        assertEquals(0x4154, defaultAudio(withoutOpus)["audioInputFormats"])
+        assertEquals(0x4154L, telephony(withoutOpus)["audioInputFormats"])
+        assertEquals(0x4154L, defaultAudio(withoutOpus)["audioInputFormats"])
         assertEquals(
-            0x4154,
+            0x4154L,
             (withoutOpus["audioFormats"] as List<*>)
                 .map { it as Map<*, *> }
                 .single { it["audioType"] == "speechRecognition" }["audioInputFormats"],
@@ -266,7 +266,7 @@ class AirPlayInfoPlistTest {
             val format = formats.map { it as Map<*, *> }.single {
                 it["type"] == 100 && it["audioType"] == audioType
             }
-            assertEquals(audioType, 0x70004154, format["audioInputFormats"])
+            assertEquals(audioType, 0x70004154L, format["audioInputFormats"])
         }
     }
 

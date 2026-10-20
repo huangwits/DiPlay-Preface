@@ -76,7 +76,7 @@
     <string name="status_failed">失败：%1$s</string>
     <string name="msg_car_hotspot_off">车机热点“%1$s”未开启。请在车机设置中开启后再连接。</string>
     <string name="home_public_preview">公开预览  ·\u0020\u0020</string>
-    <string name="choose_iphone_prefix">选择 iPhone ·\u0020</string>
+    <string name="choose_iphone_prefix">更换手机 ·\u0020</string>
     <string name="audio_saved_value">已保存：%1$d</string>
     <string name="about_public_preview_prefix">公开预览 ·\u0020</string>
     <string name="msg_car_hotspot_connect">DiPlay 通过车机热点“%1$s”连接。请在车机设置中开启热点后连接。</string>
@@ -146,11 +146,11 @@
     <string name="check_that_storage_is_available_or_choose_another_save_loc">请检查存储空间，或选择其他保存位置。</string>
     <string name="choose_how_to_connect_follow_the_setup_steps_and_save_your">选择连接方式，按步骤操作并保存车机热点信息。</string>
     <string name="choose_image">选择图片</string>
-    <string name="choose_iphone">选择 iPhone</string>
+    <string name="choose_iphone">选择手机</string>
     <string name="choose_location">选择位置</string>
     <string name="choose_save_location">选择保存位置</string>
     <string name="choose_where_to_save_your_report">选择报告的保存位置。如果文件选择器不可用，DiPlay 会在应用内保存报告。\u0020</string>
-    <string name="choose_your_iphone">选择 iPhone</string>
+    <string name="choose_your_iphone">选择手机</string>
     <string name="close">关闭</string>
     <string name="common_cancel">取消</string>
     <string name="connect">连接</string>
@@ -231,7 +231,7 @@
     <string name="in_carplay_swipe_down_with_three_fingers_to_open_diplay_se">在 CarPlay 界面用三指向下滑动，可打开 DiPlay 设置。</string>
     <string name="instrument_contrast">仪表盘对比度</string>
     <string name="instrument_theme">仪表盘主题</string>
-    <string name="keep_bluetooth_and_wi_fi_on_your_iphone_pair_with_the_car">保持 iPhone 的蓝牙和 Wi-Fi 开启。先与车机蓝牙配对，然后在此选择你的 iPhone。出现提示时允许“附近的设备”。</string>
+    <string name="keep_bluetooth_and_wi_fi_on_your_iphone_pair_with_the_car">保持手机蓝牙和 Wi-Fi 开启，并先在原车蓝牙中完成配对，再返回此处选择手机。</string>
     <string name="keep_your_iphone_nearby_with_bluetooth_and_wi_fi_on_allow">请将 iPhone 放在附近并开启蓝牙和 Wi-Fi。\niPhone 出现提示时允许使用 CarPlay。</string>
     <string name="language_app_language">应用语言</string>
     <string name="language_apply">应用</string>
@@ -283,9 +283,9 @@
     <string name="microphone_health_effect_unavailable">不可用</string>
     <string name="microphone_health_effect_unknown">未知</string>
     <string name="microphone_health_limits">此短暂本地采样可发现输入失败、声音过弱或削波，不能保证通话质量。录音不会保存或上传；AEC、NS、AGC 只查询可用性，不会启用。</string>
-    <string name="nothing_is_sent_automatically_protocol_payloads_and_creden">仅在操作后保存，报告不包含敏感信息。</string>
+    <string name="nothing_is_sent_automatically_protocol_payloads_and_creden">保存报告不会自动上传。报告可能包含连接日志，分享前请先检查。</string>
     <string name="oem_label">OEM 标签</string>
-    <string name="on_your_iphone_open_settings_bluetooth_and_pair_with_the_c">在 iPhone 上打开“设置 → 蓝牙”并与车机配对。然后返回 DiPlay，点击“连接手机”。</string>
+    <string name="on_your_iphone_open_settings_bluetooth_and_pair_with_the_c">在手机设置的蓝牙中与车机配对，再返回 DiPlay 并选择手机。</string>
     <string name="one_time_setup_on_this_car">在此车机上一次性设置</string>
     <string name="open">开放</string>
     <string name="open_after_the_car_starts">车机启动后打开</string>
@@ -489,16 +489,6 @@
     <string name="navi_mode_small">小屏导航</string>
     <string name="navi_mode_full">全屏导航</string>
     <string name="navi_mode_unknown">未知模式</string>
-    <string name="car_battery_for_the_iphone">向 iPhone 提供车辆电量</string>
-    <string name="car_battery_for_the_iphone_description">DiPlay 将车辆的电量和续航告诉 iPhone，Apple 地图即可在电量低时提醒并推荐沿途充电站。只有在 DiPlay 能读取电池信息时，才会向 iPhone 声明这是电动车。会重新连接 CarPlay。需要在车机上开启网络 ADB。</string>
-    <string name="charging_connectors">充电接口</string>
-    <string name="connectors_ccs2_type2">CCS2 和 Type 2 · 欧洲</string>
-    <string name="connectors_gb_t">GB/T · 中国</string>
-    <string name="connectors_ccs1_j1772">CCS1 和 J1772 · 北美</string>
-    <string name="low_charge_warning">低电量提醒</string>
-    <string name="percent_value">%1$d%%</string>
-    <string name="percent_default">%1$d%% · 默认</string>
-    <string name="adb_battery_reading">电池：%1$d%%，%2$d 公里。</string>
     <string name="adb_battery_unreadable">无法读取这辆车的电池信息，因此不会向 iPhone 声明这是电动车。</string>
     <string name="adb_vehicle_speed_reading">车速：%1$d 公里/小时。</string>
     <string name="adb_vehicle_speed_unreadable">此固件上无法读取车速。</string>
@@ -739,14 +729,14 @@
     <string name="wheel_key_role_back">返回</string>
     <string name="wheel_key_service_label">DiPlay 方向盘按键</string>
         <string name="settings_overview">概览</string>
-    <string name="settings_overview_subtitle">舒适、可靠驾驶的基本设置。</string>
+    <string name="settings_overview_subtitle">常用的连接、显示和音频设置。</string>
     <string name="settings_your_setup">你的设置</string>
     <string name="settings_quick_settings">快捷设置</string>
     <string name="settings_display">显示</string>
     <string name="settings_navigation">导航</string>
     <string name="settings_vehicle">车辆</string>
     <string name="settings_advanced">高级</string>
-    <string name="settings_advanced_subtitle">面向有经验用户的实验性及车型专用设置。</string>
+    <string name="settings_advanced_subtitle">视频、音频及车型专用选项。</string>
     <string name="settings_advanced_caution_title">请谨慎更改</string>
     <string name="settings_advanced_caution_description">这些功能可能取决于车辆固件、ADB 权限或 CarPlay 的实验性行为。日常设置位于上方各类别中。</string>
     <string name="settings_search">搜索</string>
@@ -756,15 +746,15 @@
     <string name="settings_ready_connected">CarPlay 正在运行。需要重新连接的更改会特别说明。</string>
     <string name="settings_ready_wireless">无线 CarPlay 将连接到 %1$s。</string>
     <string name="settings_ready_usb">使用 USB 数据线连接 iPhone 以启动 CarPlay。</string>
-    <string name="settings_connecting_description">DiPlay 正在与你的 iPhone 启动 CarPlay。</string>
-    <string name="settings_choose_iphone_title">选择你的 iPhone</string>
-    <string name="settings_choose_iphone_description">无线 CarPlay 需要先配对 iPhone 才能连接。</string>
-    <string name="settings_choose_iphone_action">选择 iPhone</string>
+    <string name="settings_connecting_description">正在连接手机…</string>
+    <string name="settings_choose_iphone_title">尚未选择手机</string>
+    <string name="settings_choose_iphone_description">无线 CarPlay 需要先与手机配对。</string>
+    <string name="settings_choose_iphone_action">选择手机</string>
     <string name="settings_connection_summary">手机、有线、无线及自动连接</string>
     <string name="settings_display_summary">外观、全屏、分辨率和帧率</string>
-    <string name="settings_audio_summary">声音输出与音乐缓冲</string>
-    <string name="settings_navigation_summary">位置上报及支持的仪表盘导航提示</string>
-    <string name="settings_vehicle_summary">方向盘按键、HUD、三指飞屏和车辆按钮</string>
+    <string name="settings_audio_summary">音频格式、输出与缓冲</string>
+    <string name="settings_navigation_summary">位置共享与仪表导航提示</string>
+    <string name="settings_vehicle_summary">车辆数据、仪表投屏与方向盘按键</string>
     <string name="settings_reconnect_pending">已保存。部分更改将在 CarPlay 重新连接后生效。</string>
     <string name="settings_reconnect_now">立即重新连接</string>
     <string name="settings_advanced_media">视频与音频</string>
@@ -783,6 +773,7 @@
     <string name="call_voice_filter">更清晰的通话人声（实验性）</string>
     <string name="call_voice_filter_description">削减 CarPlay 通话音频的低音。这可能改变人声的音色。下次连接 CarPlay 时生效。</string>
     <string name="vpn_authorization_unavailable">系统无法打开 VPN 授权。请返回 DiPlay 后重试；若仍无法授权，请检查车机系统的 VPN 功能。</string>
+    <string name="vpn_authorization_settings_fallback">车机无法弹出 VPN 授权页，已打开系统 VPN 设置。请允许 DiPlay，返回 DiPlay 后重试。</string>
     <string name="settings_discard_pending_title">设置尚未保存</string>
     <string name="settings_discard_pending_message">是否保存本次修改？保存后将重新连接 CarPlay。</string>
     <string name="settings_discard_pending_confirm">放弃修改</string>
@@ -861,11 +852,11 @@
     <string name="settings_car_bluetooth_audio">通过车辆蓝牙播放 CarPlay 音频（实验性）</string>
     <string name="settings_car_bluetooth_audio_description">DiPlay 不向 iPhone 提供 CarPlay 音频，因此音乐、导航和通话应通过 iPhone 与车辆的蓝牙连接传输。请保持 iPhone 与车辆配对，并将车辆音源设为蓝牙。如果声音改从 iPhone 播放，请关闭此选项。会重新连接 CarPlay。</string>
     <string name="settings_direct_video_output">直接视频输出（实验性）</string>
-    <string name="settings_direct_video_output_description">将 CarPlay 画面直接交给车机的系统合成器，而不是在 DiPlay 窗口内绘制。可将延迟降低约一次屏幕刷新。画面调整不适用。会重新连接 CarPlay。</string>
+    <string name="settings_direct_video_output_description">直接由车机合成显示，可能降低少量延迟；开启后不支持画面调整。重新连接后生效。</string>
     <string name="settings_low_latency_decoder">低延迟解码（实验性）</string>
-    <string name="settings_low_latency_decoder_description">要求高通视频解码器在每一帧解码后立即输出，而不是保留后续帧，并由专用线程立即显示每个已解码的帧，无需等待下一帧到达。可将延迟降低数十毫秒。如果画面出现花屏或卡住，请关闭。下次连接时生效。</string>
+    <string name="settings_low_latency_decoder_description">尝试让视频解码后立即显示以减少延迟。若出现花屏或卡顿，请关闭；下次连接生效。</string>
     <string name="settings_fps_counter">FPS 计数器</string>
-    <string name="settings_fps_counter_description">在 CarPlay 右上角显示计数器：每秒显示的帧数（50 及以上为绿色，30 及以上为黄色，低于 30 为红色）、每秒从 iPhone 接收的帧数以及解码时间。画面静止时帧数很少，因为 iPhone 不发送帧。</string>
+    <string name="settings_fps_counter_description">显示输出帧数、接收帧数和解码时间。画面静止时帧数较低是正常现象。</string>
     <string name="fps_counter_text" translatable="false">%1$d FPS\nRX %2$d · %3$s</string>
     <string name="fps_counter_millis" translatable="false">%1$d ms</string>
     <string name="fps_counter_no_value" translatable="false">–</string>

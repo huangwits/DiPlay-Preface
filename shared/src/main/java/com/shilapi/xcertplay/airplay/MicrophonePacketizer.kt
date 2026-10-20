@@ -21,13 +21,11 @@ data class MicrophoneConfig(
      * rule. The report's "Audio: rtp clock" line measures the iPhone's own clock for each stream.
      */
     val opusClockRate: Int = OPUS_CAPTURE_RATE,
+    val framesPerPacket: Int? = null,
 ) {
     val samplesPerPacket: Int
-        get() = if (codec == AudioCodecKind.OPUS) {
-            OPUS_SAMPLES_PER_PACKET
-        } else {
-            maxOf(1, sampleRate * frameMillis / 1000)
-        }
+        get() = if (codec == AudioCodecKind.OPUS) OPUS_SAMPLES_PER_PACKET
+            else framesPerPacket?.takeIf { it > 0 } ?: maxOf(1, sampleRate * frameMillis / 1000)
 
     /** How far each packet moves the RTP timestamp, on the negotiated clock. */
     val rtpSamplesPerPacket: Int

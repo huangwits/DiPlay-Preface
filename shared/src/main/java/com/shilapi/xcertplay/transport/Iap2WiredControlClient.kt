@@ -39,8 +39,8 @@ class Iap2WiredControlClient(
 
         val deadlineNanos = Iap2ControlDeadline(timeoutMillis)
         val identified = identification.withVehicleStatusFrom(vehicleStatusProvider)
-        if (identified.vehicleStatusEnabled != identification.vehicleStatusEnabled) {
-            onProgress("iap2 no battery reading: not declaring an electric vehicle")
+        if (identified.vehicleStatusCapabilities != identification.vehicleStatusCapabilities) {
+            onProgress("iap2 vehicle data fields=${identified.vehicleStatusCapabilities}")
         }
         Iap2IdentificationClient(session).identify(identified, requireRemaining(deadlineNanos), onProgress)
         onProgress("iap2 identification accepted")
@@ -106,7 +106,7 @@ class Iap2WiredControlClient(
                         location.handle(incoming) { send(it, deadlineNanos) }
                     }
 
-                    Iap2VehicleStatus.START_VEHICLE_STATUS_UPDATES, Iap2VehicleStatus.STOP_VEHICLE_STATUS_UPDATES -> {
+                    Iap2VehicleStatus.START, Iap2VehicleStatus.STOP -> {
                         vehicleStatus.handle(incoming) { send(it, deadlineNanos) }
                     }
 

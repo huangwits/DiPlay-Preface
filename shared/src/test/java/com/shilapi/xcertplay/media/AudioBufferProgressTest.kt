@@ -58,4 +58,23 @@ class AudioBufferProgressTest {
         assertEquals(40, buffer.queuedBytes(0))
         assertEquals(0, buffer.queuedBytes(20))
     }
+
+    @Test fun legacyAndroidWithoutUnderrunCounterRecoversOnlyAfterActualExhaustion() {
+        val buffer = AudioBufferProgress(4)
+        assertFalse(buffer.shouldRebuffer(true, true, null, true, 0, 600))
+        buffer.written(4000)
+        assertFalse(buffer.shouldRebuffer(true, true, null, true, 900, 600))
+        assertFalse(buffer.shouldRebuffer(true, true, null, false, 1000, 600))
+        assertTrue(buffer.shouldRebuffer(true, true, null, true, 1000, 600))
+        assertFalse(buffer.shouldRebuffer(true, false, null, true, 1000, 600))
+        buffer.written(1200)
+        assertFalse(buffer.shouldRebuffer(true, true, null, true, 1000, 600))
+        assertEquals(1200, buffer.queuedBytes(1000))
+    }
+
+    @Test fun legacyFallbackNeverBuffersTelephoneOrAssistantAudio() {
+        val buffer = AudioBufferProgress(2)
+        buffer.written(640)
+        assertFalse(buffer.shouldRebuffer(false, true, null, true, 320, 600))
+    }
 }

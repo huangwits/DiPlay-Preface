@@ -37,6 +37,13 @@ object CarHotspotTethering {
     /** Android 8.0–10 support the app-owned tethering path without an ADB shell. */
     fun appStartSupported(): Boolean = PlatformTetheringStart.supported()
 
+    /** The fixed root helper uses the same saved-AP sequence as the legacy app path. */
+    fun startSavedLegacyHotspotService(wifi: Any, timeoutMillis: Long = 15_000L): Boolean =
+        GkuiLegacySoftAp.start(wifi, timeoutMillis, { false }, {
+            val method = wifi.javaClass.getMethod("getWifiApEnabledState").apply { isAccessible = true }
+            method.invoke(wifi) == 13
+        }, {})
+
     /** Blocking; serialize startup and connection requests, checking cancellation after acquiring the lock. */
     fun enable(
         context: Context,
@@ -197,6 +204,9 @@ object CarHotspotTethering {
                     })
                 }
             } catch (error: Exception) {
+                val cause = (error as? InvocationTargetException)?.targetException
+                // Keep useful categories without including vendor messages that may contain credentials.
+                android.util.Log.i("DiPlay-Hotspot", "platform failureClass=${error.javaClass.simpleName} causeClass=${cause?.javaClass?.simpleName ?: "none"}")
                 val adbRecovered = ((error is LegacyHotspotRejectedException) ||
                     (error is ReflectiveOperationException && error !is InvocationTargetException) ||
                     error is SecurityException ||

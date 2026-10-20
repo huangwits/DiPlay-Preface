@@ -25,9 +25,10 @@ class ClusterContentTest {
         },
     )
 
-    private fun setup(session: AirPlaySession) {
+    private fun setup(session: AirPlaySession, answered: Boolean = true) {
         session.javaClass.getDeclaredMethod("handleStreams", List::class.java).apply { isAccessible = true }
             .invoke(session, listOf(mapOf("type" to 111L)))
+        if (answered) readyAfterSetup(session)
     }
 
     private fun teardown(session: AirPlaySession) {
@@ -142,7 +143,7 @@ class ClusterContentTest {
             assertTrue(session.setClusterUrl(CarPlayClusterDisplay.Content.TURN_CARD.url, send = true))
             teardown(session)
             assertNull(session.clusterContentRoute())
-            setup(session)
+            setup(session, answered = false)
             assertEquals(CarPlayClusterDisplay.MAP_URL, session.clusterUrl())
             readyAfterSetup(session)
             assertEquals(CarPlayClusterDisplay.Content.TURN_CARD.url, session.clusterUrl())
@@ -181,8 +182,9 @@ class ClusterContentTest {
             assertFalse(session.setClusterUiShown(false))
             assertEquals(2, session.clusterStream)
             assertNull(session.clusterUrl())
+            val afterStop = event.writes
             readyAfterSetup(session)
-            assertEquals(1, event.writes) // An uncertain stop cannot be silently undone by a ready event.
+            assertEquals(afterStop, event.writes) // A ready event cannot undo the uncertain stop.
             assertTrue(session.setClusterUiShown(true))
             assertEquals(CarPlayClusterDisplay.MAP_URL, session.clusterUrl())
         } finally { session.close() }
@@ -202,6 +204,58 @@ class ClusterContentTest {
             assertTrue(failure.cause is java.io.IOException)
             assertTrue(checked)
             assertNull(session.clusterContentRoute())
+        } finally { session.close() }
+    }
+
+    @Test fun initialMapIsExplicitlyActivatedWhenTheEventChannelArrivesLate() {
+        val session = session(CarPlayClusterDisplay.MAP_URL)
+        try {
+            setup(session)
+            val event = eventReady(session)
+            readyAfterSetup(session)
+            val sent = commands(event)
+            assertEquals(listOf("showUI", "forceKeyFrame"), sent.map { it["type"] })
+            assertTrue(sent.all { (it["params"] as Map<*, *>)["uuid"] == AirPlayInfoPlist.ALT_UUID })
+            assertEquals(CarPlayClusterDisplay.MAP_URL, (sent.first()["params"] as Map<*, *>)["url"])
+            readyAfterSetup(session)
+            assertEquals(2, event.writes)
+        } finally { session.close() }
+    }
+
+    @Test fun eventChannelBeforeSetupMustNotActivateUntilTheSetupResponseIsSent() {
+        val session = session(CarPlayClusterDisplay.MAP_URL)
+        try {
+            val event = eventReady(session)
+            setup(session, answered = false)
+            assertFalse(session.setClusterUiShown(true))
+            assertEquals(0, event.writes)
+            readyAfterSetup(session)
+            assertEquals(listOf("showUI", "forceKeyFrame"), commands(event).map { it["type"] })
+        } finally { session.close() }
+    }
+
+    @Test fun cancellingBeforeTheEventChannelArrivesPreventsAutomaticActivation() {
+        val session = session(CarPlayClusterDisplay.MAP_URL)
+        try {
+            setup(session)
+            assertFalse(session.setClusterUiShown(false))
+            val event = eventReady(session)
+            readyAfterSetup(session)
+            assertEquals(0, event.writes)
+            assertTrue(session.setClusterUiShown(true))
+            assertEquals(2, event.writes)
+        } finally { session.close() }
+    }
+
+    @Test fun cancellingBeforeTheSetupReplySendsNoPrematureUiCommands() {
+        val session = session(CarPlayClusterDisplay.MAP_URL)
+        try {
+            val event = eventReady(session)
+            setup(session, answered = false)
+            assertFalse(session.setClusterUiShown(false))
+            assertEquals(0, event.writes)
+            readyAfterSetup(session)
+            assertEquals(0, event.writes)
         } finally { session.close() }
     }
 }

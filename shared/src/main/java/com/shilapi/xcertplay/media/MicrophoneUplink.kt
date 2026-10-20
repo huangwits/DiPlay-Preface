@@ -23,22 +23,22 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal fun microphoneSourceCandidates(
     factorySource: Int?,
     androidSource: Int,
-    preferAndroidPhoneSource: Boolean,
+    legacyFs11Telephony: Boolean,
     legacyFs11Speech: Boolean,
 ): List<Int> {
-    val candidates = if (preferAndroidPhoneSource) {
-        // GeekPlay uses Android's standard communication source for telephony.
-        listOfNotNull(androidSource, factorySource)
-    } else {
-        listOfNotNull(
-            factorySource,
-            MediaRecorder.AudioSource.MIC.takeIf { legacyFs11Speech },
-            androidSource,
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION.takeIf {
-                androidSource == MediaRecorder.AudioSource.VOICE_RECOGNITION
-            },
-        )
-    }
+    // Keep the configured factory source first. FS11's cabin MIC is also available
+    // when this firmware has no CP source in /vendor/etc/carplay.
+    val candidates = listOfNotNull(
+        factorySource,
+        MediaRecorder.AudioSource.MIC.takeIf { legacyFs11Speech || legacyFs11Telephony },
+        androidSource,
+        MediaRecorder.AudioSource.VOICE_COMMUNICATION.takeIf {
+            androidSource == MediaRecorder.AudioSource.VOICE_RECOGNITION
+        },
+        // A phone source can initialize yet remain silent on FS11. Siri's source
+        // is a final fallback, never a reason to change the working Siri path.
+        MediaRecorder.AudioSource.VOICE_RECOGNITION.takeIf { legacyFs11Telephony },
+    )
     return candidates.distinct()
 }
 
@@ -70,6 +70,7 @@ internal class MicrophoneUplink(
             },
         )
     },
+    private val aacEldEncoderFactory: (Int, Int, Int) -> AacEldEncoder = AacEldEncoder::create,
     private val noAudioRestartMillis: Long = NO_AUDIO_RESTART_MILLIS,
 ) : Closeable {
     private val legacyFs11Device = android.os.Build.VERSION.SDK_INT == 22 &&
@@ -80,6 +81,7 @@ internal class MicrophoneUplink(
     private val legacyFs11Speech = legacyFs11Device &&
         config.audioType.equals("speechrecognition", true)
     private val legacyFs11Telephony = legacyFs11Device && isPhoneAudio(config.audioType)
+    private val legacyFs11Pcm16 = legacyFs11Speech || legacyFs11Telephony
     private val running = AtomicBoolean(false)
     private val stats = MicrophoneCaptureStats(config, report = { message ->
         Log.i(TAG, message)
@@ -88,9 +90,16 @@ internal class MicrophoneUplink(
     @Volatile private var recorder: AudioRecord? = null
     @Volatile private var socket: DatagramSocket? = null
     @Volatile private var opusEncoder: MicrophoneOpusEncoder? = null
+    @Volatile private var eldEncoder: AacEldEncoder? = null
     @Volatile private var effects: List<AudioEffect> = emptyList()
     @Volatile private var echoCanceller: CallEchoCanceller? = null
     private var thread: Thread? = null
+    private var captureSources = emptyList<Int>()
+    private var captureSourceIndex = -1
+    private var captureChannelMask = 0
+    private var captureBufferSize = 0
+
+    fun isRunning(): Boolean = running.get()
 
     fun start(): Boolean {
         if (!running.compareAndSet(false, true)) return true
@@ -129,6 +138,20 @@ internal class MicrophoneUplink(
             running.set(false)
             return false
         }
+        val nextEldEncoder = if (config.codec == AudioCodecKind.AAC_ELD) {
+            try {
+                aacEldEncoderFactory(
+                    config.sampleRate,
+                    config.framesPerPacket ?: AacEldFormat.DEFAULT_FRAMES_PER_PACKET,
+                    config.bitrate ?: 48_000,
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "microphone AAC-ELD encoder is unavailable", error)
+                stats.failure(MicrophoneFailureStage.ENCODER, error)
+                running.set(false)
+                return false
+            }
+        } else null
         if (nextEncoder != null) {
             val message = "Microphone: encoder type=${config.audioType} codec=OPUS " +
                 "implementation=${nextEncoder.implementation}"
@@ -136,11 +159,13 @@ internal class MicrophoneUplink(
             runCatching { onDiagnostic(message) }
         }
         val bufferSize = maxOf(minBuffer * 2, config.frameBytes * 4)
-        // Some head units throw on VOICE_RECOGNITION at build(); VOICE_COMMUNICATION works there.
-        // Some head units throw on VOICE_RECOGNITION at build(); VOICE_COMMUNICATION works there.
-        // Match GeekPlay's FS11 call source preference, keeping the OEM source as fallback.
-        val sources = microphoneSourceCandidates(factorySource, source, legacyFs11Telephony, legacyFs11Speech)
-        val nextRecorder = sources.firstNotNullOfOrNull { candidate ->
+        // Some head units reject an initialized source at startRecording().
+        captureSources = microphoneSourceCandidates(factorySource, source, legacyFs11Telephony, legacyFs11Speech)
+        captureChannelMask = channelMask
+        captureBufferSize = bufferSize
+        captureSourceIndex = -1
+        val nextRecorder = captureSources.firstNotNullOfOrNull { candidate ->
+            captureSourceIndex++
             createStartedRecorder(candidate, channelMask, bufferSize)?.also {
                 if (candidate == MediaRecorder.AudioSource.VOICE_COMMUNICATION && source == MediaRecorder.AudioSource.VOICE_RECOGNITION) {
                     stats.useVoiceCommunicationSource()
@@ -149,6 +174,7 @@ internal class MicrophoneUplink(
         }
         if (nextRecorder == null) {
             nextEncoder?.close()
+            nextEldEncoder?.close()
             running.set(false)
             return false
         }
@@ -166,6 +192,7 @@ internal class MicrophoneUplink(
             releaseCaptureEffects()
             nextRecorder.release()
             nextEncoder?.close()
+            nextEldEncoder?.close()
             running.set(false)
             return false
         }
@@ -173,9 +200,10 @@ internal class MicrophoneUplink(
         recorder = nextRecorder
         socket = nextSocket
         opusEncoder = nextEncoder
+        eldEncoder = nextEldEncoder
         return try {
             runCatching { onDiagnostic("Microphone: recorder requestedRate=${config.sampleRate} " +
-                "readMode=${if (legacyFs11Speech) "pcm16" else "bytes"}") }
+                "readMode=${if (legacyFs11Pcm16) "pcm16" else "bytes"}") }
             stats.started(routeType(nextRecorder))
             thread = Thread({ capture(nextRecorder, nextSocket) }, "carplay-mic").apply {
                 isDaemon = true
@@ -205,7 +233,9 @@ internal class MicrophoneUplink(
             if (isPhoneAudio(config.audioType)) {
                 echoCanceller = createEchoCanceller()
                 // carlito | Cabin capture keeps the upstream MIC path without communication effects.
-                if (!speakerphoneCall) effects = voiceEffects(candidate.audioSessionId)
+                if (!speakerphoneCall && (!legacyFs11Telephony || echoReference != null)) {
+                    effects = voiceEffects(candidate.audioSessionId)
+                }
                 if (echoReference != null) {
                     Log.i(TAG, "microphone echo canceller enabled=${echoCanceller != null} tail=${ECHO_TAIL_MILLIS}ms")
                 }
@@ -341,10 +371,57 @@ internal class MicrophoneUplink(
         }
     }
 
-    private fun capture(recorder: AudioRecord, socket: DatagramSocket) {
+    private fun capture(initialRecorder: AudioRecord, socket: DatagramSocket) {
+        var current = initialRecorder
+        try {
+            while (running.get()) {
+                val reason = captureFrom(current, socket) ?: break
+                if (!running.get()) break
+                stats.flush(ended = true, routeType = { routeType(current) })
+                current = nextCallRecorder(current) ?: break
+                runCatching { onDiagnostic("Microphone: source fallback type=${config.audioType} reason=$reason") }
+                stats.started(routeType(current))
+            }
+        } catch (error: Exception) {
+            if (running.get()) {
+                Log.e(TAG, "microphone capture failed", error)
+                stats.failure(MicrophoneFailureStage.CAPTURE, error)
+            }
+        } finally {
+            stats.flush(ended = true, routeType = { routeType(current) })
+            running.set(false)
+            release()
+        }
+    }
+
+    private fun hasCallFallback(): Boolean = legacyFs11Telephony && captureSourceIndex < captureSources.lastIndex
+
+    @Synchronized
+    private fun nextCallRecorder(previous: AudioRecord): AudioRecord? {
+        if (!running.get()) return null
+        recorder = null
+        runCatching { previous.stop() }
+        runCatching { previous.release() }
+        releaseCaptureEffects()
+        while (running.get() && captureSourceIndex < captureSources.lastIndex) {
+            val next = createStartedRecorder(captureSources[++captureSourceIndex], captureChannelMask, captureBufferSize)
+                ?: continue
+            if (running.get()) {
+                recorder = next
+                return next
+            }
+            runCatching { next.stop() }
+            runCatching { next.release() }
+            releaseCaptureEffects()
+        }
+        return null
+    }
+
+    /** A fallback retains this stream's socket, encoder, RTP sequence and encryption nonce. */
+    private fun captureFrom(recorder: AudioRecord, socket: DatagramSocket): String? {
         val frame = ByteArray(config.frameBytes)
         val readBuffer = ByteArray(maxOf(frame.size, MIN_READ_BYTES))
-        val sampleBuffer = if (legacyFs11Speech) ShortArray(readBuffer.size / 2) else null
+        val sampleBuffer = if (legacyFs11Pcm16) ShortArray(readBuffer.size / 2) else null
         val routeInfo = { routeType(recorder) }
         var canceller = echoCanceller
         val clock = canceller?.let { CaptureClock(config.sampleRate) }
@@ -353,102 +430,102 @@ internal class MicrophoneUplink(
         var readRestarts = 0
         var noAudioRestarts = 0
         var lastAudioNs = System.nanoTime()
-        try {
-            while (running.get()) {
-                stats.reading()
-                val count = if (sampleBuffer == null) recorder.read(readBuffer, 0, readBuffer.size) else {
-                    val samples = recorder.read(sampleBuffer, 0, sampleBuffer.size)
-                    if (samples <= 0) samples else {
-                        for (index in 0 until samples) {
-                            val value = sampleBuffer[index].toInt()
-                            readBuffer[index * 2] = value.toByte()
-                            readBuffer[index * 2 + 1] = (value shr 8).toByte()
-                        }
-                        samples * 2
+        var silentSamples = 0L
+        while (running.get()) {
+            stats.reading()
+            val count = if (sampleBuffer == null) recorder.read(readBuffer, 0, readBuffer.size) else {
+                val samples = recorder.read(sampleBuffer, 0, sampleBuffer.size)
+                if (samples <= 0) samples else {
+                    for (index in 0 until samples) {
+                        val value = sampleBuffer[index].toInt()
+                        readBuffer[index * 2] = value.toByte()
+                        readBuffer[index * 2 + 1] = (value shr 8).toByte()
                     }
+                    samples * 2
                 }
-                stats.read(count)
-                if (count > 0) clock?.read(recorder, count / 2)
-                if (count < 0) {
-                    if (running.get()) {
-                        Log.e(TAG, "microphone read failed code=$count")
-                        stats.failure(MicrophoneFailureStage.READ, code = count)
-                    }
-                    // The first read after a head unit enters call mode can fail with
-                    // ERROR_INVALID_OPERATION, and capture used to end there for the whole call
-                    // (#647). Restart recording a few times before giving up.
-                    if (running.get() && count != AudioRecord.ERROR_DEAD_OBJECT &&
-                        readRestarts < MAX_READ_RESTARTS && restartRecording(recorder)
-                    ) {
-                        readRestarts++
-                        stats.restarted(readRestarts, "read-error", routeType(recorder))
-                        continue
-                    }
-                    return
+            }
+            stats.read(count)
+            if (count > 0) clock?.read(recorder, count / 2)
+            if (count < 0) {
+                if (running.get()) {
+                    Log.e(TAG, "microphone read failed code=$count")
+                    stats.failure(MicrophoneFailureStage.READ, code = count)
                 }
-                if (count == 0) {
-                    stats.flush(routeType = routeInfo)
-                    // A recorder that starts with no input device routed returns 0 bytes at once, for
-                    // as long as it runs: a Leapmotor T03 (Android 7.1) did this for minutes of Siri and
-                    // call capture (#566). Restart it, and pause between empty reads instead of spinning.
-                    val now = System.nanoTime()
-                    if (running.get() && noAudioRestarts < MAX_NO_AUDIO_RESTARTS &&
-                        now - lastAudioNs >= noAudioRestartMillis * 1_000_000L
-                    ) {
-                        noAudioRestarts++
-                        lastAudioNs = now
-                        if (restartRecording(recorder)) {
-                            stats.restarted(noAudioRestarts, "no-audio", routeType(recorder))
-                        } else {
-                            stats.failure(MicrophoneFailureStage.RECORDING, code = recorder.recordingState)
-                        }
-                    } else {
-                        Thread.sleep(EMPTY_READ_PAUSE_MILLIS)
-                    }
+                // The first read after a head unit enters call mode can fail with
+                // ERROR_INVALID_OPERATION, and capture used to end there for the whole call
+                // (#647). Restart recording a few times before giving up.
+                if (running.get() && count != AudioRecord.ERROR_DEAD_OBJECT &&
+                    readRestarts < MAX_READ_RESTARTS && restartRecording(recorder)
+                ) {
+                    readRestarts++
+                    stats.restarted(readRestarts, "read-error", routeType(recorder))
                     continue
                 }
-                lastAudioNs = System.nanoTime()
-                var offset = 0
-                while (offset < count && running.get()) {
-                    val copied = minOf(frame.size - filled, count - offset)
-                    readBuffer.copyInto(frame, filled, offset, offset + copied)
-                    filled += copied
-                    offset += copied
-                    if (filled == frame.size) {
-                        if (canceller != null && clock != null && reference != null) {
-                            // Ask slightly ahead of the frame so speaker latency the clock misses stays inside the tail.
-                            echoReference?.read(reference, clock.frameEndNs(offset / 2) + ECHO_REFERENCE_LEAD_NS)
-                            val processed = try {
-                                canceller.process(frame, reference)
-                            } catch (error: RuntimeException) {
-                                Log.w(TAG, "microphone native echo processing failed; restoring platform AEC", error)
-                                false
-                            } catch (error: LinkageError) {
-                                Log.w(TAG, "microphone native echo processing unavailable; restoring platform AEC", error)
-                                false
-                            }
-                            if (!processed) {
-                                restorePlatformEchoCancellation()
-                                canceller = null
-                            }
-                        }
-                        stats.level(frame)
-                        sendFrame(socket, counters, frame)
-                        filled = 0
-                    }
-                }
+                if (running.get() && hasCallFallback()) return "read-error"
+                return null
+            }
+            if (count == 0) {
                 stats.flush(routeType = routeInfo)
+                // A recorder that starts with no input device routed returns 0 bytes at once, for
+                // as long as it runs: a Leapmotor T03 (Android 7.1) did this for minutes of Siri and
+                // call capture (#566). Restart it, and pause between empty reads instead of spinning.
+                val now = System.nanoTime()
+                if (hasCallFallback() && now - lastAudioNs >= noAudioRestartMillis * 1_000_000L) return "no-audio"
+                if (running.get() && noAudioRestarts < MAX_NO_AUDIO_RESTARTS &&
+                    now - lastAudioNs >= noAudioRestartMillis * 1_000_000L
+                ) {
+                    noAudioRestarts++
+                    lastAudioNs = now
+                    if (restartRecording(recorder)) {
+                        stats.restarted(noAudioRestarts, "no-audio", routeType(recorder))
+                    } else {
+                        stats.failure(MicrophoneFailureStage.RECORDING, code = recorder.recordingState)
+                    }
+                } else {
+                    Thread.sleep(EMPTY_READ_PAUSE_MILLIS)
+                }
+                continue
             }
-        } catch (error: Exception) {
-            if (running.get()) {
-                Log.e(TAG, "microphone capture failed", error)
-                stats.failure(MicrophoneFailureStage.CAPTURE, error)
+            lastAudioNs = System.nanoTime()
+            if (hasCallFallback()) {
+                val allZero = (0 until count).all { readBuffer[it] == 0.toByte() }
+                silentSamples = if (allZero) silentSamples + count / 2 else 0L
+                if (silentSamples >= config.sampleRate.toLong() * config.channels * CALL_SILENCE_SECONDS) {
+                    return "silent-pcm"
+                }
             }
-        } finally {
-            stats.flush(ended = true, routeType = routeInfo)
-            running.set(false)
-            release()
+            var offset = 0
+            while (offset < count && running.get()) {
+                val copied = minOf(frame.size - filled, count - offset)
+                readBuffer.copyInto(frame, filled, offset, offset + copied)
+                filled += copied
+                offset += copied
+                if (filled == frame.size) {
+                    if (canceller != null && clock != null && reference != null) {
+                        // Ask slightly ahead of the frame so speaker latency the clock misses stays inside the tail.
+                        echoReference?.read(reference, clock.frameEndNs(offset / 2) + ECHO_REFERENCE_LEAD_NS)
+                        val processed = try {
+                            canceller.process(frame, reference)
+                        } catch (error: RuntimeException) {
+                            Log.w(TAG, "microphone native echo processing failed; restoring platform AEC", error)
+                            false
+                        } catch (error: LinkageError) {
+                            Log.w(TAG, "microphone native echo processing unavailable; restoring platform AEC", error)
+                            false
+                        }
+                        if (!processed) {
+                            restorePlatformEchoCancellation()
+                            canceller = null
+                        }
+                    }
+                    stats.level(frame)
+                    sendFrame(socket, counters, frame)
+                    filled = 0
+                }
+            }
+            stats.flush(routeType = routeInfo)
         }
+        return null
     }
 
     private fun restartRecording(recorder: AudioRecord): Boolean = try {
@@ -461,10 +538,11 @@ internal class MicrophoneUplink(
     }
 
     private fun sendFrame(socket: DatagramSocket, counters: MicrophoneCounters, frame: ByteArray) {
-        val bodies = if (config.codec == AudioCodecKind.OPUS) {
-            opusEncoder?.encode(frame).orEmpty()
-        } else {
-            listOf(MicrophonePacketizer.toWirePcm(frame))
+        val bodies = when (config.codec) {
+            AudioCodecKind.OPUS -> opusEncoder?.encode(frame).orEmpty()
+            AudioCodecKind.AAC_ELD -> eldEncoder?.encode(frame).orEmpty()
+            AudioCodecKind.LPCM -> listOf(MicrophonePacketizer.toWirePcm(frame))
+            AudioCodecKind.AAC_LC -> emptyList()
         }
         stats.encoded(bodies.size, if (bodies.isEmpty()) 1 else bodies.count { it.isEmpty() })
         bodies.forEach { body ->
@@ -587,6 +665,9 @@ internal class MicrophoneUplink(
         val currentEncoder = opusEncoder
         opusEncoder = null
         currentEncoder?.close()
+        val currentEldEncoder = eldEncoder
+        eldEncoder = null
+        currentEldEncoder?.close()
     }
 
     private companion object {
@@ -600,6 +681,7 @@ internal class MicrophoneUplink(
         const val NO_AUDIO_RESTART_MILLIS = 1_000L
         const val MAX_NO_AUDIO_RESTARTS = 3
         const val EMPTY_READ_PAUSE_MILLIS = 5L
+        const val CALL_SILENCE_SECONDS = 2L
     }
 }
 

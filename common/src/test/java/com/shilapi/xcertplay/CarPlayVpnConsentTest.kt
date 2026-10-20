@@ -7,12 +7,17 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Handler
 import android.widget.TextView
+import android.provider.Settings
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityOptionsCompat
 import java.io.File
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import android.os.Looper
+import com.geelyplay.preface.network.LegacyVpnConsentRecovery
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -28,7 +33,7 @@ import org.robolectric.util.ReflectionHelpers
 import com.geelyplay.preface.CarPlayShutdownGate
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [23, 28], shadows = [VpnConsentTestShadow::class])
+@Config(sdk = [23, 28], shadows = [VpnConsentTestShadow::class, LegacyVpnRecoveryShadow::class])
 @LooperMode(LooperMode.Mode.PAUSED)
 class CarPlayVpnConsentTest {
     private lateinit var activity: CarPlayHostActivity
@@ -36,6 +41,9 @@ class CarPlayVpnConsentTest {
 
     @Before fun setUp() {
         VpnConsentTestShadow.failure = null
+        LegacyVpnRecoveryShadow.supported = false
+        LegacyVpnRecoveryShadow.calls = 0
+        LegacyVpnRecoveryShadow.beforeReturn = {}
         VpnConsentTestShadow.consent = Intent().setClassName(
             "com.android.vpndialogs", "com.android.vpndialogs.ConfirmDialog",
         )
@@ -60,7 +68,7 @@ class CarPlayVpnConsentTest {
 
         invoke("requestVpnConsent")
 
-        assertUnavailable()
+        assertSettingsFallback()
         assertTrue(log().contains("failureClass=ActivityNotFoundException"))
         assertTrue(log().contains("component=com.android.vpndialogs/com.android.vpndialogs.ConfirmDialog"))
     }
@@ -68,7 +76,7 @@ class CarPlayVpnConsentTest {
     @Test fun deniedConsentLaunchDoesNotCrashOrUnlockUsb() {
         replaceLauncher { throw SecurityException("OEM blocked VPN activity") }
         invoke("requestVpnConsent")
-        assertUnavailable()
+        assertSettingsFallback()
         assertTrue(log().contains("operation=launch"))
         assertTrue(log().contains("failureClass=SecurityException"))
     }
@@ -77,7 +85,7 @@ class CarPlayVpnConsentTest {
         ReflectionHelpers.setField(activity, "vpnReady", true)
         VpnConsentTestShadow.failure = SecurityException("OEM blocked VPN preparation")
         invoke("requestVpnConsent")
-        assertUnavailable()
+        assertSettingsFallback()
         assertEquals(0, launches)
         assertTrue(log().contains("operation=prepare"))
     }
@@ -130,12 +138,88 @@ class CarPlayVpnConsentTest {
         assertFalse(field("awaitingVpnConsent"))
     }
 
+    @Test fun missingDialogCanRecoverOnlyAfterPrepareConfirmsAuthorizationInTheApp() {
+        LegacyVpnRecoveryShadow.supported = true
+        LegacyVpnRecoveryShadow.beforeReturn = { VpnConsentTestShadow.consent = null }
+        replaceLauncher { throw ActivityNotFoundException("Missing OEM VPN dialog") }
+        invoke("requestVpnConsent")
+        awaitRecovery()
+        assertTrue(field("vpnReady"))
+        assertFalse(field("awaitingVpnConsent"))
+        assertEquals(1, LegacyVpnRecoveryShadow.calls)
+    }
+
+    @Test fun successfulHelperReplyAloneDoesNotUnlockUsb() {
+        LegacyVpnRecoveryShadow.supported = true
+        replaceLauncher { throw ActivityNotFoundException("Missing OEM VPN dialog") }
+        invoke("requestVpnConsent")
+        awaitRecovery()
+        assertFalse(field("vpnReady"))
+        assertTrue(field("vpnSettingsFallbackPending"))
+        assertNull(ReflectionHelpers.getField<Any?>(activity, "controller"))
+    }
+
+    @Test fun repeatedRequestsDoNotDuplicateInFlightSystemRecovery() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        LegacyVpnRecoveryShadow.supported = true
+        LegacyVpnRecoveryShadow.beforeReturn = { entered.countDown(); check(release.await(3, TimeUnit.SECONDS)) }
+        replaceLauncher { throw ActivityNotFoundException("Missing OEM VPN dialog") }
+        try {
+            invoke("requestVpnConsent")
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            repeat(3) { invoke("requestVpnConsent") }
+            assertEquals(1, LegacyVpnRecoveryShadow.calls)
+        } finally { release.countDown() }
+        awaitRecovery()
+    }
+
+    @Test fun switchingToWirelessDiscardsALateVpnRecoveryReply() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        LegacyVpnRecoveryShadow.supported = true
+        LegacyVpnRecoveryShadow.beforeReturn = {
+            entered.countDown()
+            check(release.await(3, TimeUnit.SECONDS))
+            VpnConsentTestShadow.consent = null
+        }
+        replaceLauncher { throw ActivityNotFoundException("Missing OEM VPN dialog") }
+        try {
+            invoke("requestVpnConsent")
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            ReflectionHelpers.setField(activity, "wirelessEnabled", true)
+        } finally { release.countDown() }
+        awaitRecovery()
+        assertFalse(field("vpnReady"))
+        assertNull(ReflectionHelpers.getField<Any?>(activity, "controller"))
+    }
+
+    private fun awaitRecovery() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+        while (System.nanoTime() < deadline) {
+            org.robolectric.Shadows.shadowOf(Looper.getMainLooper()).idle()
+            if (!field("vpnRecoveryInFlight")) return
+            Thread.sleep(10)
+        }
+        fail("VPN recovery callback did not finish")
+    }
+
     private fun replaceLauncher(launch: (Intent) -> Unit) {
         ReflectionHelpers.setField(activity, "vpnConsent", object : ActivityResultLauncher<Intent>() {
             override fun launch(input: Intent, options: ActivityOptionsCompat?) = launch(input)
             override fun unregister() = Unit
             override fun getContract() = ActivityResultContracts.StartActivityForResult()
         })
+    }
+
+    private fun assertSettingsFallback() {
+        assertFalse(field("vpnReady"))
+        assertFalse(field("awaitingVpnConsent"))
+        assertTrue(field("vpnSettingsFallbackPending"))
+        val settingsIntent = org.robolectric.Shadows.shadowOf(activity).nextStartedActivity
+        assertEquals(Settings.ACTION_VPN_SETTINGS, settingsIntent?.action)
+        val message = ReflectionHelpers.getField<TextView>(activity, "stageStatusView").text.toString()
+        assertTrue(message.contains("VPN"))
     }
 
     private fun assertUnavailable() {
@@ -166,5 +250,20 @@ class VpnConsentTestShadow {
             failure?.let { throw it }
             return consent
         }
+    }
+}
+
+@Implements(LegacyVpnConsentRecovery::class, isInAndroidSdk = false)
+class LegacyVpnRecoveryShadow {
+    @Implementation fun supported(context: Context): Boolean = supported
+    @Implementation fun grant(context: Context, isCancelled: () -> Boolean): String {
+        calls++
+        beforeReturn()
+        return "READY"
+    }
+    companion object {
+        var supported = false
+        @Volatile var calls = 0
+        var beforeReturn: () -> Unit = {}
     }
 }

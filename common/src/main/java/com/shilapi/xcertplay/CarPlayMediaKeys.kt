@@ -502,8 +502,8 @@ internal object CarPlayMediaKeys {
                 val context = appContext ?: return
                 val current = controller ?: return
                 mainHandler.post {
-                    if (controller !== current || !current.hasActiveAirPlayAttachment()) return@post
-                    val result = if (VehicleMapProjection.owns(current)) VehicleMapProjection.flyNavigation()
+                    if (controller !== current || !mapKeySessionActive(current)) return@post
+                    val result = if (VehicleMapProjection.owns(current)) VehicleMapProjection.flyNavigationFromKey()
                         else if (E01NativeMapControl.supported(context)) E01FactoryMapTarget.unavailableMessage()
                         else R.string.vehicle_map_setup_required
                     DisplayDiagnosticSnapshot.record(context, DisplayDiagnosticSnapshot.currentAttempt(context),
@@ -684,10 +684,14 @@ internal object CarPlayMediaKeys {
         send = ::send,
         consumesKey = ::consumesHardwareKey,
         routeKey = ::routeAndroidKey,
-        active = { controller?.hasActiveAirPlayAttachment() == true },
+        active = { controller?.let(::mapKeySessionActive) == true },
         siriEnabled = { appContext?.let(AirPlayPersistence::loadSteeringSiriEnabled) == true },
         siri = ::requestSteeringSiri,
     )
+
+    /** The OK key controls the attached instrument map before the media session reports audio active. */
+    private fun mapKeySessionActive(current: CarPlayController): Boolean =
+        current.hasActiveAirPlayAttachment() || VehicleMapProjection.owns(current)
 
     /** Whether [next] changes what the media session's metadata shows; position and play state do not. */
     internal fun metadataChanged(previous: CarPlayNowPlaying, next: CarPlayNowPlaying): Boolean =

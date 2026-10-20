@@ -3,20 +3,18 @@ package com.shilapi.xcertplay
 
 import android.content.Context
 import android.os.SystemClock
-import com.shilapi.xcertplay.transport.VehicleGear
+import com.shilapi.xcertplay.vehicle.VehicleGear
 import com.shilapi.xcertplay.transport.VehicleSpeedReading
-import com.shilapi.xcertplay.transport.VehicleSpeedSample
 import com.shilapi.xcertplay.transport.VehicleSpeedSource
 
 internal class BridgeVehicleSpeedSource(private val context: Context) : VehicleSpeedSource {
     private var reader: ProjectionVehicleReader? = null
     private var generation = 0L
-    private var gear: VehicleGear? = null
-    private val samples = ArrayList<VehicleSpeedSample>()
+    private var sample: VehicleSpeedReading? = null
 
-    @Synchronized override fun start() {
+    @Synchronized private fun start() {
         if (reader != null) return
-        samples.clear(); gear = null
+        sample = null
         val lease = ++generation
         reader = ProjectionVehicleReader(context) { frame -> accept(lease, frame) }
     }
@@ -31,28 +29,24 @@ internal class BridgeVehicleSpeedSource(private val context: Context) : VehicleS
                 2.0 -> VehicleGear.NEUTRAL; 3.0 -> VehicleGear.DRIVE; else -> null }
         }
         if (speed == null || nextGear == null) {
-            samples.clear(); gear = null
+            sample = null
             return
         }
-        if (gear != nextGear) samples.clear()
-        gear = nextGear
-        if (samples.size == 16) samples.removeAt(0)
-        samples += VehicleSpeedSample(frame.sampledAt, speed)
+        sample = VehicleSpeedReading(frame.sampledAt, speed, nextGear)
     }
 
-    @Synchronized override fun drain(): VehicleSpeedReading? {
+    @Synchronized override fun latestSpeed(): VehicleSpeedReading? {
         if (reader == null) return null
-        val current = gear ?: return null
         val now = SystemClock.elapsedRealtime()
-        val fresh = samples.filter { now - it.elapsedMillis in 0L..3_000L }
-        samples.clear()
-        return fresh.takeIf { it.isNotEmpty() }?.let { VehicleSpeedReading(current, it) }
+        return sample?.takeIf { now - it.elapsedMillis in 0L..3_000L }
     }
 
-    @Synchronized override fun stop() {
+    override fun requestSpeed(enabled: Boolean) { if (enabled) start() else stop() }
+
+    @Synchronized private fun stop() {
         ++generation
         reader?.close(); reader = null
-        samples.clear(); gear = null
+        sample = null
     }
 
     companion object {

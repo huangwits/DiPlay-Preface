@@ -1,5 +1,6 @@
 plugins {
     id("com.android.library")
+    alias(libs.plugins.kotlin.compose)
 }
 
 apply(from = rootProject.file("scripts/seal-bluetooth.gradle"))
@@ -13,6 +14,8 @@ android {
     defaultConfig {
         minSdk = 22
     }
+
+    buildFeatures { compose = true }
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -32,6 +35,13 @@ dependencies {
     api(project(":shared"))
     implementation(project(":vehicle-probe"))
     implementation(libs.androidx.activity)
+    // Compose 1.7 / Material 3 1.3 retain API-21 support for the E01/API-22 build.
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.media3.exoplayer)
@@ -42,6 +52,9 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("org.mockito:mockito-core:5.20.0")
     testImplementation(project(":jmdns"))
+    testImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 // Opt-in release verification consumes the actual APK without checking credentials into Git.

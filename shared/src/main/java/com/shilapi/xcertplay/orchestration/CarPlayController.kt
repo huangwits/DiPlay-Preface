@@ -73,6 +73,7 @@ import com.shilapi.xcertplay.transport.Ch341UsbHost
 import com.shilapi.xcertplay.transport.Ch341UsbSession
 import com.shilapi.xcertplay.transport.Iap2IdentificationConfig
 import com.shilapi.xcertplay.transport.Iap2LocationProvider
+import com.shilapi.xcertplay.vehicle.source.VehicleDataSource
 import com.shilapi.xcertplay.transport.Iap2UsbMuxHost
 import com.shilapi.xcertplay.transport.Iap2UsbSession
 import com.shilapi.xcertplay.transport.Iap2WiredCarPlayEndpoint
@@ -187,6 +188,9 @@ class CarPlayController(
     private val appContext = context.applicationContext
     private val geelyFactory = com.shilapi.xcertplay.vehicle.GeelyFactoryCarPlay.load(appContext)
     private val bluetoothAudioOutput = com.shilapi.xcertplay.vehicle.VehicleAudioOutputMode.bluetooth(appContext)
+    // Preserve the factory phone profiles so iPhone Control Centre can select them.
+    private val preserveFactoryBluetooth = android.os.Build.VERSION.SDK_INT == 22 &&
+        android.os.Build.DEVICE.orEmpty().uppercase().contains("FS11G")
     // carlito | Generic audio ownership follows granted focus; explicit phone handoff remains supported.
     private var bluetoothAudioOwnership = false
     private var bluetoothAudioCommand = false
@@ -282,6 +286,7 @@ class CarPlayController(
     private val wirelessResourceLock = Any()
     private val wirelessFailureReported = AtomicBoolean(false)
     @Volatile private var firstTcpWatchdog: FirstTcpWatchdog? = null
+    @Volatile private var wiredStartWatchdog: WiredStartWatchdog? = null
     @Volatile private var wirelessPublishedAddress: InetAddress? = null
     @Volatile private var wirelessAlternateAddress: InetAddress? = null
     @Volatile private var wirelessAddressRecovery: HotspotAddressRecovery? = null
@@ -324,6 +329,7 @@ class CarPlayController(
 
     private val sessionListener = object : AirPlaySessionListener {
         override fun onSessionActive(session: AirPlaySession) {
+            wiredStartWatchdog?.sessionActive()
             val replacement = activeSession !== session
             if (replacement) {
                 com.shilapi.xcertplay.glance.CarPlayGlance.setConnected(true)
@@ -492,6 +498,12 @@ class CarPlayController(
             permissionCloseable = iphoneHost.registerPermissionReceiver(::onIphonePermission)
             attachCloseable = iphoneHost.registerAttachReceiver(::onIphoneAttached)
         }
+        (vehicleStatusProvider as? VehicleDataSource)?.let { source ->
+            executor.execute {
+                val started = runCatching { source.start() }.getOrDefault(false)
+                connectionDiagnostic("vehicle data source started=$started")
+            }
+        }
         startMfi()
     }
 
@@ -572,8 +584,11 @@ class CarPlayController(
     /** Immutable stream geometry retained when a new host adopts this background controller. */
     fun configuredClusterSize(): Pair<Int, Int>? = airPlayConfig.cluster?.let { it.widthPixels to it.heightPixels }
 
-    /** Canvas of stream 110, also used by the FS11 mirror of the centre screen. */
-    fun configuredMainSize(): Pair<Int, Int> = airPlayConfig.main.let { it.widthPixels to it.heightPixels }
+    /** The connected phone, independent of when iOS sets up or replaces stream 111. */
+    fun projectionConnectionToken(): Any? {
+        if (closed) return null
+        return activeSession?.takeUnless { it.isClosed }
+    }
 
     /** carlito | Phone and active cluster stream identity, including when its map is hidden. */
     fun clusterProjectionSessionToken(): Any? {
@@ -670,6 +685,7 @@ class CarPlayController(
     }
 
     override fun close() {
+        wiredStartWatchdog?.terminate()
         synchronized(wirelessResourceLock) {
             if (closed) return
             closed = true
@@ -719,6 +735,9 @@ class CarPlayController(
                     wirelessRuntimeIdentification = null
                     wirelessAirPlayEndpoint = null
                     closeBestEffort("location provider") { locationProvider?.close() }
+                    closeBestEffort("vehicle data provider") {
+                        (vehicleStatusProvider as? VehicleDataSource)?.close()
+                    }
                 } finally {
                     executor.shutdownNow()
                     var executorTerminated = false
@@ -759,6 +778,11 @@ class CarPlayController(
                     if (closed || activeSession !== session || session.clusterStream != stream) {
                         return@synchronized false
                     }
+                    if (projectionUiOwner != null) {
+                        // Retain the dashboard preference without replacing the physical map.
+                        requestedDashboardUrl = url
+                        return@synchronized true
+                    }
                     // A cluster stream DiPlay has not paused yet starts with the map drawn.
                     val shown = clusterUiShown || clusterUiStream != session to stream
                     val delivered = session.setClusterUrl(url, send = shown)
@@ -784,7 +808,8 @@ class CarPlayController(
             touchExecutor.execute {
                 synchronized(clusterUiLock) {
                     if (closed || activeSession !== session) return@synchronized
-                    val url = requestedDashboardUrl ?: return@synchronized
+                    val url = if (projectionUiOwner != null) com.shilapi.xcertplay.airplay.CarPlayClusterDisplay.MAP_URL
+                        else requestedDashboardUrl ?: return@synchronized
                     val stream = session.clusterStream
                     val shown = clusterUiShown || clusterUiStream != session to stream
                     val restored = session.restoreClusterUrl(url, send = shown)
@@ -827,11 +852,16 @@ class CarPlayController(
             touchExecutor.execute {
                 val sent = synchronized(clusterUiLock) {
                     if (closed || projectionUiOwner !== owner || activeSession !== session || session.clusterStream != stream) false
-                    else session.setClusterUiShown(shown).also { accepted -> if (accepted) {
-                        clusterUiStream = session to stream; clusterUiShown = shown
-                        clusterUiVisibility = (session to stream) to shown
-                        dashboardMapEpoch.incrementAndGet()
-                    } }
+                    else {
+                        // Physical map projection always requests map pixels, even after a
+                        // separate dashboard setting selected a turn card.
+                        if (shown) session.setClusterUrl(com.shilapi.xcertplay.airplay.CarPlayClusterDisplay.MAP_URL, send = false)
+                        session.setClusterUiShown(shown).also { accepted -> if (accepted) {
+                            clusterUiStream = session to stream; clusterUiShown = shown
+                            clusterUiVisibility = (session to stream) to shown
+                            dashboardMapEpoch.incrementAndGet()
+                        } }
+                    }
                 }
                 onComplete(sent)
             }
@@ -841,7 +871,10 @@ class CarPlayController(
     fun releaseProjectionUi(owner: Any) {
         // carlito | Finish a previously queued stopUI before dropping the owner's permission.
         val release = { synchronized(clusterUiLock) {
-            if (projectionUiOwner === owner) projectionUiOwner = null
+            if (projectionUiOwner === owner) {
+                projectionUiOwner = null
+                requestedDashboardUrl?.let { activeSession?.restoreClusterUrl(it, send = false) }
+            }
         } }
         try { touchExecutor.execute(release) }
         catch (_: java.util.concurrent.RejectedExecutionException) { release() }
@@ -1656,7 +1689,7 @@ class CarPlayController(
         debugLog(
             "wireless iAP2 runtime tunnel control starting " +
                 "location=${identification.locationInformationEnabled} " +
-                "vehicleStatus=${identification.vehicleStatusEnabled}",
+                "vehicleStatusFields=${identification.vehicleStatusCapabilities}",
         )
         return try {
             tunnelExecutor.execute {
@@ -2351,10 +2384,28 @@ class CarPlayController(
                 deviceIdentifier = ncmHostMac.macString(),
             )
             onStatus(CarPlayStatus.RunningControl)
+            lateinit var startWatchdog: WiredStartWatchdog
+            startWatchdog = WiredStartWatchdog(
+                schedule = { delay, action ->
+                    val future = runCatching {
+                        startupTimer.schedule({ action() }, delay, TimeUnit.MILLISECONDS)
+                    }.getOrNull()
+                    val cancel: () -> Unit = { future?.cancel(false); Unit }
+                    cancel
+                },
+                onTimeout = {
+                    if (!closed && wiredStartWatchdog === startWatchdog) {
+                        debugLog("wired start: no AirPlay session after 30 s; retrying USB connection")
+                        fail(IphoneUsbException.TimedOut("The iPhone did not open CarPlay over USB in time"))
+                    }
+                },
+            )
+            wiredStartWatchdog = startWatchdog
+            if (activeSession?.isClosed == false) startWatchdog.sessionActive()
             debugLog(
                 "wired iAP2 runtime control starting " +
                     "location=${config.identification.locationInformationEnabled} " +
-                    "vehicleStatus=${config.identification.vehicleStatusEnabled}",
+                    "vehicleStatusFields=${config.identification.vehicleStatusCapabilities}",
             )
             val result = Iap2WiredControlClient(csm, Iap2MfiAuthenticationClient(mfi)).run(
                 identification = config.identification,
@@ -2365,7 +2416,10 @@ class CarPlayController(
                 vehicleStatusProvider = vehicleStatusProvider,
                 onIncoming = ::onRouteFrame,
                 onProgress = { message ->
-                    if (message.startsWith("iap2 tx=0x4301")) wiredDeviceName?.let(WiredSessionMemory::started)
+                    if (message.startsWith("iap2 tx=0x4301")) {
+                        wiredDeviceName?.let(WiredSessionMemory::started)
+                        startWatchdog.startSessionSent()
+                    }
                     debugLog("wired $message")
                 },
             )
@@ -2381,6 +2435,7 @@ class CarPlayController(
             if (!ncmOwnedLocally) vpnService?.detach()
             fail(error)
         } finally {
+            wiredStartWatchdog?.terminate()
             if (ncmOwnedLocally) ncm.close()
         }
     }
@@ -2695,9 +2750,10 @@ class CarPlayController(
             factoryBluetoothSession = session
             onNativeBluetoothPlaying(false)
             factoryBluetoothGuard = com.shilapi.xcertplay.vehicle.BluetoothAudioHandoff(appContext, address, ::debugLog,
-                onPlaying = if (bluetoothAudioOutput) { playing ->
+                onPlaying = if (bluetoothAudioOutput || preserveFactoryBluetooth) { playing ->
                     if (!closed && activeSession === session && factoryBluetoothSession === session) onNativeBluetoothPlaying(playing)
                 } else null,
+                allowProfileDisconnect = !preserveFactoryBluetooth,
             ).also {
                 it.setSuppressed(!bluetoothAudioOutput && (geelyFactory != null || bluetoothAudioOwnership || force))
                 it.start()

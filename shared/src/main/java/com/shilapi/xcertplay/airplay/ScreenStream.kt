@@ -1,6 +1,7 @@
 package com.shilapi.xcertplay.airplay
 
 import android.util.Log
+import com.shilapi.xcertplay.media.MediaCodecSupport
 import java.io.Closeable
 import java.io.InputStream
 import java.net.InetAddress
@@ -35,6 +36,9 @@ class ScreenStream(private val key: ByteArray, private val onDiagnostic: (String
     private val closed = AtomicBoolean(false)
     private val frameCounter = AtomicLong(0)
     private val firstFrameLogged = AtomicBoolean(false)
+    private val buffers = VideoBufferPool()
+    private val decryptor = AirPlayCrypto.ChaChaOpener(key)
+    private var nalLengthSize = 4
     private var server: ServerSocket? = null
     private var socket: Socket? = null
     private var thread: Thread? = null
@@ -72,15 +76,17 @@ class ScreenStream(private val key: ByteArray, private val onDiagnostic: (String
         val stats = StreamReceiveStats("video", onDiagnostic)
         try {
             val input = sock.getInputStream()
+            val header = ByteArray(HEADER_LEN)
             while (!closed.get()) {
                 stats.reading()
-                val header = readFully(input, HEADER_LEN) ?: break
+                if (!readFully(input, header, HEADER_LEN)) break
                 val bodySize = readU32Le(header, 0)
-                if (bodySize > MAX_BODY) break
-                val body = readFully(input, bodySize) ?: break
+                if (bodySize < 0 || bodySize > MAX_BODY) break
+                val body = buffers.acquire(bodySize)
+                if (!readFully(input, body.bytes, bodySize)) { body.close(); break }
                 val arrivalNanos = System.nanoTime()
                 stats.received(HEADER_LEN + bodySize)
-                onMessage(header, body, stats, arrivalNanos)
+                try { onMessage(header, body, stats, arrivalNanos) } finally { body.close() }
                 stats.processed()
             }
         } catch (error: Exception) {
@@ -93,47 +99,66 @@ class ScreenStream(private val key: ByteArray, private val onDiagnostic: (String
         }
     }
 
-    private fun onMessage(header: ByteArray, body: ByteArray, stats: StreamReceiveStats, arrivalNanos: Long) {
+    private fun onMessage(header: ByteArray, body: VideoBufferPool.Lease, stats: StreamReceiveStats, arrivalNanos: Long) {
         when (header[OPCODE_OFFSET].toInt() and 0xff) {
             OP_VIDEO_FRAME -> {
-                val payload = if (body.size >= ScreenCodec.TAG_SIZE) {
+                val encrypted = body.length >= ScreenCodec.TAG_SIZE
+                val payload = if (encrypted) buffers.acquire(body.length - ScreenCodec.TAG_SIZE) else null
+                val payloadBytes = payload?.bytes ?: body.bytes
+                val payloadLength = if (encrypted) {
                     val start = System.nanoTime()
-                    ScreenCodec.decryptFrame(key, frameCounter.get(), header, body)
-                        .also {
-                            stats.decrypted(System.nanoTime() - start, body.size)
-                            frameCounter.incrementAndGet()
-                        }
-                } else {
-                    body
+                    try {
+                        val length = decryptor.open(
+                            frameCounter.get(), body.bytes, body.length, header, payloadBytes,
+                        )
+                        stats.decrypted(System.nanoTime() - start, body.length)
+                        frameCounter.incrementAndGet()
+                        length
+                    } catch (error: Throwable) {
+                        payload?.close()
+                        throw error
+                    }
+                } else body.length
+                try {
+                    val annexB = ScreenCodec.lengthPrefixedToAnnexB(payloadBytes, payloadLength, nalLengthSize)
+                    if (firstFrameLogged.compareAndSet(false, true)) {
+                        Log.i(TAG,
+                            "video first decrypted frame sealed=${body.length} plain=$payloadLength " +
+                                "head=${payloadBytes.hexPrefix(16, payloadLength)} chacha=${AirPlayCrypto.chachaImplementation}")
+                    }
+                    listener.onFrame(annexB, ScreenCodec.senderNanos(header), arrivalNanos)
+                } finally {
+                    payload?.close()
                 }
-                if (firstFrameLogged.compareAndSet(false, true)) {
-                    Log.i(
-                        TAG,
-                        "video first decrypted frame sealed=${body.size} plain=${payload.size} " +
-                        "head=${payload.hexPrefix(16)} chacha=${AirPlayCrypto.chachaImplementation}",
-                    )
-                }
-                listener.onFrame(ScreenCodec.lengthPrefixedToAnnexB(payload), ScreenCodec.senderNanos(header), arrivalNanos)
             }
             OP_VIDEO_CONFIG -> {
-                val (codec, codecData) = ScreenCodec.detectConfig(body)
-                Log.i(TAG, "video codec config codec=$codec body=${body.size} data=${codecData.size}")
+                // The phone can open an idle screen with a header-only config packet.
+                // It carries no new codec record; preserve the stream until real data arrives.
+                if (body.length == 0) {
+                    onDiagnostic("Video: empty configuration ignored; retaining stream state")
+                    return
+                }
+                val (codec, codecData) = ScreenCodec.detectConfig(body.bytes.copyOf(body.length))
+                val lengthOffset = if (codec == VideoCodec.H265) 21 else 4
+                require(codecData.size > lengthOffset) { "Truncated video configuration" }
+                nalLengthSize = (codecData[lengthOffset].toInt() and 3) + 1
+                require(nalLengthSize != 3) { "Reserved NAL length size" }
+                Log.i(TAG, "video codec config codec=$codec body=${body.length} data=${codecData.size}")
                 listener.onCodec(codec)
                 listener.onConfig(codecData)
             }
         }
     }
 
-    private fun readFully(input: InputStream, length: Int): ByteArray? {
-        if (length < 0) return null
-        val output = ByteArray(length)
+    private fun readFully(input: InputStream, output: ByteArray, length: Int): Boolean {
+        if (length < 0 || length > output.size) return false
         var offset = 0
         while (offset < length) {
             val read = input.read(output, offset, length - offset)
-            if (read < 0) return null
+            if (read < 0) return false
             offset += read
         }
-        return output
+        return true
     }
 
     private companion object {
@@ -146,8 +171,8 @@ class ScreenStream(private val key: ByteArray, private val onDiagnostic: (String
     }
 }
 
-private fun ByteArray.hexPrefix(length: Int): String =
-    take(length).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+private fun ByteArray.hexPrefix(length: Int, limit: Int = size): String =
+    copyOf(minOf(size, limit, length)).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
 /** Extracts the avcC/hvcC codec-data record from a VideoConfig payload. */
 object ScreenCodec {
@@ -164,6 +189,18 @@ object ScreenCodec {
     }
 
     private const val SENDER_TIME_OFFSET = 8
+
+    internal fun lengthPrefixedToAnnexB(payload: ByteArray, length: Int, lengthSize: Int): ByteArray {
+        if (length !in 0..payload.size || length == 0) return ByteArray(0)
+        // Honor the negotiated NAL length before interpreting 00 00 01 as a start code:
+        // a valid four-byte length of 256..511 has exactly that prefix.
+        if (lengthSize == 4 && MediaCodecSupport.toAnnexBInPlace(payload, length)) return payload.copyOf(length)
+        val frame = payload.copyOf(length)
+        val converted = MediaCodecSupport.toAnnexB(frame, lengthSize, allowAnnexB = false)
+        // One/two-byte lengths expand; the result need not fit the receive pool's bucket.
+        // Keep Annex-B or malformed input unchanged, as the .25 decoder path did.
+        return converted.takeIf { it.isNotEmpty() } ?: frame
+    }
 
     fun decryptFrame(key: ByteArray, counter: Long, header: ByteArray, body: ByteArray): ByteArray =
         if (body.size < TAG_SIZE) body

@@ -114,7 +114,7 @@ class LocationReportingSettingsTest {
 
     private fun openSettings() {
         controller = Robolectric.buildActivity(DiPlayActivity::class.java,
-            Intent(context, DiPlayActivity::class.java).putExtra("page", "settings")).setup()
+            Intent(context, DiPlayActivity::class.java).putExtra("page", "settings")).setup().visible()
     }
 
     private fun locationSwitch(): Switch = descendants(activity.window.decorView)
@@ -122,6 +122,8 @@ class LocationReportingSettingsTest {
         .single { it.contentDescription == activity.getString(R.string.report_location_to_iphone) }
 
     private fun descendants(view: View): Sequence<View> = sequence {
+        if (view === view.rootView && view.isAttachedToWindow)
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(20, java.util.concurrent.TimeUnit.MILLISECONDS)
         yield(view)
         if (view is ViewGroup) for (index in 0 until view.childCount) yieldAll(descendants(view.getChildAt(index)))
     }

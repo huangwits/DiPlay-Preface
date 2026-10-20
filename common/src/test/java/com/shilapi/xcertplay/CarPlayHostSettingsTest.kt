@@ -133,6 +133,77 @@ class CarPlayHostSettingsTest {
         invoke("cancelSettingsEdits")
         assertEquals(original, field("displayScalePercent"))
     }
+
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun fixedSaveAndLastScrollableActionStayAboveBottomNavigation() =
+        assertMenuFitsSystemBars(1280, 480, left = 0, top = 24, right = 0, bottom = 96)
+
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun portraitAndSideNavigationKeepTheWholeMenuReachable() {
+        assertMenuFitsSystemBars(480, 800, left = 0, top = 24, right = 0, bottom = 96)
+        assertMenuFitsSystemBars(1280, 480, left = 0, top = 24, right = 96, bottom = 0)
+    }
+
+    @Test @Config(sdk = [23])
+    fun legacyHeadUnitInsetsAlsoKeepSaveAboveNavigation() =
+        assertMenuFitsSystemBars(1280, 480, left = 0, top = 24, right = 0, bottom = 96)
+
+    private fun assertMenuFitsSystemBars(width: Int, height: Int, left: Int, top: Int, right: Int, bottom: Int) {
+        invoke("openSettingsMenu")
+        val overlay = menu() as ViewGroup
+        val save = views(overlay).filterIsInstance<Button>()
+            .single { it.text == activity.getString(R.string.save_and_reconnect) }
+        val footer = save.parent as View
+        val scroll = field("settingsMenuContentScroll") as android.widget.ScrollView
+        val close = views(overlay).filterIsInstance<Button>().single { it.text == activity.getString(R.string.close) }
+        val before = field("restartGeneration")
+        for (navVisible in listOf(true, true, false, true)) {
+            val system = androidx.core.graphics.Insets.of(if (navVisible) left else 0, top,
+                if (navVisible) right else 0, if (navVisible) bottom else 0)
+            val insets = androidx.core.view.WindowInsetsCompat.Builder()
+                .setInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars(), system).build()
+            androidx.core.view.ViewCompat.dispatchApplyWindowInsets(overlay, insets)
+            assertEquals(system.bottom, overlay.paddingBottom)
+            assertEquals(system.right, overlay.paddingRight)
+            repeat(3) {
+                views(overlay).forEach { it.forceLayout() }
+                overlay.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+                overlay.layout(0, 0, width, height)
+            }
+            val bounds = android.graphics.Rect(0, 0, save.width, save.height)
+            overlay.offsetDescendantRectToMyCoords(save, bounds)
+            assertTrue("Save must be fully above visible navigation: $bounds / $system", bounds.bottom <= height - system.bottom)
+            assertTrue("Save must remain inside horizontal safe bounds", bounds.left >= system.left && bounds.right <= width - system.right)
+            assertTrue("Save needs a full touch target", save.height >= 48 * activity.resources.displayMetrics.density)
+            val closeBounds = android.graphics.Rect(0, 0, close.width, close.height)
+            overlay.offsetDescendantRectToMyCoords(close, closeBounds)
+            assertTrue("Close must remain below status bar", closeBounds.top >= system.top)
+            scroll.scrollTo(0, scroll.getChildAt(0).height)
+            val exit = views(scroll).filterIsInstance<Button>().single { it.text == activity.getString(R.string.exit_application) }
+            val lastBounds = android.graphics.Rect(0, 0, exit.width, exit.height)
+            overlay.offsetDescendantRectToMyCoords(exit, lastBounds)
+            val footerBounds = android.graphics.Rect(0, 0, footer.width, footer.height)
+            overlay.offsetDescendantRectToMyCoords(footer, footerBounds)
+            assertTrue("Last action must scroll fully above the fixed footer", lastBounds.bottom <= footerBounds.top)
+            assertTrue("Content viewport must remain usable", scroll.height > 0)
+            assertEquals("System bars must not restart CarPlay", before, field("restartGeneration"))
+            if (navVisible) System.getenv("DIPLAY_LAYOUT_PREVIEW_DIR")?.let { directory ->
+                val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                try {
+                    val canvas = android.graphics.Canvas(bitmap)
+                    overlay.draw(canvas)
+                    val paint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(30, 35, 40) }
+                    if (bottom > 0) canvas.drawRect(0f, (height - bottom).toFloat(), width.toFloat(), height.toFloat(), paint)
+                    if (right > 0) canvas.drawRect((width - right).toFloat(), 0f, width.toFloat(), height.toFloat(), paint)
+                    val output = java.io.File(directory).apply { mkdirs() }
+                    java.io.File(output, "swipe-menu-${width}x${height}-bottom$bottom-right$right.png")
+                        .outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                } finally { bitmap.recycle() }
+            }
+        }
+        invoke("cancelSettingsEdits")
+    }
     @Test fun configuredFingerCountsOpenTheMountedMenuWithoutLeavingCarPlay() {
         assertEquals(3, AirPlayPersistence.loadSettingsGestureFingers(activity))
         for (fingers in 2..4) {
@@ -635,8 +706,14 @@ class CarPlayHostSettingsTest {
         yield(view)
         if (view is ViewGroup) for (index in 0 until view.childCount) yieldAll(views(view.getChildAt(index)))
     }
-    private fun invoke(name: String): Any? = activity.javaClass.getDeclaredMethod(name)
-        .apply { isAccessible = true }.invoke(activity)
+    private fun invoke(name: String): Any? {
+        val method = if (name == "createRuntimeConfig") {
+            activity.javaClass.getDeclaredMethod(name, Boolean::class.javaPrimitiveType)
+        } else activity.javaClass.getDeclaredMethod(name)
+        return method.apply { isAccessible = true }.let {
+            if (name == "createRuntimeConfig") it.invoke(activity, false) else it.invoke(activity)
+        }
+    }
     private fun field(name: String): Any? = activity.javaClass.getDeclaredField(name)
         .apply { isAccessible = true }.get(activity)
     private fun setField(name: String, value: Any?) {

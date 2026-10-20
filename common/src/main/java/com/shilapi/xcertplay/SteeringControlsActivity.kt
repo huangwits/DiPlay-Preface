@@ -81,7 +81,10 @@ class SteeringControlsActivity : ComponentActivity() {
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = BG; window.navigationBarColor = BG
-        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !resolveAppNightNow()
+            isAppearanceLightNavigationBars = !resolveAppNightNow()
+        }
         buildPanel()
         SteeringProfiles.scheduleUpload(this)
     }
@@ -132,10 +135,10 @@ class SteeringControlsActivity : ComponentActivity() {
         val content = column().apply { setPadding(dp(28), dp(20), dp(28), dp(28)) }
         scroll.addView(content)
         val header = row()
-        header.addView(button(getString(R.string.back)) { finish() }, LinearLayout.LayoutParams(-2, -2))
         header.addView(label(getString(R.string.steering_identification), 26f, bold = true).apply {
-            setPadding(dp(12), 0, 0, 0)
+            setPadding(0, 0, dp(12), 0)
         }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(button(getString(R.string.back)) { finish() }, LinearLayout.LayoutParams(-2, -2))
         content.addView(header)
         content.addView(label(getString(R.string.steering_panel_intro), 16f, MUTED), params(12))
 
@@ -410,12 +413,10 @@ class SteeringControlsActivity : ComponentActivity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun toast(resource: Int) { Toast.makeText(this, resource, Toast.LENGTH_LONG).show() }
 
-    companion object {
-        private val BG = AppPageStyle.background
-        private val SURFACE = AppPageStyle.surface
-        private val BORDER = AppPageStyle.border
-        private val ACCENT = AppPageStyle.accent
-        private val TEXT = AppPageStyle.text
-        private val MUTED = AppPageStyle.muted
-    }
+    private val BG get() = AppPageStyle.palette(this).background
+    private val SURFACE get() = AppPageStyle.surface(this)
+    private val BORDER get() = AppPageStyle.palette(this).outline
+    private val ACCENT get() = AppPageStyle.palette(this).accent
+    private val TEXT get() = AppPageStyle.palette(this).primaryText
+    private val MUTED get() = AppPageStyle.palette(this).secondaryText
 }

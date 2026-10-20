@@ -1,7 +1,6 @@
 package com.shilapi.xcertplay
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.provider.Settings
 import android.util.Log
 import com.shilapi.xcertplay.adb.AdbKeys
@@ -9,11 +8,6 @@ import com.shilapi.xcertplay.adb.LocalAdb
 
 /** Each grant is requested explicitly from settings; startup never calls this authorization path. */
 internal object CarHotspotSetup {
-    fun isBydHeadUnit(context: Context): Boolean = runCatching {
-        context.packageManager.getApplicationInfo("com.byd.carsettings", 0).flags and
-            ApplicationInfo.FLAG_SYSTEM != 0
-    }.getOrDefault(false)
-
     enum class Permission(val appOp: String) {
         HOTSPOT("WRITE_SETTINGS"), BOOT_LAUNCH("SYSTEM_ALERT_WINDOW");
 
@@ -47,10 +41,10 @@ internal object CarHotspotSetup {
 
     fun startupEligibility(context: Context, hasSession: Boolean): String {
         if (hasSession) return "active-session"
-        if (!AirPlayPersistence.loadAutoStartOnBoot(context)) return "auto-start-disabled"
-        if (AirPlayPersistence.loadWirelessHotspotMode(context) !=
-            com.shilapi.xcertplay.orchestration.WirelessHotspotMode.AUTOMATIC) {
-            return "automatic-hotspot-not-selected"
+        val mode = AirPlayPersistence.loadWirelessHotspotMode(context)
+        if (mode != com.shilapi.xcertplay.orchestration.WirelessHotspotMode.AUTOMATIC &&
+            mode != com.shilapi.xcertplay.orchestration.WirelessHotspotMode.MANUAL) {
+            return "car-hotspot-not-selected"
         }
         return "eligible"
     }

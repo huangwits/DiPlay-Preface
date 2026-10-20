@@ -14,7 +14,7 @@ internal enum class DiPlayButtonKind { PRIMARY, SECONDARY, DANGER, TONAL_DANGER 
 
 /**
  * Button for views built in code outside `DiPlayActivity`, whose own `button()` stays private.
- * The corner radius follows the control height, as in `DiPlayActivity.buttonShape`.
+ * Standard actions share the Material home style; destructive menu actions retain their roles.
  */
 internal class DiPlayButton(context: Context) : Button(context) {
     private var kind = DiPlayButtonKind.SECONDARY
@@ -42,6 +42,10 @@ internal class DiPlayButton(context: Context) : Button(context) {
 
     private fun repaint() {
         val palette = palette ?: return
+        if (kind == DiPlayButtonKind.PRIMARY || kind == DiPlayButtonKind.SECONDARY) {
+            DiPlayActionStyle.apply(this, palette, kind == DiPlayButtonKind.PRIMARY)
+            return
+        }
         val density = resources.displayMetrics.density
         val fill: Int
         val text: Int
@@ -71,7 +75,7 @@ internal class DiPlayButton(context: Context) : Button(context) {
                 stroke = ColorUtils.blendARGB(surface, palette.overlayDanger, 0.48f)
             }
         }
-        val radius = minOf(24f * density, (if (height > 0) height else minHeight) * 20f / 56)
+        val radius = (if (height > 0) height else minHeight) / 2f
         setTextColor(text)
         background = RippleDrawable(
             ColorStateList.valueOf(palette.ripple),

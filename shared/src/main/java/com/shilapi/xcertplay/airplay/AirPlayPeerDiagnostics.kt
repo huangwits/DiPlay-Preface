@@ -10,4 +10,13 @@ object AirPlayPeerDiagnostics {
         return "Phone display peer model=${model.takeIf(modelToken::matches) ?: "not_reported"} " +
             "ios=${version(osVersion)} airplay=${version(sourceVersion)}"
     }
+
+    /** Capability flags only: never retain arbitrary phone URLs or their parameters. */
+    fun clusterContentSummary(value: Any?): String {
+        val urls = value as? List<*> ?: return "Phone map offer list=unrecognized"
+        val map = urls.contains(CarPlayClusterDisplay.MAP_URL)
+        val card = urls.contains(CarPlayClusterDisplay.Content.TURN_CARD.url)
+        val instruments = urls.contains(CarPlayClusterDisplay.Content.INSTRUMENTS.url)
+        return "Phone map offer entries=${urls.size} mapUrlListed=$map turnCardListed=$card instrumentsListed=$instruments"
+    }
 }

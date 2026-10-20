@@ -13,4 +13,12 @@ class AirPlayPeerDiagnosticsTest {
         val summary = AirPlayPeerDiagnostics.summary("Jane's iPhone", "26.0\npassword=secret", "")
         assertEquals("Phone display peer model=not_reported ios=not_reported airplay=not_reported", summary)
     }
+
+    @Test fun mapContentFlagsNeverIncludeArbitraryPhoneUrls() {
+        val privateUrl = "maps:/private/location?token=secret"
+        assertEquals("Phone map offer entries=3 mapUrlListed=true turnCardListed=true instrumentsListed=false",
+            AirPlayPeerDiagnostics.clusterContentSummary(listOf(CarPlayClusterDisplay.MAP_URL,
+                CarPlayClusterDisplay.Content.TURN_CARD.url, privateUrl)))
+        assertEquals("Phone map offer list=unrecognized", AirPlayPeerDiagnostics.clusterContentSummary(privateUrl))
+    }
 }

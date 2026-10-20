@@ -33,7 +33,7 @@ class DiagnosticExportUiTest {
     }
 
     private fun checkMissingPickerExport(developer: Boolean) {
-        val controller = Robolectric.buildActivity(DiPlayActivity::class.java).setup()
+        val controller = Robolectric.buildActivity(DiPlayActivity::class.java).setup().visible()
         val activity = controller.get()
         val context = activity.applicationContext
         val authority = "${context.packageName}.diagnostic-reports"
@@ -96,6 +96,8 @@ class DiagnosticExportUiTest {
     }
 
     private fun descendants(view: View): Sequence<View> = sequence {
+        if (view === view.rootView && view.isAttachedToWindow)
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(20, java.util.concurrent.TimeUnit.MILLISECONDS)
         yield(view)
         if (view is ViewGroup) for (index in 0 until view.childCount) yieldAll(descendants(view.getChildAt(index)))
     }

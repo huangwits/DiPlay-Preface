@@ -102,6 +102,8 @@ class AndroidMediaSink(
     private val factoryAudio = appContext?.let(GeelyFactoryCarPlay::load)
     private val vehicleAudioRouting = unifiedMediaOutput || bluetoothOutput || factoryAudio != null || audioStreamRoutes != null
     private val audioManager = appContext?.systemService(AudioManager::class.java, "audio")
+    private val legacyFs11Cabin = Build.VERSION.SDK_INT == 22 &&
+        Build.DEVICE.orEmpty().uppercase().contains("FS11G")
     @Volatile private var audioOwnershipListener: ((Boolean) -> Unit)? = onAudioOwnershipChanged
     @Volatile private var ownsAudio = false
     // carlito | Rebind the live controller when an Activity adopts a background session.
@@ -556,9 +558,21 @@ class AndroidMediaSink(
             audioOutputRoutes.assistantMicrophone?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
         // carlito | Unified playback does not disable the mode/device required for call capture.
         // Playback-only media streams do not acquire a communication route in unified mode.
-        val needCommunication = (!unifiedMediaOutput && phone || phoneCapture) || assistant && assistantVoiceDevice
-        val hadCommunication = communicationRoute.held()
+        // FS11's built-in input follows the OEM CarPlay path without forcing the
+        // Android communication mode. Explicit external input/output routes still own it.
+        val cabinPhone = legacyFs11Cabin && audioOutputRoutes.phoneMicrophone == null &&
+            (unifiedMediaOutput || audioOutputRoutes.phone == null)
+        val needCommunication = ((!unifiedMediaOutput && phone || phoneCapture) && !cabinPhone) ||
+            assistant && assistantVoiceDevice
+        var hadCommunication = communicationRoute.held()
         val external = communicationRoute.externalCall()
+        if (external && hadCommunication) {
+            // HFP may take over before CarPlay sends TEARDOWN. Release our mode/SCO
+            // immediately while retaining pending streams for a later return to CarPlay.
+            communicationRoute.release()
+            audioFocusCoordinator.onCommunicationEnded()
+            hadCommunication = false
+        }
         if (needCommunication && !external) communicationRoute.acquire(
             if (unifiedMediaOutput) null else if (phone) audioOutputRoutes.phone else audioOutputRoutes.assistant,
             if (phone) audioOutputRoutes.phoneMicrophone else audioOutputRoutes.assistantMicrophone)
@@ -573,6 +587,7 @@ class AndroidMediaSink(
             communicationRoute.externalCall() -> "blocked_native_call"
             !audioFocusCoordinator.captureAllowed() -> "waiting_audio_focus"
             !ready -> "waiting_communication_route"
+            cabinPhone && phoneCapture -> "ready_factory_cabin"
             else -> "ready"
         }
         val routeDiagnostic = routeState?.let {
@@ -583,8 +598,14 @@ class AndroidMediaSink(
             routeDiagnostic?.let { runCatching { onAudioDiagnostic(it) } }
         }
         microphoneUplinks.entries.toList().forEach { (id, active) ->
-            if (pendingMicrophones[id] !== active.request || !ready || phone && !isPhoneAudio(active.request.config.audioType)) {
-                if (microphoneUplinks.remove(id, active)) active.uplink.close()
+            val ended = !active.uplink.isRunning()
+            if (pendingMicrophones[id] !== active.request || !ready || ended || phone && !isPhoneAudio(active.request.config.audioType)) {
+                if (microphoneUplinks.remove(id, active)) {
+                    active.uplink.close()
+                    if (ended && pendingMicrophones[id] === active.request) {
+                        active.request.retryAt = android.os.SystemClock.elapsedRealtime() + 5_000L
+                    }
+                }
             }
         }
         if (!needCommunication && hadCommunication) {
@@ -766,7 +787,7 @@ class AndroidMediaSink(
 
     // carlito | Never drop negotiated streams or microphones. Only confirmed native music yields locally.
     fun setNativeBluetoothPlaying(playing: Boolean) {
-        if (bluetoothOutput) audioFocusCoordinator.setNativeBluetoothPlaying(playing)
+        if (bluetoothOutput || legacyFs11Cabin) audioFocusCoordinator.setNativeBluetoothPlaying(playing)
     }
 
     fun onMediaPlaying(playing: Boolean) {
@@ -1818,7 +1839,7 @@ private class AudioRenderer(
                 "mapping=${if (advancedAudioChannelMapping) "automotive" else "mobile"} " +
                 "mediaChannel=$mediaChannel navigationChannel=$navigationChannel focus=$audioFocusEnabled") }
             when (format.codec) {
-                AudioCodecKind.AAC_LC -> configureCodec(MediaFormat.MIMETYPE_AUDIO_AAC)
+                AudioCodecKind.AAC_LC, AudioCodecKind.AAC_ELD -> configureCodec()
                 AudioCodecKind.OPUS -> {
                     diagnosticStage = "decoder-create"
                     softwareOpusDecoder = SoftwareOpusDecoder(format.sampleRate, format.channels)
@@ -1867,45 +1888,28 @@ private class AudioRenderer(
         }
     }
 
-    private fun configureCodec(mime: String) {
+    private fun configureCodec() {
         diagnosticStage = "decoder-format"
-        val mediaFormat = MediaFormat().apply {
-            setString(MediaFormat.KEY_MIME, mime)
-            setInteger(MediaFormat.KEY_SAMPLE_RATE, format.sampleRate)
-            setInteger(MediaFormat.KEY_CHANNEL_COUNT, format.channels)
-            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 64 * 1024)
-            if (mime == MediaFormat.MIMETYPE_AUDIO_AAC) {
-                setInteger(MediaFormat.KEY_IS_ADTS, 1)
-                setByteBuffer("csd-0", ByteBuffer.wrap(aacAudioSpecificConfig()))
-            } else {
-                setByteBuffer("csd-0", ByteBuffer.wrap(opusHead()))
-                setByteBuffer("csd-1", ByteBuffer.wrap(opusCodecDelay()))
-                setByteBuffer("csd-2", ByteBuffer.wrap(opusSeekPreRoll()))
-            }
-        }
-        if (mime == MediaFormat.MIMETYPE_AUDIO_AAC) {
+        val mediaFormat = AudioDecoders.format(format.codec, format.sampleRate, format.channels, format.framesPerPacket)
+        if (format.codec == AudioCodecKind.AAC_LC || format.codec == AudioCodecKind.AAC_ELD) {
             Log.i(
                 TAG,
-                "audio AAC config rate=${format.sampleRate} channels=${format.channels} " +
-                    "csd0=${aacAudioSpecificConfig().toHexString()}",
+                "audio AAC config codec=${format.codec} rate=${format.sampleRate} channels=${format.channels} " +
+                    "frames=${format.framesPerPacket}",
             )
         }
         codec = try {
-            MediaCodecStartup.create(
-                create = { diagnosticStage = "decoder-create"; MediaCodec.createDecoderByType(mime) },
-                configure = { diagnosticStage = "decoder-configure"; it.configure(mediaFormat, null, null, 0) },
-                start = { diagnosticStage = "decoder-start"; it.start() },
-                release = { it.release() },
-            ).also {
+            val (opened, decoderName) = AudioDecoders.open(mediaFormat, AudioDecoders.candidates(format.codec))
+            opened.also {
                 // A vendor name getter or diagnostic callback must not discard a started codec.
                 runCatching {
                     val name = it.name
-                    Log.i(TAG, "audio decoder configured mime=$mime name=$name")
-                    report("Audio: decoder ready audioType=${format.audioType} codec=${format.codec} name=$name")
+                    Log.i(TAG, "audio decoder configured mime=${mediaFormat.getString(MediaFormat.KEY_MIME)} name=$decoderName")
+                    report("Audio: decoder ready audioType=${format.audioType} codec=${format.codec} name=$decoderName")
                 }
             }
         } catch (error: Exception) {
-            Log.e(TAG, "audio decoder configuration failed mime=$mime", error)
+            Log.e(TAG, "audio decoder configuration failed codec=${format.codec}", error)
             reportFailure(error)
             null
         }
@@ -1927,7 +1931,11 @@ private class AudioRenderer(
         val selection = mappedSelection()
         mappedChannel = selection.channel
         val streamOverride = channelOverride(selection.channel)
-        focusStreamType = if (streamOverride == AudioStreamRoutes.AUTO) AudioManager.STREAM_MUSIC else streamOverride
+        focusStreamType = if (streamOverride == AudioStreamRoutes.AUTO && Build.VERSION.SDK_INT >= 23) {
+            AudioManager.STREAM_MUSIC
+        } else {
+            LegacyAudioRoutePlan.effectiveStream(selection.channel, streamOverride)
+        }
         actualLegacyStreamType = streamOverride.takeIf { it != AudioStreamRoutes.AUTO }
         var attributes = audioAttributesFor(selection, streamOverride)
         trackAttributes = attributes
@@ -1947,30 +1955,67 @@ private class AudioRenderer(
                 .setBufferSizeInBytes(plan.trackBufferBytes)
                 .build()
         } else {
-            val streamType = if (streamOverride == AudioStreamRoutes.AUTO) AudioManager.STREAM_MUSIC else streamOverride
+            val streamType = LegacyAudioRoutePlan.effectiveStream(selection.channel, streamOverride)
             routeLabel = "streamType=$streamType"
-            built = LegacyAudioFallback.build(
-                createLegacy = {
-                    AudioTrack(streamType, format.sampleRate, channelMask, encoding,
-                        plan.trackBufferBytes, AudioTrack.MODE_STREAM)
-                },
-                isInitialized = { it.state == AudioTrack.STATE_INITIALIZED },
-                release = { it.release() },
-                createFallback = {
-                    diagnosticStage = "track-fallback-build"
-                    routeLabel = "streamType=$streamType(fallback=usage)"
-                    focusStreamType = AudioManager.STREAM_MUSIC
-                    actualLegacyStreamType = null
-                    Log.w(TAG, "streamType=$streamType rejected by this ROM; falling back to usage-based track")
-                    attributes = audioAttributesFor(selection)
-                    if (Build.VERSION.SDK_INT < 23) AudioTrack(AudioManager.STREAM_MUSIC, format.sampleRate, channelMask, encoding, plan.trackBufferBytes, AudioTrack.MODE_STREAM) else AudioTrack.Builder()
-                        .setAudioAttributes(attributes)
-                        .setAudioFormat(pcmFormat(encoding, channelMask))
-                        .setTransferMode(AudioTrack.MODE_STREAM)
-                        .setBufferSizeInBytes(plan.trackBufferBytes)
-                        .build()
-                },
-            )
+            if (selection.channel == AudioChannel.NAVIGATION) {
+                val mediaStream = LegacyAudioRoutePlan.effectiveStream(
+                    AudioChannel.MEDIA,
+                    audioStreamRoutes?.media ?: mediaChannel.takeIf { it != 0 } ?: AudioManager.STREAM_MUSIC,
+                )
+                val candidates = LegacyAudioRoutePlan.candidateStreams(selection.channel, streamType, mediaStream)
+                val result = LegacyAudioFallback.buildCandidates(
+                    streamTypes = candidates,
+                    create = { candidateStream -> AudioTrack(candidateStream, format.sampleRate, channelMask, encoding,
+                        plan.trackBufferBytes, AudioTrack.MODE_STREAM) },
+                    isInitialized = { it.state == AudioTrack.STATE_INITIALIZED },
+                    release = { it.release() },
+                )
+                if (result == null) {
+                    val message = "Audio: navigation route unavailable audioType=${format.audioType} " +
+                        "requested=$streamType tried=$candidates; kept separate from media"
+                    Log.e(TAG, message)
+                    runCatching { report(message) }
+                    return
+                }
+                val (actualStream, navigationTrack) = result
+                focusStreamType = actualStream
+                actualLegacyStreamType = actualStream
+                if (actualStream != streamType) {
+                    routeLabel = "streamType=$actualStream(fallbackFrom=$streamType)"
+                    Log.w(TAG, "navigation stream=$streamType rejected; using separate stream=$actualStream")
+                }
+                attributes = audioAttributesFor(selection, actualStream)
+                built = navigationTrack
+            } else {
+                built = LegacyAudioFallback.build(
+                    createLegacy = {
+                        AudioTrack(streamType, format.sampleRate, channelMask, encoding,
+                            plan.trackBufferBytes, AudioTrack.MODE_STREAM)
+                    },
+                    isInitialized = { it.state == AudioTrack.STATE_INITIALIZED },
+                    release = { it.release() },
+                    createFallback = {
+                        diagnosticStage = "track-fallback-build"
+                        routeLabel = if (Build.VERSION.SDK_INT < 23) {
+                            "streamType=$streamType(fallback=STREAM_MUSIC)"
+                        } else {
+                            "streamType=$streamType(fallback=usage)"
+                        }
+                        focusStreamType = AudioManager.STREAM_MUSIC
+                        actualLegacyStreamType = null
+                        val fallbackRoute = if (Build.VERSION.SDK_INT < 23) "STREAM_MUSIC" else "usage"
+                        Log.w(TAG, "streamType=$streamType rejected by this ROM; falling back to $fallbackRoute")
+                        attributes = audioAttributesFor(selection)
+                        if (Build.VERSION.SDK_INT < 23) AudioTrack(AudioManager.STREAM_MUSIC, format.sampleRate,
+                            channelMask, encoding, plan.trackBufferBytes, AudioTrack.MODE_STREAM) else AudioTrack.Builder()
+                            .setAudioAttributes(attributes)
+                            .setAudioFormat(pcmFormat(encoding, channelMask))
+                            .setTransferMode(AudioTrack.MODE_STREAM)
+                            .setBufferSizeInBytes(plan.trackBufferBytes)
+                            .build()
+                    },
+                )
+            }
         }
         track = built
         applyPreferredOutput()
@@ -2020,12 +2065,14 @@ private class AudioRenderer(
         runCatching { report("Audio: role=$channel preferredDevice=${device?.id ?: -1} accepted=$accepted fallback=${!accepted}") }
     }
 
-    /** AUTO uses usage routing; zero is a real legacy voice-call stream. */
+    /** Output-device selection requires API 23; API 22 must retain its per-role legacy streams. */
     private fun preferredOutput(channel: AudioChannel): AudioOutputDevice? = audioOutputRoutes.device(channel)
         ?: navigationOutputDevice.takeIf { channel == AudioChannel.NAVIGATION }
 
     private fun channelOverride(channel: AudioChannel): Int {
-        if (preferredOutput(channel) != null) return AudioStreamRoutes.AUTO
+        if (LegacyAudioRoutePlan.preferDeviceRoute(Build.VERSION.SDK_INT, preferredOutput(channel) != null)) {
+            return AudioStreamRoutes.AUTO
+        }
         audioStreamRoutes?.let { return it.stream(channel) }
         val old = when (channel) {
             AudioChannel.MEDIA -> mediaChannel
@@ -2206,6 +2253,10 @@ private class AudioRenderer(
                     )
                 }
             }
+            AudioCodecKind.AAC_ELD -> {
+                val accessUnit = rtp.copyOfRange(12, rtp.size)
+                if (accessUnit.isNotEmpty()) feedCodec(accessUnit, sampleTimestampUs(packet.sample))
+            }
             AudioCodecKind.OPUS -> {
                 val accessUnit = rtp.copyOfRange(12, rtp.size)
                 if (accessUnit.size < MIN_OPUS_PACKET_BYTES) {
@@ -2378,7 +2429,9 @@ private class AudioRenderer(
             }
             val writeStarted = System.nanoTime()
             diagnosticStage = "track-write"
-            val count = track.write(data, offset + written, writeLength)
+            val count = if (mappedChannel == AudioChannel.MEDIA && !playbackStarted) {
+                track.write(ByteBuffer.wrap(data, offset + written, writeLength), writeLength, AudioTrack.WRITE_NON_BLOCKING)
+            } else track.write(data, offset + written, writeLength)
             maxWriteMs = maxOf(maxWriteMs, (System.nanoTime() - writeStarted) / 1_000_000L)
             if (count < 0) {
                 writeErrorsThisWindow++
@@ -2387,6 +2440,12 @@ private class AudioRenderer(
             }
             if (count == 0) {
                 zeroWritesThisWindow++
+                if (!playbackStarted && prebufferBytes > 0) {
+                    // Some OEM tracks have less capacity than requested. Start the
+                    // queued PCM instead of blocking or dropping the rest of this frame.
+                    startPlayback(track)
+                    continue
+                }
                 break
             }
             if (count < writeLength) partialWritesThisWindow++
@@ -2438,7 +2497,8 @@ private class AudioRenderer(
     private fun maintainPlaybackBuffer() {
         val track = track ?: return
         if (bufferProgress.shouldRebuffer(mappedChannel == AudioChannel.MEDIA, playbackStarted,
-                (if (Build.VERSION.SDK_INT >= 24) track.underrunCount else 0) > underrunsAtPlaybackStart, queue.isEmpty(), track.playbackHeadPosition,
+                if (Build.VERSION.SDK_INT >= 24) track.underrunCount > underrunsAtPlaybackStart else null,
+                queue.isEmpty(), track.playbackHeadPosition,
                 startThresholdBytes / 2L)) {
             // The hardware buffer has starved below the recovery floor. Pause without flushing
             // or discarding PCM, then use the configured start threshold again when music resumes.

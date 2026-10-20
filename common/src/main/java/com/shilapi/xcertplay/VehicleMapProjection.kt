@@ -32,11 +32,7 @@ import com.geelyplay.preface.E01NativeMapControl
 
 internal data class VehicleMapPlan(val screen: GeelyHudDisplay, val width: Int, val height: Int,
     val visibleHeight: Int, val vehicleMode: Boolean, val automaticCanvas: Boolean = false,
-    val factoryNative: Boolean = false) {
-    // FS11 must show the same phone-rendered view as the centre screen. Stream 111
-    // is an independent CarPlay scene whose view and availability vary by iOS.
-    val videoStreamType: Int get() = if (factoryNative) 110 else 111
-
+    val factoryNative: Boolean = false, val factoryDisplayIndex: Int? = null) {
     fun config() = AirPlayDisplayConfig(width, height, fps = 30, primaryInputDevice = 0,
         viewArea = AirPlayInsets(bottom = height - visibleHeight),
         safeArea = AirPlayInsets(top = visibleHeight * 8 / 100, bottom = height - visibleHeight + visibleHeight * 8 / 100,
@@ -109,10 +105,12 @@ internal object VehicleMapProjection {
     private var texture: ClusterVideoTexture? = null
     private var surface: Surface? = null
     private var phone: Any? = null
+    private var mapStream: Any? = null
     private var command = 0L
     private var requested = false
     private var delivered = false
     private var firstFrame = false
+    private var preservingLastFrame = false
     private var manual = false
     private var hidden = false
     private var suppressed = false
@@ -128,8 +126,13 @@ internal object VehicleMapProjection {
         }
     @Volatile private var outputVisible = false
     @Volatile private var zoomAllowed = false
-    private var commandAt = 0L
+    private var commandAt = -1L
+    private var lastCommandAt = -1L
+    private var commandPending = false
+    private var commandAttempts = 0
     private var attachedScreen: GeelyHudDisplay? = null
+    private var factoryDisplayResolveAt = Long.MIN_VALUE
+    private var factoryDisplayWasUnavailable = false
     private var windowFailure = "none"
     private val poll = object : Runnable {
         override fun run() { refresh(); if (controller != null) main.postDelayed(this, 250L) }
@@ -149,7 +152,7 @@ internal object VehicleMapProjection {
                     native = E01NativeMapControl(context.applicationContext, prepareGesture = {
                         val token = projectionSessionToken()
                         syncSessionState(token, GeelyHudProjection.navigationActive())
-                        native?.sync(app?.let { nativeSessionReady(it, token) } == true)
+                        native?.sync(if (selection.factoryNative) token != null else app?.let { nativeSessionReady(it, token) } == true)
                         token != null
                     }, onGesture = { show -> showGestureFeedback(flyNavigation(show)) }, enabled = {
                         if (selection.factoryNative) GeelyHudProjection.threeFingerEnabled(context)
@@ -162,7 +165,7 @@ internal object VehicleMapProjection {
     }
     fun owns(expected: CarPlayController?) = expected != null && controller === expected
     private fun projectionSessionToken(): Any? = if (plan?.factoryNative == true)
-        controller?.activeAirPlaySessionToken() else controller?.clusterProjectionSessionToken()
+        controller?.projectionConnectionToken() else controller?.clusterProjectionSessionToken()
     fun selectionFor(expected: CarPlayController?): VehicleMapPlan? = if (owns(expected)) plan else null
     fun mapVisible() = outputVisible
     fun menuAllowsZoom(): Boolean = zoomAllowed
@@ -190,11 +193,17 @@ internal object VehicleMapProjection {
     }
 
     fun flyNavigation(show: Boolean? = null): Int {
+        return flyNavigation(show, fromKey = false)
+    }
+
+    fun flyNavigationFromKey(): Int = flyNavigation(null, fromKey = true)
+
+    private fun flyNavigation(show: Boolean?, fromKey: Boolean): Int {
         val current = controller ?: return R.string.vehicle_map_reconnect
         val nextPhone = projectionSessionToken() ?: return R.string.vehicle_map_reconnect
         val context = app ?: return R.string.vehicle_map_reconnect
         syncSessionState(nextPhone, GeelyHudProjection.navigationActive())
-        native?.sync(nativeSessionReady(context, nextPhone))
+        native?.sync(plan?.factoryNative == true || nativeSessionReady(context, nextPhone))
         if (show == false || show == null && (outputVisible || requested && !suppressed)) {
             native?.request(false)
             manual = false; hidden = true; hide()
@@ -211,7 +220,7 @@ internal object VehicleMapProjection {
             stage = if (failure == R.string.projection_permission_required) "PERMISSION_REQUIRED" else "DISPLAY_UNAVAILABLE"
             return failure
         }
-        native?.request(true)
+        if (fromKey) native?.requestFromKey() else native?.request(true)
         guidanceNoticeShown = false; waitingNoticeShown = false
         hidden = false; suppressed = false; manual = true; bridge?.resetLease(); refresh()
         return when {
@@ -223,7 +232,9 @@ internal object VehicleMapProjection {
     }
 
     private fun syncSessionState(nextPhone: Any?, route: Boolean) {
-        if (routeSeen && !route) { native?.request(false); suppressed = false; hidden = false; manual = false }
+        if (routeSeen && !route && plan?.factoryNative != true) {
+            native?.request(false); suppressed = false; hidden = false; manual = false
+        }
         routeSeen = route
         if (phone != nextPhone) {
             hide(); native?.request(false); phone = nextPhone; manual = false; hidden = false; suppressed = false
@@ -231,6 +242,9 @@ internal object VehicleMapProjection {
     }
 
     private fun nativeSessionReady(context: Context, token: Any?): Boolean {
+        if (plan?.factoryNative == true) {
+            return token != null && com.geelyplay.preface.compat.ContextCompat.canDrawOverlays(context)
+        }
         val selected = targetScreen(context) ?: return false
         return token != null && selected.id == plan?.screen?.id && selected.name == plan?.screen?.name &&
             com.geelyplay.preface.compat.ContextCompat.canDrawOverlays(context)
@@ -248,22 +262,60 @@ internal object VehicleMapProjection {
     private fun refresh() {
         val context = app ?: return
         val current = controller ?: return
-        val selection = plan ?: return
+        var selection = plan ?: return
         val route = GeelyHudProjection.navigationActive()
         val nextPhone = projectionSessionToken()
         syncSessionState(nextPhone, route)
         native?.sync(nativeSessionReady(context, nextPhone))
         // carlito | Re-read the logical target size; an OEM can resize a display without replacing its ID.
-        val screen = if (selection.factoryNative) E01FactoryMapTarget.screenByDisplayId(context, selection.screen.id)
+        var screen = if (selection.factoryNative) E01FactoryMapTarget.screenByDisplayId(context, selection.screen.id)
         else GeelyHudProjection.availableDisplays(context).firstOrNull {
             it.id == selection.screen.id && it.name == selection.screen.name
+        }
+        if (selection.factoryNative && screen == null) {
+            val now = SystemClock.elapsedRealtime()
+            if (factoryDisplayResolveAt == Long.MIN_VALUE || now - factoryDisplayResolveAt >= FACTORY_DISPLAY_RETRY_MILLIS) {
+                factoryDisplayResolveAt = now
+                val recovered = E01FactoryMapTarget.recover(context, selection)
+                if (recovered != null) {
+                    val previousId = selection.screen.id
+                    selection = recovered
+                    plan = recovered
+                    screen = recovered.screen
+                    factoryDisplayResolveAt = Long.MIN_VALUE
+                    DisplayDiagnosticSnapshot.record(context, diagnosticAttempt,
+                        "Map target recovered from firmware index=${recovered.factoryDisplayIndex} old=$previousId new=${recovered.screen.id}")
+                }
+            }
+        } else if (screen != null) {
+            factoryDisplayResolveAt = Long.MIN_VALUE
+            if (selection.factoryNative && selection.screen != screen) {
+                selection = selection.copy(screen = screen)
+                plan = selection
+            }
         }
         val display = screen?.let { context.systemService(DisplayManager::class.java, "display")?.getDisplay(it.id) }
         val available = screen != null && screen.width > 0 && screen.height > 0 && display != null
         val enabled = if (selection.factoryNative) GeelyHudProjection.threeFingerEnabled(context) else VehicleMapSettings.enabled(context)
+        if (selection.factoryNative && !available && nextPhone != null && enabled &&
+            native?.usesFactoryGestures() == true && native?.desired == true && !hidden && !suppressed &&
+            com.geelyplay.preface.compat.ContextCompat.canDrawOverlays(context)) {
+            factoryDisplayWasUnavailable = true
+            current.setDashboardMapOutputVisible(false)
+            outputVisible = false
+            zoomAllowed = false
+            texture?.alpha = 0f
+            if (stage != "WAITING_FACTORY_DISPLAY") {
+                stage = "WAITING_FACTORY_DISPLAY"
+                recordOutput()
+            }
+            return
+        }
+        val retainFactoryMap = selection.factoryNative && native?.shouldRetainMapAfterRoute() == true
         val wanted = enabled && !hidden && !suppressed && available &&
             (native == null || native?.usesFactoryGestures() == true && native?.desired == true) &&
-            com.geelyplay.preface.compat.ContextCompat.canDrawOverlays(context) && nextPhone != null && (route || manual)
+            com.geelyplay.preface.compat.ContextCompat.canDrawOverlays(context) && nextPhone != null &&
+            (route || manual || retainFactoryMap)
         if (!wanted) {
             hide()
             stage = when {
@@ -276,10 +328,46 @@ internal object VehicleMapProjection {
             }
             return
         }
-        if (root != null && attachedScreen != screen) {
+        if (root != null && (attachedScreen != screen || factoryDisplayWasUnavailable)) {
             // Keep the negotiated phone canvas but refit its visible area to the resized screen.
-            // A replacement Surface must deliver a new frame before native mode/zoom can resume.
-            hide()
+            // A replacement Surface needs a fresh frame, while the factory navigation mode must stay selected.
+            if (selection.factoryNative) reconfigureFactoryWindow()
+            else hide()
+        }
+        factoryDisplayWasUnavailable = false
+        val nextStream = current.clusterProjectionSessionToken()
+        if (mapStream != nextStream) {
+            // CarPlay may tear down stream 111 while keeping the same phone session alive.
+            // Keep its last frame only during that gap; a negotiated replacement starts clean.
+            val canKeepFactoryFrame = nextStream == null && selection.factoryNative && phone === nextPhone &&
+                root != null && surface?.isValid == true && delivered && firstFrame && outputVisible
+            if (canKeepFactoryFrame) {
+                preservingLastFrame = true
+                current.setDashboardMapOutputVisible(false)
+                outputVisible = true
+                zoomAllowed = false
+                texture?.alpha = 1f
+                requested = true
+                delivered = false
+                firstFrame = false
+                commandPending = false
+                command++
+                commandAt = SystemClock.elapsedRealtime()
+                lastCommandAt = -1L
+                commandAttempts = 0
+                mapStream = nextStream
+                stage = "WAITING_CLUSTER_STREAM_PRESERVING_FRAME"
+                return
+            } else {
+                if (mapStream != null || delivered || firstFrame || preservingLastFrame) {
+                    destroyWindow()
+                }
+                current.setDashboardMapOutputVisible(false)
+                outputVisible = false; delivered = false; firstFrame = false
+                preservingLastFrame = false
+                requested = false; commandPending = false; command++
+                lastCommandAt = -1L; mapStream = nextStream
+            }
         }
         if (root == null && !createWindow(context, display!!, screen!!, selection)) {
             native?.outputLost(); stage = "WINDOW_REJECTED"; return
@@ -287,20 +375,23 @@ internal object VehicleMapProjection {
         if (!requested) stage = "WAITING_SURFACE"
         if (!requested && surface?.isValid == true) {
             requested = true; delivered = false; firstFrame = false
+            if (commandAt < 0L) commandAt = SystemClock.elapsedRealtime()
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (requested && !firstFrame && nextStream == null && !preservingLastFrame) stage = "WAITING_CLUSTER_STREAM"
+        val retryMillis = if (delivered) FRAME_RETRY_MILLIS else COMMAND_RETRY_MILLIS
+        if (requested && nextStream != null && !(delivered && firstFrame) && !commandPending &&
+            (lastCommandAt < 0L || now - lastCommandAt >= retryMillis)) {
             val generation = ++command
-            commandAt = SystemClock.elapsedRealtime()
-            stage = if (selection.factoryNative) "WAITING_FRAME" else "WAITING_COMMAND"
-            if (selection.factoryNative) {
-                // Stream 110 already renders the centre screen. Do not require the
-                // optional cluster stream or change its UI to start this mirror.
-                delivered = true
-            } else current.setProjectionUiShown(this, true) { accepted -> main.post {
+            commandPending = true; lastCommandAt = now; commandAttempts++
+            stage = "WAITING_COMMAND"
+            current.setProjectionUiShown(this, true) { accepted -> main.post {
                 if (generation != command || controller !== current || !requested) return@post
+                commandPending = false
                 if (accepted) { delivered = true; stage = "WAITING_FRAME" }
-                else {
-                    hide(); suppressed = true; stage = "COMMAND_REJECTED"
-                    showNotice(R.string.e01_map_stream_unavailable)
-                }
+                else stage = "WAITING_COMMAND"
+                app?.let { DisplayDiagnosticSnapshot.record(it, diagnosticAttempt,
+                    "Map activation: attempt=$commandAttempts commandDelivered=$accepted firstFrame=$firstFrame") }
             } }
         }
         val status = bridge?.status()
@@ -310,11 +401,20 @@ internal object VehicleMapProjection {
         val mapOnly = native?.mapOnlyOutputAllowed() == true
         val ready = mapOutputReady(delivered, firstFrame, selection.vehicleMode, nativeRequested,
             status?.getBoolean("ready") == true, mapOnly)
+        if (ready) preservingLastFrame = false
+        if (!ready && preservingLastFrame) {
+            outputVisible = true
+            zoomAllowed = false
+            texture?.alpha = 1f
+            current.setDashboardMapOutputVisible(false)
+            if (stage != "WAITING_CLUSTER_STREAM_PRESERVING_FRAME") stage = "WAITING_CLUSTER_STREAM_PRESERVING_FRAME"
+            return
+        }
         outputVisible = ready
         // A fully transparent TextureView can skip updates on API 22, preventing the
         // first-frame callback that makes the output ready. Keep preroll drawable.
         texture?.alpha = if (ready) 1f else PREROLL_ALPHA
-        current.setDashboardMapOutputVisible(ready && !selection.factoryNative)
+        current.setDashboardMapOutputVisible(ready)
         zoomAllowed = ready && (!selection.vehicleMode || status?.getBoolean("menuAllowsZoom") == true)
         if (ready) stage = when {
             mapOnly -> "MAP_ONLY_ACTIVE"
@@ -333,8 +433,15 @@ internal object VehicleMapProjection {
             showNotice(R.string.e01_map_without_guidance)
         }
         // Static maps may legitimately stop updating. Only the initial frame has a deadline.
-        if (requested && !firstFrame && SystemClock.elapsedRealtime() - commandAt > 15_000L) {
-            hide(); suppressed = true; stage = "FRAME_TIMEOUT"
+        if (requested && !(delivered && firstFrame) && !preservingLastFrame && now - commandAt > MAP_START_TIMEOUT_MILLIS) {
+            val failure = when {
+                nextStream == null -> "CLUSTER_STREAM_TIMEOUT"
+                !delivered -> "COMMAND_TIMEOUT"
+                else -> "FRAME_TIMEOUT"
+            }
+            app?.let { DisplayDiagnosticSnapshot.record(it, diagnosticAttempt,
+                "Map startup timeout: reason=$failure attempts=$commandAttempts") }
+            hide(); suppressed = true; stage = failure
             showNotice(R.string.e01_map_stream_unavailable)
         }
     }
@@ -346,20 +453,16 @@ internal object VehicleMapProjection {
         val viewport = FrameLayout(displayContext).apply { clipChildren = true; clipToPadding = true }
         // carlito | Fit both axes with one scale: full-height automatic output fills a matching
         // screen, while a manual crop never stretches or spills beyond a narrower display.
-        val source = if (selection.factoryNative) controller?.configuredMainSize() else null
-        val sourceWidth = source?.first ?: selection.width
-        val sourceHeight = source?.second ?: selection.height
-        val sourceVisibleHeight = if (selection.factoryNative) sourceHeight else selection.visibleHeight
-        val scale = min(screen.width.toDouble() / sourceWidth, screen.height.toDouble() / sourceVisibleHeight)
-        val viewportWidth = (sourceWidth * scale).roundToInt().coerceIn(1, screen.width)
-        val scaledHeight = (sourceHeight * scale).roundToInt().coerceAtLeast(1)
-        val visibleHeight = (sourceVisibleHeight * scale).roundToInt().coerceIn(1, screen.height)
-        val video = ClusterVideoTexture(displayContext, sourceWidth, sourceHeight, onFrame = {
+        val scale = min(screen.width.toDouble() / selection.width, screen.height.toDouble() / selection.visibleHeight)
+        val viewportWidth = (selection.width * scale).roundToInt().coerceIn(1, screen.width)
+        val scaledHeight = (selection.height * scale).roundToInt().coerceAtLeast(1)
+        val visibleHeight = (selection.visibleHeight * scale).roundToInt().coerceIn(1, screen.height)
+        val video = ClusterVideoTexture(displayContext, selection.width, selection.height, onFrame = {
             if (requested && !firstFrame) { firstFrame = true; recordOutput() }
         }) { next ->
             setOutputSurface(next)
             if (next == null) {
-                firstFrame = false; outputVisible = false; native?.outputLost()
+                firstFrame = false; outputVisible = false
                 controller?.setDashboardMapOutputVisible(false)
             }
         }.apply { alpha = PREROLL_ALPHA }
@@ -397,13 +500,9 @@ internal object VehicleMapProjection {
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
 
     private fun setOutputSurface(next: Surface?) {
-        val selection = plan ?: return
-        if (selection.factoryNative) {
-            sink?.setMirrorSurface(selection.videoStreamType, FACTORY_MIRROR_KEY, next)
-        } else {
-            surface?.let { sink?.clearSurface(selection.videoStreamType, it) }
-            if (next != null) sink?.setSurface(selection.videoStreamType, next)
-        }
+        if (plan == null) return
+        surface?.let { sink?.clearSurface(CLUSTER_STREAM_TYPE, it) }
+        if (next != null) sink?.setSurface(CLUSTER_STREAM_TYPE, next)
         surface = next
     }
 
@@ -412,9 +511,26 @@ internal object VehicleMapProjection {
         controller?.setDashboardMapOutputVisible(false)
         val wasRequested = requested
         requested = false; delivered = false; firstFrame = false; command++
+        preservingLastFrame = false
+        mapStream = null; commandPending = false; commandAt = -1L; lastCommandAt = -1L; commandAttempts = 0
         bridge?.update(false, false)
         native?.outputLost()
-        if (wasRequested && plan?.factoryNative != true) controller?.setProjectionUiShown(this, false) {}
+        if (wasRequested) controller?.setProjectionUiShown(this, false) {}
+        destroyWindow()
+    }
+
+    private fun reconfigureFactoryWindow() {
+        outputVisible = false
+        zoomAllowed = false
+        controller?.setDashboardMapOutputVisible(false)
+        delivered = false
+        firstFrame = false
+        command++
+        commandPending = false
+        commandAt = SystemClock.elapsedRealtime()
+        lastCommandAt = -1L
+        commandAttempts = 0
+        native?.outputReconfigured()
         destroyWindow()
     }
     private fun destroyWindow() {
@@ -429,16 +545,18 @@ internal object VehicleMapProjection {
         app?.let { context ->
             DisplayDiagnosticSnapshot.record(context, diagnosticAttempt, "Map closed: ${diagnostics()}")
         }
-        hide(); if (plan?.factoryNative != true) controller?.releaseProjectionUi(this)
+        hide(); controller?.releaseProjectionUi(this)
         bridge?.close(); bridge = null
         native?.close(); native = null
         controller = null; sink = null; app = null; plan = null; phone = null; diagnosticAttempt = null
+        factoryDisplayResolveAt = Long.MIN_VALUE; factoryDisplayWasUnavailable = false
         manual = false; hidden = false; suppressed = false; routeSeen = false; stage = "IDLE"
     }
     fun diagnostics(): String {
         val routeFrames = com.shilapi.xcertplay.glance.CarPlayGlance.routeFrameStats()
         return "vehicleMap stage=$stage requested=$requested delivered=$delivered firstFrame=$firstFrame " +
-            "visible=$outputVisible menuAllowsZoom=$zoomAllowed target=${plan?.screen?.id} factoryNative=${plan?.factoryNative} videoStream=${plan?.videoStreamType} " +
+            "visible=$outputVisible menuAllowsZoom=$zoomAllowed target=${plan?.screen?.id} factoryNative=${plan?.factoryNative} videoStream=$CLUSTER_STREAM_TYPE " +
+            "streamAvailable=${mapStream != null} preservingLastFrame=$preservingLastFrame activationAttempts=$commandAttempts " +
             "navigationActive=${GeelyHudProjection.navigationActive()} guidanceReceived=${GeelyHudProjection.currentGuidance() != null} " +
             "routeFrames=${routeFrames.guidanceUpdates}/${routeFrames.maneuverUpdates} " +
             "native=${native?.stage} bridge=${bridge?.status()?.getString("stage")} windowFailure=$windowFailure"
@@ -458,5 +576,9 @@ internal object VehicleMapProjection {
     }
 
     private const val PREROLL_ALPHA = 0.01f
-    private const val FACTORY_MIRROR_KEY = "fs11-centre-screen"
+    private const val CLUSTER_STREAM_TYPE = 111
+    private const val COMMAND_RETRY_MILLIS = 1_000L
+    private const val FRAME_RETRY_MILLIS = 3_000L
+    private const val MAP_START_TIMEOUT_MILLIS = 20_000L
+    private const val FACTORY_DISPLAY_RETRY_MILLIS = 250L
 }

@@ -1,7 +1,5 @@
 package com.shilapi.xcertplay
 
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageInfo
 import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import org.junit.Assert.assertFalse
@@ -11,7 +9,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -42,40 +39,30 @@ class CarHotspotSetupTest {
         }
     }
 
-    @Test fun hotspotIsNotStartedIndependentlyAtAppLaunch() {
+    @Test fun savedCarHotspotModeAlsoStartsOnAppLaunch() {
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
         AirPlayPersistence.saveManualHotspotSsid(context, "Car hotspot")
         AirPlayPersistence.saveManualHotspotPassphrase(context, "12345678")
         CarHotspotSettings.setEnabled(context, true)
 
-        assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
+        assertTrue(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
         assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = true))
     }
 
-    @Test fun defaultAutomaticModeStartsSavedHotspotWhenBootStartupIsEnabled() {
+    @Test fun otherWifiModesNeverSwitchTheRadioToTheCarHotspot() {
+        for (mode in listOf(WirelessHotspotMode.WIFI_P2P, WirelessHotspotMode.EXISTING_WIFI)) {
+            AirPlayPersistence.saveWirelessHotspotMode(context, mode)
+            assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
+        }
+    }
+
+    @Test fun openingAutomaticModeStartsSavedHotspotIndependentlyOfBootStartup() {
         assertTrue(AirPlayPersistence.loadAutoStartOnBoot(context))
         assertTrue(AirPlayPersistence.loadWirelessHotspotMode(context) == WirelessHotspotMode.AUTOMATIC)
         assertTrue(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
         assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = true))
         AirPlayPersistence.saveAutoStartOnBoot(context, false)
-        assertFalse(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
+        assertTrue(CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false))
     }
 
-    @Test fun onlyTheSystemCarSettingsPackageIdentifiesTheBydHeadUnit() {
-        installPackage("com.byd.carsettings", system = false)
-        assertFalse(CarHotspotSetup.isBydHeadUnit(context))
-
-        installPackage("com.byd.carsettings", system = true)
-        assertTrue(CarHotspotSetup.isBydHeadUnit(context))
-    }
-
-    private fun installPackage(name: String, system: Boolean) {
-        shadowOf(context.packageManager).installPackage(PackageInfo().apply {
-            packageName = name
-            applicationInfo = ApplicationInfo().apply {
-                packageName = name
-                flags = if (system) ApplicationInfo.FLAG_SYSTEM else 0
-            }
-        })
-    }
 }

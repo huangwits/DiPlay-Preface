@@ -79,8 +79,8 @@ class ExistingWifiSettingsTest {
         CarPlayHostActivity::class.java.getDeclaredField("airPlayIdentity").apply { isAccessible = true }
             .set(host, AirPlayPersistence.loadIdentity(app))
         CarPlayHostActivity::class.java.getDeclaredMethod("loadPersistedSettings").apply { isAccessible = true }.invoke(host)
-        fun runtime() = CarPlayHostActivity::class.java.getDeclaredMethod("createRuntimeConfig")
-            .apply { isAccessible = true }.invoke(host) as CarPlayRuntimeConfig
+        fun runtime() = CarPlayHostActivity::class.java.getDeclaredMethod("createRuntimeConfig", Boolean::class.javaPrimitiveType)
+            .apply { isAccessible = true }.invoke(host, false) as CarPlayRuntimeConfig
         assertEquals("Pocket", runtime().existingWifiSsid)
         assertEquals("pocket-password", runtime().existingWifiPassphrase)
         assertEquals(CarPlayTransport.WIRELESS, runtime().transport)

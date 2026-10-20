@@ -15,8 +15,13 @@ internal class AudioBufferProgress(private val frameBytes: Int) {
         return (writtenBytes - playedFrames * frameBytes).coerceAtLeast(0)
     }
 
-    fun shouldRebuffer(isMedia: Boolean, playing: Boolean, underrunSinceStart: Boolean,
-        compressedQueueEmpty: Boolean, rawHead: Int, floorBytes: Long): Boolean =
-        isMedia && playing && underrunSinceStart && compressedQueueEmpty &&
-            queuedBytes(rawHead) <= floorBytes
+    fun shouldRebuffer(isMedia: Boolean, playing: Boolean, underrunSinceStart: Boolean?,
+        compressedQueueEmpty: Boolean, rawHead: Int, floorBytes: Long): Boolean {
+        if (!isMedia || !playing || !compressedQueueEmpty) return false
+        val remaining = queuedBytes(rawHead)
+        // API 22 has no underrun counter. Actual exhaustion is the fallback signal;
+        // a merely low buffer must not repeatedly pause otherwise healthy playback.
+        return if (underrunSinceStart == null) writtenBytes > 0 && remaining == 0L
+            else underrunSinceStart && remaining <= floorBytes
+    }
 }

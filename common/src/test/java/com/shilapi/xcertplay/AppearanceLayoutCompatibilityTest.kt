@@ -24,7 +24,7 @@ class AppearanceLayoutCompatibilityTest {
         AirPlayPersistence.saveHideBottomBar(context, false)
         SettingsLayoutPreferences.saveForceFull(context, true)
         val controller = Robolectric.buildActivity(DiPlayActivity::class.java,
-            Intent(context, DiPlayActivity::class.java).putExtra("page", "settings")).setup()
+            Intent(context, DiPlayActivity::class.java).putExtra("page", "settings")).setup().visible()
         val activity = controller.get()
         try {
             for (appearance in AppAppearance.entries) {

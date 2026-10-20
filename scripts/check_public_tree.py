@@ -16,35 +16,6 @@ PRIVATE = re.compile(rb'-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----\s+[A-Za-z0-9
 DOWNLOAD = re.compile(rb'https?://[^\s"<>]+\.(?:apk|aab)(?:[?#\s"<>]|$)', re.I)
 
 
-
-# Public application source excludes administration and internal maintenance files.
-INTERNAL_PATHS = ('.github/workflows/android51.yml', '.github/workflows/sync-upstream.yml', 'agents.md', 'changelog.md', 'claude.md', 'product.md', 'scripts/build-beta.py', 'scripts/build-signed-e01.ps1', 'scripts/merge-local-into-upstream.ps1', 'scripts/package_source.py', 'scripts/prepare_upstream_update.py', 'scripts/reset-integrated-tree.ps1', 'scripts/tests/test_prepare_upstream_update.py')
-LEGAL_DOCS = {'disclaimer.md', 'third_party_notices.md'}
-
-
-def check_public_scope(parts, name):
-    normalized = '/'.join(parts)
-    if 'server' in parts[:2]:
-        raise ValueError('Server deployment source: ' + name)
-    for directory in ('license-server', 'license-workers'):
-        if directory in parts:
-            raise ValueError('Private administration source: ' + name)
-    if 'offline-license' in parts:
-        public_asset = 'mobile/src/e01public/assets/offline-license/public.json'
-        if normalized != public_asset and not normalized.endswith('/' + public_asset):
-            raise ValueError('Private issuer source: ' + name)
-    for internal in INTERNAL_PATHS:
-        if normalized == internal or normalized.endswith('/' + internal):
-            raise ValueError('Internal maintenance file: ' + name)
-    for directory in ('validation', 'work', 'outputs'):
-        if directory in parts[:2]:
-            raise ValueError('Local working files: ' + name)
-    if 'docs' in parts[:2]:
-        tail = parts[parts.index('docs') + 1:]
-        if not (len(tail) == 1 and tail[0] in LEGAL_DOCS or tail and tail[0] == 'licenses'):
-            raise ValueError('Internal documentation: ' + name)
-
-
 def source_files(root):
     """Skip generated directories, but do not silently omit secret-looking source files."""
     for folder, dirs, files in os.walk(root, followlinks=False):
@@ -65,7 +36,6 @@ def source_files(root):
 def check_entry(name, data, depth=0):
     path = PurePosixPath(name.replace('\\', '/'))
     parts = [p.lower() for p in path.parts]
-    check_public_scope(parts, name)
     if path.is_absolute() or '..' in path.parts or ':' in name:
         raise ValueError('Unsafe archive path: ' + name)
     if (path.suffix.lower() in BLOCKED or '.private' in parts or

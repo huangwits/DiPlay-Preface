@@ -12,6 +12,9 @@ import java.io.ByteArrayOutputStream
 import java.util.zip.ZipFile
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.net.URI
 import java.util.Base64
 import java.security.spec.X509EncodedKeySpec
@@ -192,9 +195,9 @@ android {
         applicationId = "com.shihab.diplay"
         minSdk = 22
         targetSdk = 37
-        versionCode = 86
+        versionCode = 121
         // Original DiPlay upstream version plus the Preface revision; see docs/VERSIONING.md.
-        versionName = "0.2.20.4"
+        versionName = "0.2.20.39"
 
     }
 
@@ -499,8 +502,10 @@ tasks.register("assembleStandaloneE01Licensed") {
     description = "Build the optimized, device-activated E01 APK; empty origin is allowed only in explicit preview mode."
     dependsOn(verifyStandaloneAuthentication, verifyLicenseConfiguration, "assembleE01Licensed")
     val packagedApk = layout.buildDirectory.file("outputs/apk/e01Licensed/mobile-e01Licensed.apk")
-    val namedApk = layout.buildDirectory.file("outputs/apk/e01Licensed/GeelyPlay-v0.2.20.4.apk")
-    val deliveryApk = rootProject.layout.projectDirectory.file("../../outputs/GeelyPlay-0.2.20.4-20261016/GeelyPlay-v0.2.20.4.apk")
+    val deliveryVersion = android.defaultConfig.versionName ?: error("APK version is missing")
+    val deliveryDate = LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.BASIC_ISO_DATE)
+    val namedApk = layout.buildDirectory.file("outputs/apk/e01Licensed/GeelyPlay-v$deliveryVersion.apk")
+    val deliveryApk = rootProject.layout.projectDirectory.file("../../outputs/GeelyPlay-$deliveryVersion-$deliveryDate/GeelyPlay-v$deliveryVersion.apk")
     val authentication = localAuthenticationAssets
     val licensing = localLicenseAssets
     val factoryMapConfigs = localE01MapConfigAssets
@@ -529,6 +534,12 @@ tasks.register("assembleStandaloneE01Licensed") {
                     expected.fill(0)
                 }
             }
+        }
+        if (deliveryApk.asFile.exists()) {
+            check(MessageDigest.isEqual(
+                MessageDigest.getInstance("SHA-256").digest(deliveryApk.asFile.readBytes()),
+                MessageDigest.getInstance("SHA-256").digest(packagedApk.get().asFile.readBytes()),
+            )) { "A different APK is already delivered at this version; increment the version and preserve that file" }
         }
         packagedApk.get().asFile.copyTo(namedApk.get().asFile, overwrite = true)
         deliveryApk.asFile.parentFile.mkdirs()

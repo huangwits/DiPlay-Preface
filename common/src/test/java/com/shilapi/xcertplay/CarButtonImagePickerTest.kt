@@ -262,6 +262,8 @@ class CarButtonImagePickerTest {
     }
 
     private fun views(view: View): Sequence<View> = sequence {
+        if (view === view.rootView && view.isAttachedToWindow)
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(20, java.util.concurrent.TimeUnit.MILLISECONDS)
         yield(view)
         if (view is ViewGroup) for (index in 0 until view.childCount) yieldAll(views(view.getChildAt(index)))
     }

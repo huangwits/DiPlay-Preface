@@ -13,6 +13,7 @@ import com.shilapi.xcertplay.network.WifiP2pGroupManager
 import com.shilapi.xcertplay.network.WirelessHotspotBackend
 import com.shilapi.xcertplay.network.WirelessHotspotInfo
 import com.shilapi.xcertplay.network.WirelessHotspotManager
+import com.shilapi.xcertplay.network.CarHotspotTethering
 
 /** Selects and remembers the first wireless link that the current head unit can provide. */
 class AutomaticHotspotManager(
@@ -50,6 +51,20 @@ class AutomaticHotspotManager(
 
         val attempts = buildAttempts()
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        if (GkuiLegacySoftAp.supported(appContext)) {
+            onDiagnostic("Automatic hotspot: preparing the saved GKUI SoftAP via WifiManager")
+            val result = CarHotspotTethering.enable(appContext,
+                isCancelled = { closed },
+                timeoutMillis = remainingMillis(deadline).coerceAtLeast(1L),
+                log = onDiagnostic,
+            )
+            if (closed || result == CarHotspotTethering.Result.CANCELLED) {
+                throw java.io.InterruptedIOException("Automatic hotspot startup cancelled")
+            }
+            if (result != CarHotspotTethering.Result.READY) {
+                throw IOException("GKUI saved hotspot could not be enabled: ${result.name}")
+            }
+        }
         attempts.forEachIndexed { index, attempt ->
             val remainingMillis = remainingMillis(deadline)
             if (remainingMillis <= 0) return@forEachIndexed

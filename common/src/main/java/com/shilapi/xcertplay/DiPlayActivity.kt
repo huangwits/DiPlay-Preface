@@ -3,7 +3,25 @@
 package com.shilapi.xcertplay
 
 import androidx.core.widget.doAfterTextChanged
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import com.shilapi.xcertplay.ui.home.PrefaceHomeScreen
+import com.shilapi.xcertplay.ui.home.PrefaceSettingsScreen
+import com.shilapi.xcertplay.ui.theme.XcertplayTheme
 import com.shilapi.xcertplay.media.AudioOutputDevice
+import com.shilapi.xcertplay.airplay.AudioQualityLimit
+import com.shilapi.xcertplay.airplay.AudioQualityProfiles
+import com.shilapi.xcertplay.airplay.AudioQualitySettings
+import com.shilapi.xcertplay.airplay.AudioCodecKind
+import com.shilapi.xcertplay.media.AudioQualityCapabilities
+import com.shilapi.xcertplay.media.OpusEncoderSupport
+import com.shilapi.xcertplay.vehicle.VehicleDataFeature
+import com.shilapi.xcertplay.vehicle.VehicleDataConfig
+import com.shilapi.xcertplay.vehicle.source.VehicleDataSourceRequest
+import com.shilapi.xcertplay.vehicle.source.VehicleDataEntries
+import com.shilapi.xcertplay.vehicle.profile.VehicleProfileParser
 
 import android.Manifest
 import android.app.AlertDialog
@@ -58,7 +76,6 @@ import com.shilapi.xcertplay.orchestration.ManualHotspotSecurity
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import com.shilapi.xcertplay.settings.SettingsTheme
 import com.shilapi.xcertplay.settings.SettingsWidgets
-import com.shilapi.xcertplay.transport.EvChargingConnectors
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -87,7 +104,7 @@ internal enum class SettingsCategory {
 internal enum class SettingsSection {
     CARPLAY_CONTROLS, CONNECTION_SETUP, DIAGNOSTICS, AUTOMATIC_CONNECTION,
     DISPLAY_AND_PERFORMANCE, EXPERIMENTAL_DISPLAY, ADVANCED_MEDIA, CAR_BUTTON, AUDIO_ROUTING,
-    LOCATION, GEELY_VEHICLE, VEHICLE_MAP, STEERING_IDENTIFICATION,
+    LOCATION, VEHICLE_DATA, GEELY_VEHICLE, VEHICLE_MAP, STEERING_IDENTIFICATION,
     CLUSTER_MAP, PERMISSIONS_AND_HELP, ABOUT,
 }
 
@@ -100,7 +117,7 @@ internal object SettingsInformationArchitecture {
         SettingsCategory.AUDIO to setOf(SettingsSection.AUDIO_ROUTING),
         SettingsCategory.NAVIGATION to setOf(SettingsSection.LOCATION, SettingsSection.CLUSTER_MAP),
         SettingsCategory.VEHICLE to setOf(SettingsSection.CARPLAY_CONTROLS, SettingsSection.CAR_BUTTON,
-            SettingsSection.GEELY_VEHICLE, SettingsSection.VEHICLE_MAP, SettingsSection.STEERING_IDENTIFICATION),
+            SettingsSection.VEHICLE_DATA, SettingsSection.GEELY_VEHICLE, SettingsSection.VEHICLE_MAP, SettingsSection.STEERING_IDENTIFICATION),
         SettingsCategory.DIAGNOSTICS to setOf(SettingsSection.DIAGNOSTICS),
         SettingsCategory.ADVANCED to setOf(SettingsSection.EXPERIMENTAL_DISPLAY, SettingsSection.ADVANCED_MEDIA),
     )
@@ -108,6 +125,8 @@ internal object SettingsInformationArchitecture {
 
 /** DiAuto's visual language, with a connection flow for an independent CarPlay receiver. */
 class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
+    private var materialHomeStatus by mutableStateOf("")
+    private var materialHomeRunning by mutableStateOf(false)
     private var soundPreview: AudioChannelPreview? = null
     private var factoryKeyDialog: AlertDialog? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -209,6 +228,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private val adbSwitches = mutableMapOf<Int, Pair<Switch, () -> Boolean>>()
     @Volatile private var startupHotspotCancelled = false
     @Volatile private var keepBootHotspotRunning = false
+    private var startupHotspotInFlight = false
     private var exitRequested = false
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         connect(notificationTransport)
@@ -256,6 +276,22 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
     private val iconPicker = registerForActivityResult(ActivityResultContracts.GetContent(), ::cropIcon)
     private val iconDocumentPicker = registerForActivityResult(ActivityResultContracts.OpenDocument(), ::cropIcon)
+    private val vehicleProfilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { VehicleProfileRepository(this).import(uri) }
+                .onSuccess { text ->
+                    AlertDialog.Builder(this).setTitle("车辆数据配置")
+                        .setMessage("已校验 JSON 配置。保存并在下次 CarPlay 连接时使用？")
+                        .setPositiveButton(R.string.save) { _, _ ->
+                            VehicleProfileRepository(this).save(VehicleProfileRepository.Selection(text,
+                                VehicleProfileRepository.IMPORTED))
+                            render()
+                            markReconnectNeeded()
+                        }.setNegativeButton(R.string.cancel, null).show()
+                }
+                .onFailure { toast("车辆数据配置无效：${it.message ?: it.javaClass.simpleName}") }
+        }
+    }
     private fun cropIcon(uri: Uri?) {
         if (uri != null) iconCrop.launch(Intent(this, ImageCropActivity::class.java).setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
     }
@@ -357,7 +393,9 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent)
         val bootHotspot = intent.getBooleanExtra("boot_hotspot", false)
+        val powerOnHotspot = intent.getBooleanExtra("power_on_hotspot", false)
         intent.removeExtra("boot_hotspot")
+        intent.removeExtra("power_on_hotspot")
         connectionSettingsReturnCategory = null
         // CarPlay runs in its own task, so the launcher icon resumes this one. Settings opened from
         // CarPlay carry a "page" extra, which isLauncherIntent rejects.
@@ -372,7 +410,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         handleAuthorizedConnection()
         // BOOT_COMPLETED can deliver a SINGLE_TOP intent to the existing activity. In that
         // case onCreate/onResume will not see the extra, so start the requested hotspot here.
-        if (bootHotspot) startCarHotspotOnLaunch(keepRunningInBackground = true)
+        if (bootHotspot || powerOnHotspot) startCarHotspotOnLaunch(keepRunningInBackground = true)
+        else if (!initialLaunch && isLauncherIntent(intent)) startCarHotspotOnLaunch()
         if (consumeBluetoothAutoConnectIntent(intent)) {
             if (initialLaunch) {
                 initialLaunch = false
@@ -465,23 +504,32 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         startAppearanceUpdates()
         pausedForAdbSwitchChange = false
         val bootHotspot = intent.getBooleanExtra("boot_hotspot", false)
+        val powerOnHotspot = intent.getBooleanExtra("power_on_hotspot", false)
         intent.removeExtra("boot_hotspot")
-        if (!initialLaunch && bootHotspot) startCarHotspotOnLaunch(keepRunningInBackground = true)
+        intent.removeExtra("power_on_hotspot")
+        if (!initialLaunch && (bootHotspot || powerOnHotspot)) startCarHotspotOnLaunch(keepRunningInBackground = true)
+        else if (!initialLaunch && !exitRequested) startCarHotspotOnLaunch()
         if (initialLaunch) {
             initialLaunch = false
             val autoConnectOnLaunch = setupError == null && !CarPlayBackgroundSession.hasSession() &&
                 DiPlayPreferences.autoConnect(this) && intent.getStringExtra("page") == null &&
                 !intent.getBooleanExtra("authorization_return", false)
-            if (startupHotspotEligible() && autoConnectOnLaunch) {
+            val launchWireless = DiPlayPreferences.autoConnectWireless(this)
+            if (isLauncherIntent(intent)) AirPlayPersistence.saveWirelessEnabled(this, launchWireless)
+            if (startupHotspotEligible() && autoConnectOnLaunch && launchWireless) {
                 startCarHotspotOnLaunch(keepRunningInBackground = bootHotspot) {
                     if (setupError == null && !CarPlayBackgroundSession.hasSession()) {
-                        connect(DiPlayPreferences.autoConnectWireless(this))
+                        connect(launchWireless)
                     }
                 }
             } else {
-                startCarHotspotOnLaunch(keepRunningInBackground = bootHotspot)
+                // USB auto-connect does not need a Wi-Fi/AP transition; starting one here
+                // can steal the launch while the wired connection is starting.
+                if (!autoConnectOnLaunch || launchWireless) {
+                    startCarHotspotOnLaunch(keepRunningInBackground = bootHotspot)
+                }
                 if (autoConnectOnLaunch) {
-                    handler.post { connect(DiPlayPreferences.autoConnectWireless(this)) }
+                    handler.post { connect(launchWireless) }
                 }
             }
         }
@@ -611,6 +659,27 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         settingsSearchBox = null
         if (page != "settings") clearSettingsSearchState()
         status = null; connectButton = null; disconnectButton = null; lastRunning = null; carButtonCard = null
+        if (page == "home") {
+            rootScroll = null
+            refreshStatus()
+            setContentView(ComposeView(this).apply {
+                setContent {
+                    XcertplayTheme(darkTheme = appNight, scaled = false) {
+                        PrefaceHomeScreen(materialHomeStatus,
+                            version(), materialHomeRunning, setupError == null || !com.geelyplay.preface.license.AppLicense.canStart(this@DiPlayActivity),
+                            ::connectPhone, { connect(false) }, ::choosePhone,
+                            { CarPlayBackgroundSession.stop { runOnUiThread { refreshStatus() } } },
+                            { page = "settings"; render() },
+                            { startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)) },
+                            ::exitApplication,
+                            { appearanceButton().performClick() }, ::openWirelessSettings)
+                    }
+                }
+            })
+            renderedPage = page
+            renderedSettingsCategory = null
+            return
+        }
         reconnectBar = null
         readinessCard = null
         exportButton = null
@@ -625,10 +694,22 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         val content = column()
         scroll.addView(content)
         val header = if (page == "settings") settingsHeader(compact) else standardHeader(compact)
-        val root: View = if (page == "settings" && isExpandedSettingsLayout) {
-            content.setPadding(0, 0, 0, dp(32))
+        val root: View = if (page == "settings") {
+            content.setPadding(dp(16), dp(12), dp(16), dp(24))
+            content.addView(reconnectBar())
             settingsCategoryContent(content)
-            expandedSettingsShell(header, scroll)
+            val rail = if (isExpandedSettingsLayout) ScrollView(this).apply {
+                addView(column().apply { setPadding(0, 0, 0, dp(12)); addView(settingsRail()) })
+                settingsRailScroll = this
+            } else null
+            ComposeView(this).apply {
+                setContent {
+                    XcertplayTheme(darkTheme = appNight, scaled = false) {
+                        PrefaceSettingsScreen(header, scroll, rail, isExpandedSettingsLayout,
+                            SettingsLayoutPolicy.railWidthDp(resources.configuration.fontScale))
+                    }
+                }
+            }
         } else {
             if (compact) content.setPadding(dp(12), dp(10), dp(12), dp(12))
             else content.setPadding(dp(32), dp(24), dp(32), dp(32))
@@ -655,7 +736,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         val baseTop = root.paddingTop
         val baseRight = root.paddingRight
         val baseBottom = root.paddingBottom
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+        if (root !is ComposeView) ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val safe = insets.getInsets(
                 WindowInsetsCompat.Type.displayCutout() or
                     WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()
@@ -761,8 +842,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     private fun settingsHeader(compact: Boolean): LinearLayout = row().apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(headerButton(getString(R.string.back), R.drawable.ic_dp_back, compact, ::navigateBack),
-            LinearLayout.LayoutParams(-2, if (compact) dp(44) else dp(52)))
         addView(label(getString(R.string.settings), if (compact) 20 else 26, TEXT, true,
             centreGlyphs = true).apply {
             setPadding(dp(12), 0, dp(12), 0)
@@ -770,7 +849,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         addView(settingsSearchField(compact), LinearLayout.LayoutParams(0, if (compact) dp(44) else dp(52), 1f).apply {
             marginEnd = dp(if (compact) 8 else 12)
         })
-        addView(appearanceButton(), LinearLayout.LayoutParams(dp(if (compact) 44 else 52), dp(if (compact) 44 else 52)))
+        addView(appearanceButton(), LinearLayout.LayoutParams(dp(if (compact) 44 else 52), dp(if (compact) 44 else 52)).apply {
+            marginEnd = dp(if (compact) 8 else 12)
+        })
+        addView(headerButton(getString(R.string.back), R.drawable.ic_dp_back, compact, ::navigateBack),
+            LinearLayout.LayoutParams(-2, if (compact) dp(44) else dp(52)))
     }
 
     private fun appearanceButton(): ImageButton = iconButton(
@@ -1187,6 +1270,233 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private fun audioSettings(content: LinearLayout) {
         settingsPageTitle(content, getString(R.string.audio), getString(R.string.settings_audio_summary))
         renderSections(content, SettingsInformationArchitecture.sectionsByCategory.getValue(SettingsCategory.AUDIO))
+    }
+
+    private fun openAudioQualitySettings() {
+        if (CarPlayBackgroundSession.hasSession()) {
+            val cached = AudioQualityCapabilities.cached(this)
+            if (cached != null) showAudioQualitySettings(cached)
+            else toast("请先断开 CarPlay，再检测音频设置。")
+            return
+        }
+        val loading = AlertDialog.Builder(this)
+            .setTitle("音频格式与质量")
+            .setMessage("正在检测车机音频能力…")
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        loading.show()
+        Thread({
+            val result = runCatching { AudioQualityCapabilities.probe(applicationContext) }
+            handler.post {
+                if (isFinishing || isDestroyed) return@post
+                loading.dismiss()
+                result.onSuccess(::showAudioQualitySettings)
+                    .onFailure { toast("音频能力检测失败：${it.message ?: it.javaClass.simpleName}") }
+            }
+        }, "diplay-audio-capability-probe").apply { isDaemon = true; start() }
+    }
+
+    private fun showAudioQualitySettings(capabilities: AudioQualityCapabilities.Result) {
+        val wirelessEnabled = DiPlayPreferences.autoConnectWireless(this)
+        val savedQuality = AirPlayPersistence.loadAudioQuality(this)
+        var quality = savedQuality.copy(
+            opusEnabled = savedQuality.opusEnabled || !capabilities.compatibleModeAvailable,
+        )
+        val fields = column().apply { setPadding(dp(20), dp(12), dp(20), dp(12)) }
+        val opusSwitch = Switch(this).apply {
+            text = "无线语音格式（Opus）"
+            isChecked = quality.opusEnabled
+            isEnabled = capabilities.compatibleModeAvailable
+        }
+        fields.addView(opusSwitch, LinearLayout.LayoutParams(-1, dp(56)))
+        fields.addView(label(
+            if (capabilities.compatibleModeAvailable) {
+                "有线连接使用 LPCM。无线语音默认使用 Opus；关闭后改用车机实测可用的兼容格式。"
+            } else {
+                "本机没有检测到可用的 Opus 替代格式，已保留 Opus 语音。"
+            },
+            14,
+            MUTED,
+        ))
+        val routes = column()
+        fields.addView(routes)
+
+        val controls = listOf(
+            AudioQualityProfiles.Route.MUSIC to "音乐",
+            AudioQualityProfiles.Route.ASSISTANT to "语音助手",
+            AudioQualityProfiles.Route.NAVIGATION to "导航提示",
+            AudioQualityProfiles.Route.PHONE to "通话",
+            AudioQualityProfiles.Route.MICROPHONE to "麦克风",
+        )
+
+        fun current(route: AudioQualityProfiles.Route): AudioQualityLimit = when (route) {
+            AudioQualityProfiles.Route.MUSIC -> quality.music
+            AudioQualityProfiles.Route.ASSISTANT -> quality.assistant
+            AudioQualityProfiles.Route.NAVIGATION -> quality.navigation
+            AudioQualityProfiles.Route.PHONE -> quality.phone
+            AudioQualityProfiles.Route.MICROPHONE -> quality.microphone
+        }
+
+        fun setCurrent(route: AudioQualityProfiles.Route, limit: AudioQualityLimit) {
+            quality = when (route) {
+                AudioQualityProfiles.Route.MUSIC -> quality.copy(music = limit)
+                AudioQualityProfiles.Route.ASSISTANT -> quality.copy(assistant = limit)
+                AudioQualityProfiles.Route.NAVIGATION -> quality.copy(navigation = limit)
+                AudioQualityProfiles.Route.PHONE -> quality.copy(phone = limit)
+                AudioQualityProfiles.Route.MICROPHONE -> quality.copy(microphone = limit)
+            }
+        }
+
+        fun supported(route: AudioQualityProfiles.Route): List<AudioQualityLimit> {
+            val codecs = when (route) {
+                AudioQualityProfiles.Route.MUSIC -> listOf(AudioCodecKind.LPCM, AudioCodecKind.AAC_LC)
+                AudioQualityProfiles.Route.MICROPHONE -> listOfNotNull(
+                    AudioCodecKind.LPCM,
+                    AudioCodecKind.OPUS.takeIf { wirelessEnabled && quality.opusEnabled && OpusEncoderSupport.isAvailable() },
+                    AudioCodecKind.AAC_ELD.takeIf { wirelessEnabled && !quality.opusEnabled && 16_000 in capabilities.eldMicrophoneRates },
+                )
+                else -> listOf(AudioQualityProfiles.codec(route, wirelessEnabled, quality.opusEnabled))
+            }
+            val channels = AudioQualityProfiles.persistentChannels(route)
+            val rates = AudioQualityProfiles.persistentRates(route)
+            val result = codecs.flatMap { codec -> channels.flatMap { channel ->
+                val available = when (route) {
+                    AudioQualityProfiles.Route.MICROPHONE -> when (codec) {
+                        AudioCodecKind.LPCM -> capabilities.microphoneCaptureRates
+                        AudioCodecKind.OPUS -> listOf(16_000).takeIf { OpusEncoderSupport.isAvailable() }.orEmpty()
+                        AudioCodecKind.AAC_ELD -> capabilities.eldMicrophoneRates
+                        else -> emptyList()
+                    }
+                    else -> capabilities.rates(codec, channel)
+                }
+                rates.filter { it in available }.map { AudioQualityLimit(it, channel) }
+            } }
+            return result.distinct().sortedWith(compareBy<AudioQualityLimit> { it.sampleRate }.thenBy { it.channels })
+        }
+
+        fun rebuild() {
+            routes.removeAllViews()
+            controls.forEach { (route, title) ->
+                val choices = supported(route)
+                if (choices.isEmpty()) {
+                    routes.addView(label("$title：当前设备未检测到可用格式", 14, MUTED))
+                    return@forEach
+                }
+                val row = column().apply { setPadding(0, dp(8), 0, dp(6)) }
+                row.addView(label(title, 15, TEXT, true))
+                val spinner = Spinner(this).apply {
+                    adapter = ArrayAdapter(this@DiPlayActivity, android.R.layout.simple_spinner_dropdown_item,
+                        choices.map { "${it.sampleRate / 1000.0} kHz · ${if (it.channels == 1) "单声道" else "立体声"}" })
+                    val selected = choices.indexOf(current(route)).takeIf { it >= 0 } ?: choices.lastIndex
+                    setSelection(selected)
+                    onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                        override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+                        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                            choices.getOrNull(position)?.let { setCurrent(route, it) }
+                        }
+                    }
+                }
+                row.addView(spinner, LinearLayout.LayoutParams(-1, dp(52)))
+                routes.addView(row)
+            }
+        }
+
+        opusSwitch.setOnCheckedChangeListener { _, enabled ->
+            quality = quality.copy(opusEnabled = enabled)
+            rebuild()
+        }
+        rebuild()
+        fields.addView(label("实际格式由 iPhone 与车机协商；更改后需重新连接。", 14, MUTED).apply {
+            setPadding(0, dp(12), 0, 0)
+        })
+        val dialog = AlertDialog.Builder(this).setTitle("音频格式与质量").setView(ScrollView(this).apply { addView(fields) })
+            .setPositiveButton(if (CarPlayBackgroundSession.hasSession()) R.string.apply_and_reconnect else R.string.save, null)
+            .setNegativeButton(R.string.cancel, null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                AirPlayPersistence.saveAudioQuality(this, quality)
+                markReconnectNeeded()
+                dialog.dismiss()
+                render()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun vehicleDataControls(card: LinearLayout) {
+        var config = AirPlayPersistence.loadVehicleDataConfig(this)
+        VehicleDataFeature.entries.filter { !it.fromVehicle &&
+            (it != VehicleDataFeature.PRECISE_POSITIONING || Build.VERSION.SDK_INT >= 24) }.forEach { feature ->
+            toggle(card, feature.label, feature.description, config.isEnabled(feature)) { enabled ->
+                config = config.with(feature, enabled)
+                AirPlayPersistence.saveVehicleDataConfig(this, config)
+                markReconnectNeeded()
+            }
+        }
+        fun selectedProfile(): com.shilapi.xcertplay.vehicle.profile.VehicleProfile =
+            VehicleProfileParser.parse(VehicleProfileRepository(this).load().text)
+        val entries = runCatching { InstalledVehicleDataEntries.all(applicationContext, ::selectedProfile) }.getOrDefault(emptyList())
+        if (entries.isEmpty()) {
+            card.addView(label("本机未提供可用的只读车辆属性接口。GPS 信息仍可按上方选择提供。", 14, MUTED))
+            return
+        }
+        val entry = runCatching { VehicleDataEntries.select(entries, config.sourceId) }.getOrNull()
+        card.addView(label("车辆数据只使用只读接口，不会自动上传。", 14, MUTED))
+        if (entries.size > 1) {
+            card.addView(label("车辆数据来源", 14, TEXT, true))
+            val sourcePicker = Spinner(this)
+            sourcePicker.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
+                entries.map { it.displayName })
+            sourcePicker.setSelection(entries.indexOf(entry).coerceAtLeast(0), false)
+            sourcePicker.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    val selected = entries.getOrNull(position) ?: return
+                    if (selected.id == config.sourceId) return
+                    config = config.copy(sourceId = selected.id)
+                    AirPlayPersistence.saveVehicleDataConfig(this@DiPlayActivity, config)
+                    markReconnectNeeded()
+                    render()
+                }
+            }
+            card.addView(sourcePicker, LinearLayout.LayoutParams(-1, dp(52)))
+        }
+        card.addView(button("导入其他车型配置", false) { vehicleProfilePicker.launch(arrayOf("application/json", "text/json", "*/*")) },
+            matchButton(8, 56))
+        card.addView(label("数据来源：${entry?.displayName ?: "未找到有效配置"}", 14, MUTED))
+        val mappedFeatures = entry?.let { selected -> VehicleDataFeature.entries.filter { feature ->
+            feature.fromVehicle && selected.canProvide(feature)
+        } }.orEmpty()
+        mappedFeatures.forEach { feature ->
+            val switch = Switch(this).apply { text = feature.label; isChecked = config.isEnabled(feature) }
+            switch.setOnCheckedChangeListener { _, enabled ->
+                config = config.with(feature, enabled)
+                AirPlayPersistence.saveVehicleDataConfig(this, config)
+                markReconnectNeeded()
+            }
+            card.addView(switch, LinearLayout.LayoutParams(-1, dp(56)))
+        }
+        if (mappedFeatures.isEmpty()) card.addView(label("此来源没有可发送的车辆信号。", 14, MUTED))
+        card.addView(label("只有 CarPlay 请求期间才会读取并发送；诊断信息仅在你手动提交报告时发送。", 14, MUTED))
+        card.addView(button("查看车辆读取诊断", false) {
+            val selected = entry ?: run { toast("没有有效车辆数据配置"); return@button }
+            val source = selected.create(VehicleDataSourceRequest(applicationContext, config, diagnostic = true))
+            val progress = AlertDialog.Builder(this).setTitle("车辆数据诊断").setMessage("正在读取匹配的车辆属性…")
+                .setNegativeButton(R.string.cancel, null).create()
+            progress.show()
+            Thread({
+                val text = runCatching { source.start(); source.diagnostics() }
+                    .getOrElse { "读取诊断失败：${it.message ?: it.javaClass.simpleName}" }
+                source.close()
+                handler.post {
+                    if (isFinishing || isDestroyed) return@post
+                    progress.dismiss()
+                    val report = TextView(this).apply { this.text = text; textSize = 13f; setPadding(dp(16), dp(12), dp(16), dp(12)) }
+                    AlertDialog.Builder(this).setTitle("车辆数据诊断").setView(ScrollView(this).apply { addView(report) })
+                        .setPositiveButton(R.string.close, null).show()
+                }
+            }, "diplay-vehicle-data-diagnostic").apply { isDaemon = true; start() }
+        }, matchButton(8, 56))
     }
 
     private fun navigationSettings(content: LinearLayout) {
@@ -1725,6 +2035,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         }
         filteredSection(content, SettingsSection.CAR_BUTTON, getString(R.string.car_button_in_carplay), R.drawable.ic_dp_car) { card -> carButtonCard = card; carButtonControls(card) }
         filteredSection(content, SettingsSection.AUDIO_ROUTING, getString(R.string.audio_routing), R.drawable.ic_dp_audio) { card ->
+            card.addView(button("音频格式与质量", false) { openAudioQualitySettings() }, matchButton(4, 56))
+            card.addView(label("可用选项经车机能力检测；更改后需重新连接 CarPlay。", 14, MUTED))
             if (resources.getBoolean(R.bool.config_advanced_audio_channel_mapping)) {
                 toggle(card, getString(R.string.advanced_audio_channel_mapping),
                     getString(R.string.use_usage_content_type_routing_instead_of_stream_type),
@@ -1738,8 +2050,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             val factoryMix = NavigationAudioDuckingSettings.usesFactoryMixer(this)
             var changingMix = false
             var mixControl: Switch? = null
-            mixControl = toggle(card, "导航播报压低音乐", if (factoryMix)
-                "同步车机原厂导航混音设置，关闭后直接混音。" else "播报时压低音乐，结束后恢复。",
+            mixControl = toggle(card, "导航播报时降低音乐", if (factoryMix)
+                "与车机原厂混音设置同步；关闭后不再压低音乐。" else "播报期间降低音乐音量，结束后恢复；不改变导航音量设置。",
                 NavigationAudioDuckingSettings.load(this)) { value ->
                 if (!changingMix && !NavigationAudioDuckingSettings.save(this, value)) {
                     changingMix = true
@@ -1763,6 +2075,9 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                 getString(R.string.sends_precise_android_location_as_carplay_gps_data_when_th),
                 AirPlayPersistence.loadLocationReportingEnabled(this), save = ::onLocationReportingChanged)
             card.addView(label(getString(R.string.location_reporting_reconnects), 14, MUTED))
+        }
+        filteredSection(content, SettingsSection.VEHICLE_DATA, "车辆数据", R.drawable.ic_dp_navigation) { card ->
+            vehicleDataControls(card)
         }
         filteredSection(content, SettingsSection.GEELY_VEHICLE, if (FactorySteeringKeys.enabled(this)) "仪表与 HUD" else getString(R.string.geely_vehicle), R.drawable.ic_dp_navigation) { card ->
             if (FactorySteeringKeys.enabled(this)) {
@@ -2060,48 +2375,40 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
 
     private fun startCarHotspotOnLaunch(keepRunningInBackground: Boolean = false, afterComplete: (() -> Unit)? = null) {
+        if (startupHotspotInFlight) {
+            if (keepRunningInBackground) keepBootHotspotRunning = true
+            return
+        }
         // A boot delivery may briefly lose the activity window while the OEM launcher settles;
         // keep that bounded request alive. User-triggered requests remain lifecycle-bound.
         keepBootHotspotRunning = keepRunningInBackground
         startupHotspotCancelled = false
+        StartupDiagnosticSnapshot.hotspotRequested(applicationContext, keepRunningInBackground)
         if (!startupHotspotEligible()) {
-            if (keepRunningInBackground) StartupDiagnosticSnapshot.hotspotResult(applicationContext,
+            StartupDiagnosticSnapshot.hotspotResult(applicationContext,
                 CarHotspotTethering.Result.NOT_ELIGIBLE, com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(applicationContext))
             afterComplete?.invoke()
             return
         }
         val app = applicationContext
+        startupHotspotInFlight = true
         Thread({
             val cancelled = { startupHotspotCancelled || CarPlayBackgroundSession.hasSession() ||
                 (!keepRunningInBackground && !startupHotspotEligible()) }
-            val rootReady = if (cancelled()) false else runCatching {
-                com.geelyplay.preface.e01goc.E01RootBridge.startSavedHotspot(app, cancelled)
-            }.onFailure { Log.i("DiPlay-Hotspot", "factory root hotspot path unavailable", it) }
-                .getOrDefault(false)
-            if (keepRunningInBackground) StartupDiagnosticSnapshot.hotspotRootResult(app, when {
-                cancelled() -> StartupDiagnosticSnapshot.RootHotspotResult.CANCELLED
-                rootReady -> StartupDiagnosticSnapshot.RootHotspotResult.CONFIRMED
-                else -> StartupDiagnosticSnapshot.RootHotspotResult.FALLBACK
-            })
-            val result = if (cancelled()) {
-                CarHotspotTethering.Result.CANCELLED
-            } else if (rootReady) {
-                Log.i("DiPlay-Hotspot", "car hotspot: factory root start confirmed")
-                CarHotspotTethering.Result.READY
-            } else {
-                if (!cancelled()) Log.i("DiPlay-Hotspot", "factory root hotspot was not confirmed; trying the existing fallback")
-                CarHotspotTethering.enable(app,
-                    isCancelled = cancelled,
-                    log = { Log.i("DiPlay-Hotspot", it) },
-                )
+            val result = com.geelyplay.preface.network.SavedHotspotStartup.start(app, cancelled) {
+                Log.i("DiPlay-Hotspot", it)
             }
-            if (keepRunningInBackground) StartupDiagnosticSnapshot.hotspotResult(app, result,
-                com.shilapi.xcertplay.network.CarHotspotStatus.isEnabled(app))
             runOnUiThread {
+                startupHotspotInFlight = false
+                keepBootHotspotRunning = false
+                if (startupHotspotCancelled && !exitRequested && !isFinishing && !isDestroyed &&
+                    lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && startupHotspotEligible()) {
+                    startCarHotspotOnLaunch(afterComplete = afterComplete)
+                    return@runOnUiThread
+                }
                 if (isFinishing || isDestroyed || cancelled() || result == CarHotspotTethering.Result.CANCELLED) return@runOnUiThread
                 afterComplete?.invoke()
             }
-            keepBootHotspotRunning = false
         }, "diplay-hotspot-startup").start()
     }
 
@@ -3475,7 +3782,21 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private fun connectPhone() {
         // A waiting/retrying controller is not an active CarPlay session.
         if (CarPlayBackgroundSession.hasSession() && CarPlayBackgroundSession.active) openProjection()
+        else if (!com.geelyplay.preface.license.AppLicense.canStart(this)) {
+            cancelWirelessAdmission()
+            if (com.geelyplay.preface.license.AppLicense.offline(this)) {
+                startActivity(Intent(this, com.geelyplay.preface.license.OfflineLicenseActivity::class.java))
+            } else openWirelessSettings()
+        }
         else connect(true)
+    }
+
+    private fun openWirelessSettings() {
+        cancelWirelessAdmission()
+        factoryPhonePicker.close()
+        pendingWireless = false
+        startActivity(Intent(this, com.geelyplay.preface.e01goc.E01GocActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
 
     private fun connect(wireless: Boolean) {
@@ -3678,6 +3999,14 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     private fun refreshStatus() {
         val running = CarPlayBackgroundSession.hasSession()
+        materialHomeRunning = running
+        materialHomeStatus = when {
+            setupError != null -> getString(R.string.setup_needs_attention)
+            CarPlayBackgroundSession.active -> getString(R.string.carplay_connected)
+            running -> getString(R.string.connecting_to_your_iphone)
+            DiPlayPreferences.phoneAddress(this) != null -> "${getString(R.string.status_ready_for_prefix)}${DiPlayPreferences.phoneName(this)}"
+            else -> getString(R.string.ready_when_you_are)
+        }
         status?.visibility = if (setupError == null && !running && !CarPlayBackgroundSession.active &&
             DiPlayPreferences.phoneAddress(this) == null) View.GONE else View.VISIBLE
         status?.text = when {
@@ -3881,6 +4210,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private fun exitApplication() {
         if (exitRequested || isFinishing) return
         exitRequested = true
+        com.geelyplay.preface.network.BootHotspotJobService.cancel(this)
         // Stop only a pending startup request. Do not turn off an already active car hotspot
         // or clear the user's boot choice; the next boot must retain the saved behavior.
         startupHotspotCancelled = true
@@ -4150,14 +4480,14 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
     private fun headerButton(title: String, icon: Int, compact: Boolean, click: () -> Unit) = button(title, false, click).apply {
         alignVisibleGlyphs = false
-        if (compact) textSize = 16f
+        textSize = 14f
+        setPadding(dp(24), 0, dp(24), 0)
         includeFontPadding = false
-        setTextColor(TEXT)
         setSingleLine(true)
         gravity = Gravity.CENTER
-        val iconSize = dp(if (compact) 20 else 24)
+        val iconSize = dp(20)
         val drawable = getDrawable(icon)?.mutate()?.apply {
-            setTint(TEXT)
+            setTint(currentTextColor)
             setBounds(0, 0, iconSize, iconSize)
         }
         setCompoundDrawablesRelative(drawable, null, null, null)
@@ -4178,11 +4508,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     private fun layoutCornerRadius(): Float {
         val compact = isCompactLayout && (page != "settings" || !SettingsLayoutPreferences.isActive(this))
-        return dp(if (compact) 44 else 52) * 20f / 56
+        return dp(if (compact) 44 else 52) / 2f
     }
 
     private fun buttonShape(color: Int, stroke: Int, heightPx: Int = 0) = rounded(color, stroke).apply {
-        cornerRadius = if (heightPx > 0) minOf(dp(24).toFloat(), heightPx * 20f / 56) else layoutCornerRadius()
+        cornerRadius = if (heightPx > 0) heightPx / 2f else layoutCornerRadius()
     }
 
     private fun buttonFocusRing() = focusRing(
@@ -4190,11 +4520,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     )
 
     private fun button(title: String, primary: Boolean, click: () -> Unit) = SettingButton(this, MUTED, ACCENT).apply {
-        isAllCaps = false; textSize = 18f
-        setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
-            intArrayOf(MUTED, if (primary) ON_ACCENT else TEXT)))
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        background = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(RIPPLE), buttonShape(if (primary) ACCENT else BUTTON, if (primary) ACCENT else BORDER), null)
+        textSize = 14f
+        DiPlayActionStyle.apply(this, palette, primary)
         setPadding(dp(16), 0, dp(16), 0); minHeight = dp(56); stateListAnimator = null
         compoundDrawablePadding = dp(12)
         applySettingsOverlay(buttonFocusRing())
@@ -4202,8 +4529,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         searchIndexSink?.add(title.substringBefore(VALUE_SEPARATOR))
         setOnClickListener { click() }
         doOnLayout {
-            val shape = buttonShape(if (primary) ACCENT else BUTTON, if (primary) ACCENT else BORDER, height)
-            background = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(RIPPLE), shape, null)
             applySettingsOverlay(buttonFocusRing())
         }
     }

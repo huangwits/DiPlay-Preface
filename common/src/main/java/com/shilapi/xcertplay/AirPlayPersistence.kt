@@ -10,6 +10,9 @@ import com.shilapi.xcertplay.airplay.CarPlayClusterDisplay
 import com.shilapi.xcertplay.airplay.ClusterTurnCardOverlay
 import com.shilapi.xcertplay.airplay.CarPlayUiScale
 import com.shilapi.xcertplay.airplay.AirPlayIdentity
+import com.shilapi.xcertplay.airplay.AudioQualitySettings
+import com.shilapi.xcertplay.airplay.AudioQualityLimit
+import com.shilapi.xcertplay.airplay.AudioQualityProfiles
 import com.shilapi.xcertplay.airplay.PairingStore
 import com.shilapi.xcertplay.airplay.SafeAreaCodec
 import com.shilapi.xcertplay.airplay.SafeAreaRect
@@ -53,6 +56,7 @@ object AirPlayPersistence {
     private const val KEY_NAVIGATION_AUDIO_CHANNEL = "navigation_audio_channel"
     private const val KEY_NAVIGATION_STREAM_TYPE = "navigation_stream_type"
     private const val KEY_WIRELESS_ENABLED = "wireless_enabled"
+    private const val KEY_WIFI_HIGH_PERFORMANCE_ENABLED = "wifi_high_performance_enabled"
     private const val KEY_WIRELESS_HOTSPOT_MODE = "wireless_hotspot_mode"
     private const val KEY_WIRELESS_HOTSPOT_DEFAULT_MIGRATED = "wireless_hotspot_default_auto_migrated"
     private const val KEY_WIFI_P2P_PREFERRED_CHANNEL = "wifi_p2p_preferred_channel"
@@ -122,6 +126,7 @@ object AirPlayPersistence {
     private const val KEY_REMOTE_MFI_SERVER = "remote_mfi_server"
     private const val KEY_REMOTE_MFI_TOKEN = "remote_mfi_token"
     private const val SAFE_AREA_KEY_PREFIX = "safe_area_"
+    private val SAFE_AREA_KEY_PATTERN = Regex("""safe_area_(\d{1,5})x(\d{1,5})""")
     private const val CUSTOM_ICON_FILE = "airplay-icon.png"
 
     const val DEFAULT_MANUFACTURER = "DiPlay"
@@ -209,6 +214,46 @@ object AirPlayPersistence {
             .apply()
     }
 
+    fun loadAudioQuality(context: Context): AudioQualitySettings {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val defaults = AudioQualitySettings()
+        // 历史值可能来自另一台车机或旧版本，必须收敛到该路合法的协议取值，
+        // 否则会推出一个空的格式声明，让这一路彻底没有声音。
+        fun limit(route: AudioQualityProfiles.Route, fallback: AudioQualityLimit): AudioQualityLimit {
+            val rate = prefs.getInt("audio_quality_${route.name.lowercase()}_rate", fallback.sampleRate)
+            val channels = prefs.getInt("audio_quality_${route.name.lowercase()}_channels", fallback.channels)
+            return AudioQualityLimit(
+                rate.takeIf { it in AudioQualityProfiles.persistentRates(route) } ?: fallback.sampleRate,
+                channels.takeIf { it in AudioQualityProfiles.persistentChannels(route) } ?: fallback.channels,
+            )
+        }
+        return AudioQualitySettings(
+            opusEnabled = prefs.getBoolean("audio_quality_opus", defaults.opusEnabled),
+            music = limit(AudioQualityProfiles.Route.MUSIC, defaults.music),
+            assistant = limit(AudioQualityProfiles.Route.ASSISTANT, defaults.assistant),
+            navigation = limit(AudioQualityProfiles.Route.NAVIGATION, defaults.navigation),
+            phone = limit(AudioQualityProfiles.Route.PHONE, defaults.phone),
+            microphone = limit(AudioQualityProfiles.Route.MICROPHONE, defaults.microphone),
+        )
+    }
+
+    fun saveAudioQuality(context: Context, quality: AudioQualitySettings) {
+        val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("audio_quality_opus", quality.opusEnabled)
+        listOf(
+            AudioQualityProfiles.Route.MUSIC to quality.music,
+            AudioQualityProfiles.Route.ASSISTANT to quality.assistant,
+            AudioQualityProfiles.Route.NAVIGATION to quality.navigation,
+            AudioQualityProfiles.Route.PHONE to quality.phone,
+            AudioQualityProfiles.Route.MICROPHONE to quality.microphone,
+        ).forEach { (route, limit) ->
+            val name = route.name.lowercase()
+            editor.putInt("audio_quality_${name}_rate", limit.sampleRate)
+                .putInt("audio_quality_${name}_channels", limit.channels)
+        }
+        editor.apply()
+    }
+
     fun loadAdvancedAudioChannelMapping(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_ADVANCED_AUDIO_CHANNEL_MAPPING, true)
@@ -293,6 +338,16 @@ object AirPlayPersistence {
     fun saveWirelessEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_WIRELESS_ENABLED, enabled)
+            .apply()
+    }
+
+    fun loadWifiHighPerformanceEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_WIFI_HIGH_PERFORMANCE_ENABLED, true)
+
+    fun saveWifiHighPerformanceEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_WIFI_HIGH_PERFORMANCE_ENABLED, enabled)
             .apply()
     }
 
@@ -481,6 +536,7 @@ object AirPlayPersistence {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_AUTO_START_ON_BOOT, enabled)
             .apply()
+        if (!enabled) com.geelyplay.preface.network.BootHotspotJobService.cancel(context)
     }
 
     fun loadBtSuspendDuringCarplay(context: Context): Boolean =
@@ -508,6 +564,49 @@ object AirPlayPersistence {
     fun saveLocationReportingEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_LOCATION_REPORTING_ENABLED, enabled)
+            .apply()
+    }
+
+    fun loadVehicleDataConfig(context: Context): com.shilapi.xcertplay.vehicle.VehicleDataConfig {
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return com.shilapi.xcertplay.vehicle.VehicleDataConfig(
+            enabled = com.shilapi.xcertplay.vehicle.VehicleDataFeature.entries.filter {
+                preferences.getBoolean("vehicle_data_${it.name}", it.defaultEnabled)
+            }.toSet(),
+            platform = runCatching { com.shilapi.xcertplay.vehicle.VehiclePlatform.valueOf(
+                preferences.getString("vehicle_data_platform", "STANDARD_ANDROID")!!)
+            }.getOrDefault(com.shilapi.xcertplay.vehicle.VehiclePlatform.STANDARD_ANDROID),
+            sourceId = preferences.getString("vehicle_data_source", null)
+                ?.takeUnless {
+                    it == com.shilapi.xcertplay.vehicle.source.VehicleDataEntries.DEFAULT_ID &&
+                        loadVehicleProfileSelection(context) == null &&
+                        com.geelyplay.preface.vehicle.E01VehicleDataEntry.supported()
+                }
+                ?: com.geelyplay.preface.vehicle.E01VehicleDataEntry.ID.takeIf {
+                    loadVehicleProfileSelection(context) == null &&
+                        com.geelyplay.preface.vehicle.E01VehicleDataEntry.supported()
+                }
+                ?: com.shilapi.xcertplay.vehicle.source.VehicleDataEntries.DEFAULT_ID,
+        )
+    }
+
+    fun saveVehicleDataConfig(context: Context, config: com.shilapi.xcertplay.vehicle.VehicleDataConfig) {
+        val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("vehicle_data_platform", config.platform.name)
+            .putString("vehicle_data_source", config.sourceId)
+        com.shilapi.xcertplay.vehicle.VehicleDataFeature.entries.forEach {
+            editor.putBoolean("vehicle_data_${it.name}", config.isEnabled(it))
+        }
+        editor.apply()
+    }
+
+    /** Which JSON profile is selected: "bundled:<asset file>" or "imported"; null before any save. */
+    fun loadVehicleProfileSelection(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("vehicle_profile_selection", null)
+
+    fun saveVehicleProfileSelection(context: Context, selection: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("vehicle_profile_selection", selection)
             .apply()
     }
 
@@ -1262,6 +1361,14 @@ object AirPlayPersistence {
                 .getString(safeAreaKey(widthPixels, heightPixels), null),
         )
     }
+
+    /** Activity sizes ("width" to "height") that have a stored safe area, in key order. */
+    fun loadSafeAreaSizes(context: Context): List<Pair<Int, Int>> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).all.entries.mapNotNull { (key, value) ->
+            val match = SAFE_AREA_KEY_PATTERN.matchEntire(key) ?: return@mapNotNull null
+            if (SafeAreaCodec.decode(value as? String) == null) return@mapNotNull null
+            match.groupValues[1].toInt() to match.groupValues[2].toInt()
+        }.filter { (width, height) -> width > 0 && height > 0 }.sortedWith(compareBy({ it.first }, { it.second }))
 
     fun saveSafeAreaRect(
         context: Context,

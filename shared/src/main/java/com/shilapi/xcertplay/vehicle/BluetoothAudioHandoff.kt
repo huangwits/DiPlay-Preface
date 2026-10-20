@@ -23,6 +23,7 @@ import java.util.Locale
 internal class BluetoothAudioHandoff(
     context: Context, address: String, private val report: (String) -> Unit,
     private val onPlaying: ((Boolean) -> Unit)? = null,
+    private val allowProfileDisconnect: Boolean = true,
 ) : Closeable {
     private val app = context.applicationContext
     private val adapter = app.systemService(BluetoothManager::class.java, "bluetooth")?.adapter
@@ -32,7 +33,7 @@ internal class BluetoothAudioHandoff(
     private var registered = false
     private var held = false
     @Volatile private var closed = false
-    @Volatile private var suppressed = true
+    @Volatile private var suppressed = allowProfileDisconnect
     private var lastDisconnectAt = 0L
     private var unavailable = false
     private var playing = false
@@ -65,9 +66,9 @@ internal class BluetoothAudioHandoff(
     }
 
     @Synchronized fun setSuppressed(value: Boolean) {
-        suppressed = value
+        suppressed = value && allowProfileDisconnect
         val connected = proxy ?: return
-        if (value) disconnectPeer() else restoreActive(connected)
+        if (suppressed) disconnectPeer() else restoreActive(connected)
     }
 
     @Synchronized fun start() {

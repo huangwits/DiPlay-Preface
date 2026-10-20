@@ -55,6 +55,7 @@ object AirPlayCrypto {
     val chachaImplementation: String
         get() = platformState.get()?.implementation ?: "BouncyCastle"
 
+
     data class X25519KeyPair(val privateKey: ByteArray, val publicKey: ByteArray)
     data class Ed25519KeyPair(val privateKey: ByteArray, val publicKey: ByteArray)
 
@@ -197,6 +198,34 @@ object AirPlayCrypto {
         val outputLength = processed + finalized
         return if (outputLength == output.size) output else output.copyOf(outputLength)
     }
+
+    /** Reusable high-rate decryptor; [ChaCha20Poly1305] construction is otherwise costly per frame. */
+    class ChaChaOpener(key: ByteArray) {
+        private val cipher = ChaCha20Poly1305()
+        private val keyParameter = KeyParameter(key.copyOf())
+        private val nonce = ByteArray(NONCE_SIZE)
+
+        fun open(
+            counter: Long,
+            ciphertextAndTag: ByteArray,
+            ciphertextLength: Int,
+            aad: ByteArray,
+            output: ByteArray,
+        ): Int {
+            var value = counter
+            for (index in 4 until NONCE_SIZE) {
+                nonce[index] = value.toByte()
+                value = value ushr 8
+            }
+            require(ciphertextLength in 0..ciphertextAndTag.size)
+            // Conscrypt buffers complete AEAD input and allocates a result even for its
+            // caller-output overload. BC writes directly into the recycled output buffer.
+            cipher.init(false, AEADParameters(keyParameter, MAC_BITS, nonce, aad))
+            val processed = cipher.processBytes(ciphertextAndTag, 0, ciphertextLength, output, 0)
+            return processed + cipher.doFinal(output, processed)
+        }
+    }
+
 
     /** 12-byte nonce: four zero bytes followed by an eight-byte little-endian counter. */
     fun nonce64(counter: Long): ByteArray {

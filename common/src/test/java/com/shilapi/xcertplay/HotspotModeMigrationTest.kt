@@ -45,7 +45,7 @@ class HotspotModeMigrationTest {
     }
 
     @Test fun connectionSettingsExposeAndSaveAutomaticHotspotMode() {
-        val controller = Robolectric.buildActivity(DiPlayActivity::class.java).setup()
+        val controller = Robolectric.buildActivity(DiPlayActivity::class.java).setup().visible()
         val activity = controller.get()
         ReflectionHelpers.setField(activity, "page", "connection")
         ReflectionHelpers.callInstanceMethod<Unit>(activity, "render")

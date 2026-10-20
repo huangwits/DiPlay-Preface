@@ -105,7 +105,7 @@ class BufferedAudioStreamTest {
         assertEquals(emptyMap<String, Any?>(), info["mainBufferedInfo"])
         val entry = (info["audioFormats"] as List<*>).single { (it as Map<*, *>)["type"] == 103 } as Map<*, *>
         assertEquals("media", entry["audioType"])
-        assertEquals(0x800000, entry["audioOutputFormats"]) // AAC-LC 48 kHz stereo
+        assertEquals(0x800000L, entry["audioOutputFormats"]) // Default .25 offer: AAC-LC 48 kHz stereo
         assertTrue(MAIN_BUFFERED_FEATURE in setupEnabledFeatures(on, listOf("mainBuffered", "iAPChannel")))
         assertFalse(MAIN_BUFFERED_FEATURE in setupEnabledFeatures(on, listOf("iAPChannel")))
     }

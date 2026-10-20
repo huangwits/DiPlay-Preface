@@ -106,6 +106,19 @@ class CarPlayConnectionDiagnosticLogTest {
         assertTrue(panel.logText.text.length < 66_000)
     }
 
+    @Test fun mediaTerminationReasonsSurviveReportRedaction() {
+        val current = activity.javaClass.getDeclaredMethod("createSessionListener", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }.invoke(activity, 2) as AirPlaySessionListener
+        current.onDebugLog("Video: screen stream ended type=110 failureClass=InvalidCipherTextException reason=mac check failed")
+        current.onDebugLog("AirPlay iAP tunnel closed cause=IOException: Invalid AirPlay iAP tunnel package size=0")
+        current.onDebugLog("airplay control request method=SETUP route=other contentBytes=128 failed failureClass=IllegalArgumentException")
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(AsyncDiagnosticLog.awaitIdle(2_000))
+        assertTrue(log.contains("screen stream ended type=110 failureClass=InvalidCipherTextException"))
+        assertTrue(log.contains("Invalid AirPlay iAP tunnel package size=0"))
+        assertTrue(log.contains("failed failureClass=IllegalArgumentException"))
+    }
+
     private fun buildPanel(): ConnectionWaitingView {
         activity.javaClass.getDeclaredMethod("buildContentView").apply { isAccessible = true }.invoke(activity)
         return activity.javaClass.getDeclaredField("connectionWaitingView")

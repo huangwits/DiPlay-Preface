@@ -1,6 +1,10 @@
 package com.shilapi.xcertplay
 
 import android.graphics.Color
+import androidx.compose.material3.ColorScheme
+import androidx.compose.ui.graphics.toArgb
+import com.shilapi.xcertplay.ui.theme.LavenderDark
+import com.shilapi.xcertplay.ui.theme.LavenderLight
 
 /** Semantic colors for DiPlay-owned chrome. Media canvases and cluster-specific palettes stay separate. */
 internal data class DiPlayPalette(
@@ -35,7 +39,7 @@ internal data class DiPlayPalette(
     companion object {
         fun of(night: Boolean): DiPlayPalette = if (night) DARK else LIGHT
 
-        val DARK = DiPlayPalette(
+        private val previousDark = DiPlayPalette(
             background = Color.rgb(12, 17, 27),
             surface = Color.rgb(21, 30, 44),
             button = Color.rgb(31, 43, 61),
@@ -65,7 +69,7 @@ internal data class DiPlayPalette(
             overlayDanger = Color.rgb(190, 45, 45),
         )
 
-        val LIGHT = DiPlayPalette(
+        private val previousLight = DiPlayPalette(
             background = Color.rgb(233, 238, 246),
             surface = Color.rgb(248, 250, 253),
             button = Color.rgb(220, 229, 241),
@@ -94,5 +98,22 @@ internal data class DiPlayPalette(
             overlayTrackOff = Color.rgb(168, 180, 190),
             overlayDanger = Color.rgb(155, 48, 48),
         )
+
+        private fun material(base: DiPlayPalette, scheme: ColorScheme) = base.copy(
+            background = scheme.surface.toArgb(), surface = scheme.surface.toArgb(),
+            button = scheme.surfaceContainerHigh.toArgb(), outline = scheme.outlineVariant.toArgb(),
+            railSelected = scheme.secondaryContainer.toArgb(), railSelectedOutline = scheme.outline.toArgb(),
+            primaryText = scheme.onSurface.toArgb(), secondaryText = scheme.onSurfaceVariant.toArgb(),
+            accent = scheme.primary.toArgb(), onAccent = scheme.onPrimary.toArgb(),
+            accentTrack = scheme.primary.toArgb(), trackOff = scheme.outlineVariant.toArgb(),
+            ripple = (scheme.primary.toArgb() and 0x00ffffff) or 0x33000000,
+            danger = scheme.error.toArgb(), focusRing = scheme.primary.toArgb(), systemBar = scheme.surface.toArgb(),
+            overlayBackground = scheme.surfaceContainer.toArgb(), overlayPrimaryText = scheme.onSurface.toArgb(),
+            overlaySecondaryText = scheme.onSurfaceVariant.toArgb(), overlayAccent = scheme.primary.toArgb(),
+            overlayOnAccent = scheme.onPrimary.toArgb(), overlayAccentTrack = scheme.primary.toArgb(),
+            overlayTrackOff = scheme.outlineVariant.toArgb(), overlayDanger = scheme.error.toArgb(),
+        )
+        val DARK = material(previousDark, LavenderDark)
+        val LIGHT = material(previousLight, LavenderLight)
     }
 }
