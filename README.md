@@ -1,3 +1,7 @@
+> **公开源码范围已于 2026-10-24 调整：**独立新增实现已撤回，原作者代码及其修改版保留。此公开树缺少部分依赖，不能直接构建，也不是 Release APK 的完整对应源码。APK 下载保留。详见 [公开源码范围](SOURCE_SCOPE.md)。
+>
+> **Public source scope changed on 2026-10-24:** independently added implementations were withdrawn; upstream code and adaptations remain. This tree cannot be built as-is and is not complete corresponding source for the APKs. Downloads are unchanged. See [source scope](SOURCE_SCOPE.md).
+
 # GeelyPlay 星瑞 / Preface
 
 面向吉利星瑞 E01（MT6735）车机的 CarPlay 适配版，支持 Android 5.1，界面为简体中文。整体界面与基础功能以原作者 DiPlay 为基准，并加入吉利车机适配。
