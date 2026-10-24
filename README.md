@@ -1,55 +1,48 @@
-> **公开源码范围已于 2026-10-24 调整：**独立新增实现已撤回，原作者代码及其修改版保留。此公开树缺少部分依赖，不能直接构建，也不是 Release APK 的完整对应源码。APK 下载保留。详见 [公开源码范围](SOURCE_SCOPE.md)。
->
-> **Public source scope changed on 2026-10-24:** independently added implementations were withdrawn; upstream code and adaptations remain. This tree cannot be built as-is and is not complete corresponding source for the APKs. Downloads are unchanged. See [source scope](SOURCE_SCOPE.md).
+# GeelyPlay · 吉利 E01
 
-# GeelyPlay 星瑞 / Preface
+基于 DiPlay 的 CarPlay 社区适配项目，主要面向 20/21 款吉利星瑞 E01（MT6735）车机，适配 Android 5.1，提供简体中文界面。其他 E01 车型的兼容性仍需结合车机型号与固件验证。
 
-面向吉利星瑞 E01（MT6735）车机的 CarPlay 适配版，支持 Android 5.1，界面为简体中文。整体界面与基础功能以原作者 DiPlay 为基准，并加入吉利车机适配。
+[下载安装包](https://github.com/huangwits/DiPlay-Preface/releases/latest) · [使用说明](docs/USAGE.md) · [文档目录](docs/README.md) · [问题反馈](https://github.com/huangwits/DiPlay-Preface/issues/new/choose)
 
-[下载安装包](https://github.com/huangwits/DiPlay-Preface/releases/latest) · [0.2.20.39 更新说明](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.20.39)
+## 下载与安装
 
-## 安装与升级
+当前公开版本为 **0.2.20.39**，安装包名为 `GeelyPlay-v0.2.20.39.apk`。完整更新内容见 [Release 说明](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.20.39)。
 
-当前版本 **0.2.20.39**，修复部分 iPhone 在连接初期因空视频配置导致 CarPlay 退出并反复重连的问题，并包含此前的首页、无线申请入口及按钮样式改进。
+| 项目 | 说明 |
+| --- | --- |
+| 目标车机 | 吉利 E01 / MT6735，主要适配星瑞 |
+| 系统要求 | Android 5.1 / API 22 及以上的目标车机 |
+| USB 连接 | 按应用提示连接 iPhone，无需软件激活 |
+| 无线连接 | 按应用提示完成设置与授权 |
 
-- 已安装相同签名的 **0.2.20.25–0.2.20.38** 本地版本，可直接覆盖升级，保留设置和有效授权。已安装 0.2.20.39 无需重复安装。
-- 从旧公开版 **0.2.16.20** 升级时，因签名不同，需要先卸载旧版；本地设置会清除，请按页面提示重新完成无线设置与授权。
-- 安装包为 `GeelyPlay-v0.2.20.39.apk`，适用于 Android 5.1 / API 22 及以上的目标车机。请在安全停车后操作。
+请在安全停车后安装与设置。**从旧公开版 0.2.16.20 升级时，因签名不同需要先卸载旧版，本地设置会清除。** 同签名版本的升级方式见 [安装与升级](docs/USAGE.md#安装与升级)。
 
-## 连接
+## 开始使用
 
-- **USB**：连接 iPhone 后按界面提示操作，无需软件激活。
-- **无线**：点击首页“连接 CarPlay”；未授权设备直接进入申请页面。首页“无线设置”可随时查看申请状态、选择手机及使用蓝牙工具。
-- 已确认的有效无线授权支持离线连接。连接后有网络时会在后台核验；待审、撤销或到期的授权仍需按页面提示处理。
+1. 从本仓库的 [Releases](https://github.com/huangwits/DiPlay-Preface/releases) 下载 APK 并安装。
+2. USB 连接按应用内提示操作；无线连接先完成首页“无线设置”中的准备步骤。
+3. 点击“连接 CarPlay”。未授权的无线设备会进入申请页面，可在“无线设置”查看状态。
 
-首次使用无线 CarPlay 时按应用内说明完成蓝牙工具准备；以后使用首页连接入口即可。
+连接方式、授权状态和诊断报告的说明见 [使用说明](docs/USAGE.md)。
 
-## 使用须知
+## 已知问题
 
-仪表地图仍可能出现与中控视角不同、行驶中地图与仪表交替显示的问题；**本版不宣称解决这两项问题**。兼容性须按具体车机、固件及 iPhone 组合验证。
+- 仪表地图可能与中控地图视角不同。
+- 行驶中仍可能出现地图与仪表交替显示的问题。
+- 连接、音频及车机控制表现受具体车机、固件和 iPhone / iOS 组合影响。
 
-这是社区维护的非官方项目，与 Apple、吉利没有隶属、授权或认证关系。软件按现状提供，不保证持续可用或未来系统兼容。蓝牙维护涉及系统组件，操作前请确认备份和恢复方法。
+当前公开版尚未解决前两项问题。反馈时请提供实际安装版本和故障发生时间，具体方法见 [问题反馈](docs/USAGE.md#问题反馈)。
 
-[完整免责声明](docs/DISCLAIMER.md) · [第三方声明](docs/THIRD_PARTY_NOTICES.md)
+## 源码与文档
 
-## 从源码构建
+本仓库保留上游代码及其适配修改。部分独立新增实现已撤回，**当前公开源码不能直接构建，也不是已发布 APK 的完整对应源码**。仓库内容及构建状态见 [源码说明](SOURCE_SCOPE.md)。
 
-使用 JDK 25、Android SDK 37、Build Tools 37 和 NDK 28.2.13676358。开发检查可运行 `./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :mobile:assembleDebug`；普通 debug 包不含独立运行所需的认证身份。
-
-完整车机包需要自行提供源码之外的本地认证、蓝牙组件、地图配置、授权公共配置及签名输入，对应 `DIPLAY_AUTH_ASSETS_DIR`、`DIPLAY_GOC_ASSETS_DIR`、`DIPLAY_E01_MAP_CONFIG_DIR`、`DIPLAY_LICENSE_ASSETS_DIR` 和 `ANDROID_KEYSTORE_*` 环境变量。配置后运行 `./gradlew :mobile:assembleE01Licensed`；升级安装必须保持原签名。私钥及生成的运行文件不要提交到仓库。
+文档统一收录在 [文档目录](docs/README.md)，包括使用说明、安全说明、免责声明与第三方声明。
 
 ## 致谢与许可
 
-基于原作者 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)，并参考 [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) 的吉利适配。感谢 [xcertplay](https://github.com/shilapi/xcertplay) 与 [DiAuto](https://github.com/shihabal3amri/DiAuto) 的原作者及贡献者。
+由 [huangwits](https://github.com/huangwits) 维护，基于 [shihabal3amri/DiPlay](https://github.com/shihabal3amri/DiPlay)，并参考 [carlito12345/DiPlay](https://github.com/carlito12345/DiPlay) 的吉利适配。感谢 [xcertplay](https://github.com/shilapi/xcertplay)、[DiAuto](https://github.com/shihabal3amri/DiAuto) 及相关贡献者。
 
-源码保留在本仓库，使用、修改和再分发请遵守 [GPL-3.0](LICENSE) 及适用组件的 [AGPL-3.0](docs/licenses/DiAuto-AGPL-3.0.txt)，保留原作者署名和第三方声明。CarPlay 及相关商标属于各自权利人。
+使用、修改和再分发相关代码时，请遵守 [GPL-3.0](LICENSE) 及适用组件的 [AGPL-3.0](docs/licenses/DiAuto-AGPL-3.0.txt)，保留原作者署名和 [第三方声明](docs/THIRD_PARTY_NOTICES.md)。
 
-## English
-
-GeelyPlay is a community CarPlay adaptation for Geely E01 / MT6735 head units running Android 5.1, with a Simplified Chinese interface. **0.2.20.39** fixes repeated session termination when an iPhone sends an empty video configuration during startup, and includes the updated home screen and wireless setup controls.
-
-The APK can update same-signer local versions 0.2.20.25–0.2.20.38 while preserving settings and valid approval. Public 0.2.16.20 uses a different signer and must be uninstalled first; local settings are cleared. Follow the in-app wireless setup and approval prompts afterward. USB requires no software activation; confirmed wireless approval supports offline startup.
-
-Instrument-map camera synchronization and intermittent switching between map and gauges remain unresolved. Compatibility depends on the vehicle, firmware and iPhone. Download from [Releases](https://github.com/huangwits/DiPlay-Preface/releases/latest), read the [release notes](https://github.com/huangwits/DiPlay-Preface/releases/tag/v0.2.20.39), and perform setup while parked.
-
-Source, upstream attribution and applicable GPL-3.0 / AGPL-3.0 licenses are preserved. This is an unofficial project with no Apple or Geely affiliation or certification.
+本项目与 Apple、吉利及相关车厂没有隶属、授权或认证关系。名称、商标和图标属于各自权利人。使用前请阅读 [免责声明](docs/DISCLAIMER.md)。
